@@ -25,7 +25,14 @@ CamlFlow MVP for typed agent orchestration in an OCaml-style DSL.
   - `check`
   - `compile`
   - `run`
+- improved CLI diagnostics for:
+  - unknown commands and flags
+  - missing flag values
+  - wrong command/flag combinations
+  - missing files and invalid directories
+  - invalid JSON input and invalid JSON IR artifacts
 - project-local skill discovery through `--skills <dir>` and `skills/<name>/SKILL.md`
+- Makefile targets for common build, test, and run flows
 
 ## Still out of scope for this MVP
 
@@ -49,6 +56,27 @@ dune test
 ```
 
 ## CLI
+
+Show help:
+
+```sh
+dune exec camlflow -- --help
+```
+
+Show subcommand help:
+
+```sh
+dune exec camlflow -- help run
+dune exec camlflow -- parse --help
+```
+
+Generate shell completion:
+
+```sh
+dune exec camlflow -- completion bash > /tmp/camlflow.bash
+dune exec camlflow -- completion zsh > /tmp/_camlflow
+dune exec camlflow -- completion fish > /tmp/camlflow.fish
+```
 
 ### Parse
 
@@ -119,12 +147,39 @@ Default runtime providers are deterministic. For `string` outputs they synthesiz
 - `examples/qualified-imports/` — qualified module refs without `open`
 - `examples/recursion/` — recursion and int builtins
 - `examples/inline-agent/` — executable `Agent.define`
+- `examples/provider-hooks/` — embedded OCaml host using runtime provider hooks
+
+## Provider hook docs
+
+- `docs/provider-hooks.md` — hook model, invocation metadata, and embedding guide
+- `examples/provider-hooks/README.md` — runnable provider-hooks example
+
+## Make targets
+
+```sh
+make build
+make test
+make cli-help
+make completion-bash
+make completion-zsh
+make completion-fish
+make run FILE=examples/basic/main.cml INPUT_JSON='"Ada"'
+make run FILE=examples/local-skill/main.cml SKILLS=examples/local-skill/skills INPUT_JSON='"hello"'
+make run-basic
+make run-local-skill
+make run-qualified
+make run-recursion
+make run-inline-agent
+make run-provider-hooks
+```
 
 ## Key files
 
 - `docs/camlflow-prd.md` — product requirements document
 - `docs/mvp-spec-camlflow.md` — approved MVP plan/spec
+- `docs/provider-hooks.md` — runtime provider hook reference
 - `examples/` — runnable examples
+- `Makefile` — common build, test, and run shortcuts
 - `lib/` — parser, typing, IR, runtime
 - `bin/main.ml` — CLI
 - `test/test_camlflow.ml` — end-to-end tests

@@ -48,6 +48,28 @@ let run_program ?context ?input program =
   | Ok result -> result
   | Error error -> Alcotest.failf "runtime failed: %s" error
 
+let contains_substring haystack needle =
+  let haystack_len = String.length haystack in
+  let needle_len = String.length needle in
+  let rec loop index =
+    if needle_len = 0 then true
+    else if index + needle_len > haystack_len then false
+    else if String.sub haystack index needle_len = needle then true
+    else loop (index + 1)
+  in
+  loop 0
+
+let expect_error_contains label needle = function
+  | Ok _ -> Alcotest.failf "expected error containing %S for %s" needle label
+  | Error error ->
+      if not (contains_substring error needle) then
+        Alcotest.failf "unexpected error for %s: %s" label error
+
+let parse_cli argv =
+  match Camlflow.Cli.parse_argv argv with
+  | Ok parsed -> parsed
+  | Error error -> Alcotest.failf "cli parse failed: %s" error
+
 let test_parse_source () =
   let source =
     {|
@@ -60,6 +82,58 @@ let main = "ok"
   Alcotest.(check int) "module count" 1 (List.length program.modules);
   let module_ = List.hd program.modules in
   Alcotest.(check int) "decl count" 3 (List.length module_.module_decls)
+
+let test_cli_help_alias () =
+  let parsed = parse_cli [ "parse"; "--help" ] in
+  Alcotest.(check string) "help command" "help"
+    (Camlflow.Cli.command_name parsed.command);
+  Alcotest.(check string) "help topic" "parse"
+    (match parsed.help_topic with
+    | Some command -> Camlflow.Cli.command_name command
+    | None -> "none")
+
+let test_cli_help_subcommand () =
+  let parsed = parse_cli [ "help"; "run" ] in
+  Alcotest.(check string) "help subcommand" "run"
+    (match parsed.help_topic with
+    | Some command -> Camlflow.Cli.command_name command
+    | None -> "none")
+
+let test_cli_missing_flag_value () =
+  expect_error_contains "missing -o"
+    "missing value for flag -o"
+    (Camlflow.Cli.parse_argv [ "compile"; "-o" ])
+
+let test_cli_run_rejects_conflicting_inputs () =
+  let parsed =
+    parse_cli
+      [ "run"; "main.cml"; "--input"; "input.json"; "--input-json"; "{}" ]
+  in
+  expect_error_contains "conflicting run inputs"
+    "either --input or --input-json"
+    (Camlflow.Cli.validate parsed)
+
+let test_cli_check_rejects_run_flags () =
+  let parsed = parse_cli [ "check"; "main.cml"; "--skills"; "skills" ] in
+  expect_error_contains "check rejects run flags" "does not accept"
+    (Camlflow.Cli.validate parsed)
+
+let test_cli_completion_command () =
+  let parsed = parse_cli [ "completion"; "bash" ] in
+  Alcotest.(check string) "completion command" "completion"
+    (Camlflow.Cli.command_name parsed.command);
+  Alcotest.(check string) "completion shell" "bash"
+    (match parsed.completion_shell with
+    | Some shell -> Camlflow.Cli.shell_name shell
+    | None -> "none");
+  (match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "completion validate failed: %s" error)
+
+let test_cli_completion_script_mentions_commands () =
+  let script = Camlflow.Cli.completion_script Camlflow.Cli.Bash in
+  if not (contains_substring script "parse check compile run completion") then
+    Alcotest.failf "unexpected completion script: %s" script
 
 let test_check_run_and_ir_roundtrip () =
   with_temp_dir "camlflow-main-" @@ fun dir ->
@@ -282,6 +356,19 @@ let () =
       ( "mvp",
         [
           Alcotest.test_case "parse source" `Quick test_parse_source;
+          Alcotest.test_case "cli help alias" `Quick test_cli_help_alias;
+          Alcotest.test_case "cli help subcommand" `Quick
+            test_cli_help_subcommand;
+          Alcotest.test_case "cli missing flag value" `Quick
+            test_cli_missing_flag_value;
+          Alcotest.test_case "cli conflicting run inputs" `Quick
+            test_cli_run_rejects_conflicting_inputs;
+          Alcotest.test_case "cli check rejects run flags" `Quick
+            test_cli_check_rejects_run_flags;
+          Alcotest.test_case "cli completion command" `Quick
+            test_cli_completion_command;
+          Alcotest.test_case "cli completion script" `Quick
+            test_cli_completion_script_mentions_commands;
           Alcotest.test_case "check run and IR roundtrip" `Quick
             test_check_run_and_ir_roundtrip;
           Alcotest.test_case "local skill resolution" `Quick
