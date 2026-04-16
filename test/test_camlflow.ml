@@ -148,6 +148,17 @@ let main = "ok"
   let module_ = List.hd program.modules in
   Alcotest.(check int) "decl count" 3 (List.length module_.module_decls)
 
+let test_multiline_quoted_strings_preserve_agent_skill_text () =
+  with_temp_dir "camlflow-quoted-string-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    "let main : string = {|\nagent hello\nskill bye\n|}\n";
+  let program = check_file main in
+  let result = run_program program in
+  Alcotest.(check string) "quoted string preserved"
+    "\nagent hello\nskill bye\n"
+    (get_output_string result.output)
+
 let test_cli_help_alias () =
   let parsed = parse_cli [ "parse"; "--help" ] in
   Alcotest.(check string) "help command" "help"
@@ -578,6 +589,17 @@ let main : string =
   Alcotest.(check string) "zero-arg output" "ready"
     (get_output_string result.output)
 
+let test_check_ignores_unrelated_broken_files () =
+  with_temp_dir "camlflow-ignore-broken-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  let broken = Filename.concat dir "broken.cml" in
+  write_file main "let main : int = 1\n";
+  write_file broken "let broken =\n";
+  let program = check_file main in
+  let result = run_program program in
+  Alcotest.(check int) "unrelated broken file ignored" 1
+    (get_output_int result.output)
+
 let test_check_run_and_ir_roundtrip () =
   with_temp_dir "camlflow-main-" @@ fun dir ->
   let helpers = Filename.concat dir "helpers.cml" in
@@ -660,6 +682,41 @@ let main (x : t) : int =
 |};
   expect_error_contains "non-exhaustive match" "non-exhaustive match"
     (Camlflow.Typing.check_file main)
+
+let test_wildcard_match_is_exhaustive () =
+  with_temp_dir "camlflow-match-wildcard-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+let main (flag : bool) : int =
+  match flag with
+  | _ -> 1
+|};
+  let program = check_file main in
+  let true_result = run_program ~input:(`Bool true) program in
+  let false_result = run_program ~input:(`Bool false) program in
+  Alcotest.(check int) "wildcard true branch" 1
+    (get_output_int true_result.output);
+  Alcotest.(check int) "wildcard false branch" 1
+    (get_output_int false_result.output)
+
+let test_ctor_then_wildcard_match_is_exhaustive () =
+  with_temp_dir "camlflow-match-ctor-wildcard-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+let main (flag : bool) : int =
+  match flag with
+  | true -> 1
+  | _ -> 0
+|};
+  let program = check_file main in
+  let true_result = run_program ~input:(`Bool true) program in
+  let false_result = run_program ~input:(`Bool false) program in
+  Alcotest.(check int) "ctor wildcard true branch" 1
+    (get_output_int true_result.output);
+  Alcotest.(check int) "ctor wildcard false branch" 0
+    (get_output_int false_result.output)
 
 let test_effectful_call_requires_let_star () =
   with_temp_dir "camlflow-effects-" @@ fun dir ->
@@ -876,6 +933,8 @@ let () =
       ( "mvp",
         [
           Alcotest.test_case "parse source" `Quick test_parse_source;
+          Alcotest.test_case "multiline quoted strings preserve agent skill text" `Quick
+            test_multiline_quoted_strings_preserve_agent_skill_text;
           Alcotest.test_case "cli help alias" `Quick test_cli_help_alias;
           Alcotest.test_case "cli help subcommand" `Quick
             test_cli_help_subcommand;
@@ -923,6 +982,8 @@ let () =
             test_unsupported_library_module_call_fails;
           Alcotest.test_case "zero-arg main runs" `Quick
             test_zero_arg_main_runs;
+          Alcotest.test_case "check ignores unrelated broken files" `Quick
+            test_check_ignores_unrelated_broken_files;
           Alcotest.test_case "check run and IR roundtrip" `Quick
             test_check_run_and_ir_roundtrip;
           Alcotest.test_case "local skill resolution" `Quick
@@ -931,6 +992,10 @@ let () =
             test_unresolved_open_fails;
           Alcotest.test_case "non-exhaustive match fails" `Quick
             test_non_exhaustive_match_fails;
+          Alcotest.test_case "wildcard match is exhaustive" `Quick
+            test_wildcard_match_is_exhaustive;
+          Alcotest.test_case "ctor then wildcard match is exhaustive" `Quick
+            test_ctor_then_wildcard_match_is_exhaustive;
           Alcotest.test_case "effectful call requires let*" `Quick
             test_effectful_call_requires_let_star;
           Alcotest.test_case "unsaturated agent call fails" `Quick

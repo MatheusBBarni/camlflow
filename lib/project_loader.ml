@@ -197,19 +197,5 @@ let load ~include_paths ~(root_path : string) : (Syntax.Ast.program, string) res
   let root_module = Parsing_driver.module_name_of_basename root_path in
   let root_dir = Filename.dirname root_path in
   let* () = visit ~from_dir:root_dir ~module_name:root_module ~path:root_path in
-  let* () =
-    List.fold_left
-      (fun acc base_dir ->
-        let* () = acc in
-        let base_dir = if Filename.is_relative base_dir then Filename.concat root_dir base_dir else base_dir in
-        let files = if Sys.file_exists base_dir && Sys.is_directory base_dir then walk_cml_files base_dir base_dir else [] in
-        List.fold_left
-          (fun acc path ->
-            let* () = acc in
-            let module_name = module_name_of_path ~base_dir path in
-            visit ~from_dir:(Filename.dirname path) ~module_name ~path)
-          (Ok ()) files)
-      (Ok ()) (root_dir :: include_paths)
-  in
   let modules = state.modules |> StringMap.bindings |> List.map snd in
   Ok { Syntax.Ast.root_module; modules }

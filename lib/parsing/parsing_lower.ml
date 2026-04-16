@@ -10,27 +10,115 @@ let failf loc fmt =
 
 let loc_of (loc : Location.t) = Loc.of_location loc
 
-let rec rewrite_line (line : string) : string =
-  let len = String.length line in
-  let rec leading idx =
-    if idx < len && (line.[idx] = ' ' || line.[idx] = '\t') then leading (idx + 1) else idx
-  in
-  let prefix_len = leading 0 in
-  let starts_with keyword =
-    let kw_len = String.length keyword in
-    prefix_len + kw_len <= len
-    && String.sub line prefix_len kw_len = keyword
-    && (prefix_len + kw_len = len
-       || match line.[prefix_len + kw_len] with ' ' | '\t' -> true | _ -> false)
-  in
-  let prefix = String.sub line 0 prefix_len in
-  let suffix from = String.sub line from (len - from) in
-  if starts_with "agent" then prefix ^ "let[@camlflow.agent]" ^ suffix (prefix_len + 5)
-  else if starts_with "skill" then prefix ^ "let[@camlflow.skill]" ^ suffix (prefix_len + 5)
-  else line
+let is_horizontal_space = function ' ' | '\t' -> true | _ -> false
+let is_line_break = function '\n' | '\r' -> true | _ -> false
+
+type rewrite_state =
+  | Code of bool
+  | String
+  | Comment of int
+  | Quoted_string of string
+
+let starts_with_keyword source pos keyword =
+  let len = String.length source in
+  let kw_len = String.length keyword in
+  pos + kw_len <= len
+  && String.sub source pos kw_len = keyword
+  &&
+  (pos + kw_len = len
+  || match source.[pos + kw_len] with
+     | c when is_horizontal_space c || is_line_break c -> true
+     | _ -> false)
+
+let is_quoted_string_delimiter_char = function
+  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' -> true
+  | _ -> false
+
+let quoted_string_opener source pos =
+  let len = String.length source in
+  if pos >= len || source.[pos] <> '{' then None
+  else
+    let rec loop idx =
+      if idx >= len then None
+      else
+        match source.[idx] with
+        | '|' -> Some (String.sub source (pos + 1) (idx - pos - 1), idx + 1)
+        | c when is_quoted_string_delimiter_char c -> loop (idx + 1)
+        | _ -> None
+    in
+    loop (pos + 1)
+
+let quoted_string_closes source pos delimiter =
+  let len = String.length source in
+  let delimiter_len = String.length delimiter in
+  pos + delimiter_len + 1 < len
+  && source.[pos] = '|'
+  && String.sub source (pos + 1) delimiter_len = delimiter
+  && source.[pos + delimiter_len + 1] = '}'
 
 let rewrite_custom_declarations (source : string) : string =
-  source |> String.split_on_char '\n' |> List.map rewrite_line |> String.concat "\n"
+  let len = String.length source in
+  let buffer = Buffer.create (len + 32) in
+  let rec loop pos state =
+    if pos >= len then Buffer.contents buffer
+    else
+      match state with
+      | Code true ->
+          let ch = source.[pos] in
+          if is_horizontal_space ch then (
+            Buffer.add_char buffer ch;
+            loop (pos + 1) (Code true))
+          else if starts_with_keyword source pos "agent" then (
+            Buffer.add_string buffer "let[@camlflow.agent]";
+            loop (pos + 5) (Code false))
+          else if starts_with_keyword source pos "skill" then (
+            Buffer.add_string buffer "let[@camlflow.skill]";
+            loop (pos + 5) (Code false))
+          else code_char pos
+      | Code false -> code_char pos
+      | String ->
+          let ch = source.[pos] in
+          if ch = '\\' && pos + 1 < len then (
+            Buffer.add_substring buffer source pos 2;
+            loop (pos + 2) String)
+          else (
+            Buffer.add_char buffer ch;
+            loop (pos + 1) (if ch = '"' then Code false else String))
+      | Comment depth ->
+          if pos + 1 < len && source.[pos] = '(' && source.[pos + 1] = '*' then (
+            Buffer.add_string buffer "(*";
+            loop (pos + 2) (Comment (depth + 1)))
+          else if pos + 1 < len && source.[pos] = '*' && source.[pos + 1] = ')' then (
+            Buffer.add_string buffer "*)";
+            loop (pos + 2) (if depth = 1 then Code false else Comment (depth - 1)))
+          else (
+            Buffer.add_char buffer source.[pos];
+            loop (pos + 1) (Comment depth))
+      | Quoted_string delimiter ->
+          let closing_len = String.length delimiter + 2 in
+          if quoted_string_closes source pos delimiter then (
+            Buffer.add_substring buffer source pos closing_len;
+            loop (pos + closing_len) (Code false))
+          else (
+            Buffer.add_char buffer source.[pos];
+            loop (pos + 1) (Quoted_string delimiter))
+  and code_char pos =
+    if pos + 1 < len && source.[pos] = '(' && source.[pos + 1] = '*' then (
+      Buffer.add_string buffer "(*";
+      loop (pos + 2) (Comment 1))
+    else
+      match quoted_string_opener source pos with
+      | Some (delimiter, next_pos) ->
+          Buffer.add_substring buffer source pos (next_pos - pos);
+          loop next_pos (Quoted_string delimiter)
+      | None ->
+          let ch = source.[pos] in
+          Buffer.add_char buffer ch;
+          if ch = '"' then loop (pos + 1) String
+          else if is_line_break ch then loop (pos + 1) (Code true)
+          else loop (pos + 1) (Code false)
+  in
+  loop 0 (Code true)
 
 let label_to_option = function
   | Nolabel -> None
