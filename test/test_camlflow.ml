@@ -204,6 +204,20 @@ let test_unresolved_open_fails () =
       if not (String.contains error 'M') then
         Alcotest.failf "unexpected error: %s" error
 
+let test_non_exhaustive_match_fails () =
+  with_temp_dir "camlflow-match-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+type t = A | B
+
+let main (x : t) : int =
+  match x with
+  | A -> 1
+|};
+  expect_error_contains "non-exhaustive match" "non-exhaustive match"
+    (Camlflow.Typing.check_file main)
+
 let test_effectful_call_requires_let_star () =
   with_temp_dir "camlflow-effects-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
@@ -294,6 +308,27 @@ let main (name : string) : string =
   Alcotest.(check string) "default provider result" "greeter"
     (get_output_string result.output)
 
+let test_invalid_provider_output_shape () =
+  with_temp_dir "camlflow-provider-shape-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  greeting
+|};
+  let program = check_file main in
+  let context =
+    Camlflow.Runtime.Context.with_agent_handler Camlflow.Runtime.Context.empty
+      "greeter"
+      (fun ~name:_ ~input:_ ~return_type:_ ~types:_ -> Ok (`Int 7))
+  in
+  expect_error_contains "invalid provider output shape"
+    "provider output for agent greeter does not match declared return type string"
+    (Camlflow.Runtime.execute ~context ~input:(`String "Ada") program)
+
 let test_provider_metadata_hooks () =
   with_temp_dir "camlflow-hooks-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
@@ -375,6 +410,8 @@ let () =
             test_local_skill_resolution;
           Alcotest.test_case "unresolved open fails" `Quick
             test_unresolved_open_fails;
+          Alcotest.test_case "non-exhaustive match fails" `Quick
+            test_non_exhaustive_match_fails;
           Alcotest.test_case "effectful call requires let*" `Quick
             test_effectful_call_requires_let_star;
           Alcotest.test_case "qualified refs without open" `Quick
@@ -385,6 +422,8 @@ let () =
             test_float_operators;
           Alcotest.test_case "default provider hook for bound agent" `Quick
             test_default_provider_hook_for_bound_agent;
+          Alcotest.test_case "invalid provider output shape" `Quick
+            test_invalid_provider_output_shape;
           Alcotest.test_case "provider metadata hooks" `Quick
             test_provider_metadata_hooks;
         ] );

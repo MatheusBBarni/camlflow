@@ -71,6 +71,26 @@ let short_name name =
 
 let module_key = Syntax.Ast.string_of_qname
 
+let rec string_of_typ = function
+  | Ir.TString -> "string"
+  | Ir.TInt -> "int"
+  | Ir.TBool -> "bool"
+  | Ir.TFloat -> "float"
+  | Ir.TUnit -> "unit"
+  | Ir.TList inner -> Printf.sprintf "%s list" (string_of_typ inner)
+  | Ir.TOption inner -> Printf.sprintf "%s option" (string_of_typ inner)
+  | Ir.TTuple items -> String.concat " * " (List.map string_of_typ items)
+  | Ir.TRecord name | Ir.TVariant name -> Syntax.Ast.string_of_qname name
+  | Ir.TFunc (params, result) ->
+      let params =
+        params
+        |> List.map (fun (param : Ir.param_type) ->
+               match param.Ir.param_label with
+               | None -> string_of_typ param.Ir.param_typ
+               | Some label -> Printf.sprintf "%s:%s" label (string_of_typ param.Ir.param_typ))
+      in
+      String.concat " -> " (params @ [ string_of_typ result ])
+
 let rec expect_data loc = function
   | RData value -> Ok value
   | _ -> Error (Printf.sprintf "expected data value at %s" (Loc.to_string loc))
@@ -576,7 +596,14 @@ and apply_callable env _loc callable args =
     in
     env.state.effect_steps := !(env.state.effect_steps) @ [ { step_kind; step_name; input; output } ];
     env.state.context.effect_observer invocation ~output;
-    let* value = Value.of_json env.state.types callable.callable_return_type output in
+    let* value =
+      Value.of_json env.state.types callable.callable_return_type output
+      |> Result.map_error (fun error ->
+             Printf.sprintf
+               "provider output for %s %s does not match declared return type %s: %s (output: %s)"
+               step_kind step_name (string_of_typ callable.callable_return_type)
+               error (Yojson.Safe.to_string output))
+    in
     Ok (RData value)
 
 let execute ?(context = Context.empty) ?(entry = "main") ?input (program : Ir.program) :

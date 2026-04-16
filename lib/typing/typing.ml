@@ -424,8 +424,8 @@ let rec useful env types matrix vector =
 
 let ensure_match_exhaustive env typ patterns loc =
   let matrix = List.map (fun pattern -> [ pattern ]) patterns in
-  let* exhaustive = useful env [ typ ] matrix [ NWild ] in
-  if exhaustive then Ok () else type_error loc "non-exhaustive match"
+  let* has_uncovered_case = useful env [ typ ] matrix [ NWild ] in
+  if has_uncovered_case then type_error loc "non-exhaustive match" else Ok ()
 
 let ensure_reachable env typ patterns loc =
   let rec loop seen = function
