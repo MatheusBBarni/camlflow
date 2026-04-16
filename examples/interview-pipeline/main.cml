@@ -1,0 +1,35 @@
+open Types
+
+skill caveman : prompt:string -> string = Skill.bind "caveman"
+
+skill edge_case_planner : algorithm:string -> difficulty:string -> focus:focus list -> string list =
+  Skill.bind "edge-case-planner"
+
+agent solver : request:normalized_request -> solution = Agent.bind "solver"
+
+agent reviewer : request:normalized_request -> solution:solution -> edge_cases:string list -> review =
+  Agent.define
+    ~name:"interview-pipeline-reviewer"
+    ~style:"strict"
+    ~system_prompt:"You are a strict algorithm reviewer. Review the proposed solution against the normalized request and edge cases. Approve only if the approach, complexity claims, and code are coherent."
+
+let main (request : request) : report =
+  let normalized = Helpers.normalize_request request in
+  let caveman_prompt = Helpers.render_caveman_prompt normalized in
+  let* terse_request = caveman ~prompt:caveman_prompt in
+  let normalized = Helpers.with_terse_request normalized terse_request in
+  let* edge_cases =
+    edge_case_planner ~algorithm:normalized.algorithm_name
+      ~difficulty:(Helpers.planner_difficulty normalized) ~focus:normalized.focus
+  in
+  let* solution = solver ~request:normalized in
+  let* review =
+    reviewer ~request:normalized ~solution:solution ~edge_cases:edge_cases
+  in
+  {
+    request = normalized;
+    solution = solution;
+    edge_cases = edge_cases;
+    review = review;
+    hints = Helpers.hint_for_difficulty normalized.difficulty;
+  }

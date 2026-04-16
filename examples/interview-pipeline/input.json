@@ -1,0 +1,9 @@
+{
+  "algorithm_name": "longest increasing subsequence",
+  "preferred_language": { "tag": "Python" },
+  "target_difficulty": { "tag": "Hard" },
+  "focus": [
+    { "tag": "Pattern", "value": "dynamic programming" },
+    { "tag": "Constraint", "value": "n up to 10^5" }
+  ]
+}
