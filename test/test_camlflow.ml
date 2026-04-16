@@ -161,6 +161,20 @@ let main : int =
     "qualified library/module calls such as List.<value> are unsupported"
     (Camlflow.Typing.check_file main)
 
+let test_zero_arg_main_runs () =
+  with_temp_dir "camlflow-zero-arg-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+let main : string =
+  "ready"
+|};
+  let program = check_file main in
+  let result = run_program program in
+  Alcotest.(check int) "zero-arg steps" 0 result.steps_run;
+  Alcotest.(check string) "zero-arg output" "ready"
+    (get_output_string result.output)
+
 let test_check_run_and_ir_roundtrip () =
   with_temp_dir "camlflow-main-" @@ fun dir ->
   let helpers = Filename.concat dir "helpers.cml" in
@@ -476,6 +490,8 @@ let () =
             test_wrong_argument_labels_fail;
           Alcotest.test_case "unsupported library/module call fails" `Quick
             test_unsupported_library_module_call_fails;
+          Alcotest.test_case "zero-arg main runs" `Quick
+            test_zero_arg_main_runs;
           Alcotest.test_case "check run and IR roundtrip" `Quick
             test_check_run_and_ir_roundtrip;
           Alcotest.test_case "local skill resolution" `Quick

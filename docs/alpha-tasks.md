@@ -48,7 +48,7 @@ Constraints:
 ## Task 2 — Expand examples and test coverage for more workflow patterns
 
 ### Required tests
-- [ ] zero-arg `main`
+- [x] zero-arg `main`
 - [x] single-arg `main`
 - [x] unresolved `open`
 - [x] wrong argument labels
