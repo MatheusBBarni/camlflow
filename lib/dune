@@ -1,0 +1,5 @@
+(include_subdirs unqualified)
+
+(library
+ (name camlflow)
+ (public_name camlflow))

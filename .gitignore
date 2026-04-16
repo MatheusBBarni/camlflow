@@ -1,0 +1,8 @@
+_build/
+.opam-switch/
+*.install
+*.merlin
+.merlin-conf/
+.utop-history
+*.swp
+*.swo
