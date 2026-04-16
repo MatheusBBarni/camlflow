@@ -108,10 +108,10 @@ Rules:
 - [x] Support both source and compiled IR runs
 
 ### Task 6 — Tests, example, and docs
-- [ ] Keep automated tests offline and deterministic
-- [ ] Add provider CLI tests and adapter unit tests
-- [ ] Add a runnable Codex example
-- [ ] Add user docs for provider-backed execution
+- [x] Keep automated tests offline and deterministic
+- [x] Add provider CLI tests and adapter unit tests
+- [x] Add a runnable Codex example
+- [x] Add user docs for provider-backed execution
 
 ## Recommended implementation order
 

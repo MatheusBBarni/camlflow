@@ -27,12 +27,17 @@ let resolve_path ~working_directory path =
 
 let command_ok command = Sys.command command = 0
 
-let preflight ~working_directory:_ ~settings:_ =
-  if not (command_ok "codex --version >/dev/null 2>&1") then
+let validate_preflight_status ~codex_available ~logged_in =
+  if not codex_available then
     Error "provider codex is not available; install Codex CLI and ensure `codex` is on PATH"
-  else if not (command_ok "codex login status >/dev/null 2>&1") then
+  else if not logged_in then
     Error "provider codex requires login; run `codex login` first"
   else Ok ()
+
+let preflight ~working_directory:_ ~settings:_ =
+  validate_preflight_status
+    ~codex_available:(command_ok "codex --version >/dev/null 2>&1")
+    ~logged_in:(command_ok "codex login status >/dev/null 2>&1")
 
 let trace_start settings ~step ~kind ~name ~model =
   if settings.Provider.trace_provider then
@@ -50,7 +55,7 @@ let process_status_message = function
   | Unix.WSIGNALED signal -> Printf.sprintf "signal %d" signal
   | Unix.WSTOPPED signal -> Printf.sprintf "stopped by signal %d" signal
 
-let build_codex_args ~working_directory ~settings ~model ~schema_path ~output_path =
+let build_exec_args ~working_directory ~settings ~model ~schema_path ~output_path =
   let base_args =
     [
       "codex";
@@ -139,7 +144,7 @@ let run_codex_exec ~working_directory ~settings ~prompt ~schema ~model =
       let* () = write_text_file schema_path (Yojson.Safe.pretty_to_string schema) in
       let argv =
         Array.of_list
-          (build_codex_args ~working_directory ~settings ~model ~schema_path
+          (build_exec_args ~working_directory ~settings ~model ~schema_path
              ~output_path)
       in
       let prompt_fd = Unix.openfile prompt_path [ Unix.O_RDONLY ] 0 in

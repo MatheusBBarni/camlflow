@@ -426,6 +426,118 @@ let test_provider_prompt_for_inline_agent () =
   if not (contains_substring rendered.prompt "\"tone\"") then
     Alcotest.failf "missing inline metadata payload: %s" rendered.prompt
 
+let test_codex_build_exec_args () =
+  let settings =
+    {
+      Camlflow.Provider.default_settings with
+      provider = Some Camlflow.Provider.Codex;
+      model = Some "gpt-5.4-mini";
+      reasoning = Some Camlflow.Provider.Max;
+      provider_profile = Some "daily";
+      provider_configs = [ { Camlflow.Provider.key = "foo"; value = "bar" } ];
+      sandbox = Camlflow.Provider.Read_only;
+      allow_write_dirs = [ "tmp"; "/abs/cache" ];
+    }
+  in
+  let argv =
+    Camlflow.Providers_codex.build_exec_args ~working_directory:"/workspace"
+      ~settings ~model:settings.model ~schema_path:"/tmp/schema.json"
+      ~output_path:"/tmp/out.json"
+  in
+  let expected =
+    [
+      "codex";
+      "exec";
+      "--skip-git-repo-check";
+      "-C";
+      "/workspace";
+      "--sandbox";
+      "read-only";
+      "--output-schema";
+      "/tmp/schema.json";
+      "--output-last-message";
+      "/tmp/out.json";
+      "--model";
+      "gpt-5.4-mini";
+      "--profile";
+      "daily";
+      "--config";
+      "model_reasoning_effort=\"xhigh\"";
+      "--config";
+      "foo=bar";
+      "--add-dir";
+      "/workspace/tmp";
+      "--add-dir";
+      "/abs/cache";
+      "-";
+    ]
+  in
+  Alcotest.(check (list string)) "codex argv" expected argv
+
+let test_codex_preflight_validation () =
+  expect_error_contains "missing codex" "provider codex is not available"
+    (Camlflow.Providers_codex.validate_preflight_status ~codex_available:false
+       ~logged_in:false);
+  expect_error_contains "missing login" "provider codex requires login"
+    (Camlflow.Providers_codex.validate_preflight_status ~codex_available:true
+       ~logged_in:false);
+  (match
+     Camlflow.Providers_codex.validate_preflight_status ~codex_available:true
+       ~logged_in:true
+   with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "unexpected preflight error: %s" error)
+
+let test_codex_wrapped_response_schema () =
+  let wrapped =
+    match
+      Camlflow.Providers_codex.wrapped_response_schema
+        (`Assoc [ ("$schema", `String "https://json-schema.org/draft/2020-12/schema"); ("type", `String "string") ])
+    with
+    | Ok schema -> schema
+    | Error error -> Alcotest.failf "wrapped schema failed: %s" error
+  in
+  expect_string_field "type" "object" wrapped;
+  expect_string_field "$schema" "https://json-schema.org/draft/2020-12/schema"
+    wrapped;
+  expect_string_field "type" "string"
+    (expect_assoc_field "result" (expect_assoc_field "properties" wrapped))
+
+let test_codex_inline_temperature_fails_fast () =
+  with_temp_dir "camlflow-codex-temp-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+agent reviewer : code:string -> string =
+  Agent.define ~temperature:0.1 ~system_prompt:"Review tersely"
+
+let main (code : string) : string =
+  let* review = reviewer ~code:code in
+  review
+|};
+  let program = check_file main in
+  let settings =
+    {
+      Camlflow.Provider.default_settings with
+      provider = Some Camlflow.Provider.Codex;
+    }
+  in
+  let base_context =
+    Camlflow.Runtime.Context.empty
+    |> fun context -> Camlflow.Runtime.Context.with_working_directory context dir
+  in
+  let context =
+    match
+      Camlflow.Providers_codex.build_runtime_context ~working_directory:dir
+        ~settings base_context
+    with
+    | Ok context -> context
+    | Error error -> Alcotest.failf "build runtime context failed: %s" error
+  in
+  expect_error_contains "inline temperature unsupported"
+    "provider codex does not support inline setting(s) temperature"
+    (Camlflow.Runtime.execute ~context ~input:(`String "let x = 1") program)
+
 let test_wrong_argument_labels_fail () =
   with_temp_dir "camlflow-labels-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
@@ -797,6 +909,14 @@ let () =
             test_provider_prompt_for_local_skill;
           Alcotest.test_case "provider prompt for inline agent" `Quick
             test_provider_prompt_for_inline_agent;
+          Alcotest.test_case "codex build exec args" `Quick
+            test_codex_build_exec_args;
+          Alcotest.test_case "codex preflight validation" `Quick
+            test_codex_preflight_validation;
+          Alcotest.test_case "codex wrapped response schema" `Quick
+            test_codex_wrapped_response_schema;
+          Alcotest.test_case "codex inline temperature fails fast" `Quick
+            test_codex_inline_temperature_fails_fast;
           Alcotest.test_case "wrong argument labels fail" `Quick
             test_wrong_argument_labels_fail;
           Alcotest.test_case "unsupported library/module call fails" `Quick
