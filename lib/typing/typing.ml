@@ -388,20 +388,17 @@ let rec useful env types matrix vector =
           let* finite = is_finite_type env typ in
           if finite then
             let* ctors = constructors_of_type env typ in
-            let present =
-              matrix
-              |> List.filter_map (function NCtor (ctor, _) :: _ -> Some ctor.ctor_id | _ -> None)
-              |> List.sort_uniq String.compare
+            let rec try_ctors = function
+              | [] -> Ok false
+              | ctor :: tail ->
+                  let* is_useful =
+                    useful env (ctor.ctor_arg_types @ rest_types)
+                      (specialize_ctor_matrix ctor matrix)
+                      (default_pattern ctor.ctor_arg_types @ rest_patterns)
+                  in
+                  if is_useful then Ok true else try_ctors tail
             in
-            if List.exists (fun ctor -> not (List.mem ctor.ctor_id present)) ctors then Ok true
-            else
-              let rec try_ctors = function
-                | [] -> Ok false
-                | ctor :: tail ->
-                    let* is_useful = useful env (ctor.ctor_arg_types @ rest_types) (specialize_ctor_matrix ctor matrix) (default_pattern ctor.ctor_arg_types @ rest_patterns) in
-                    if is_useful then Ok true else try_ctors tail
-              in
-              try_ctors ctors
+            try_ctors ctors
           else useful env rest_types (default_matrix matrix) rest_patterns
       | NConst constant ->
           let* finite = is_finite_type env typ in
@@ -1025,37 +1022,5 @@ let check ?env:_ (program : Syntax.Ast.program) : (typed_program, error) result 
   Ok { Ir.root_module = program.root_module; modules }
 
 let check_file ?(include_paths = []) (path : string) : (typed_program, error) result =
-  let* base_program = Loader.load ~include_paths ~root_path:path in
-  let root_dir = Filename.dirname path in
-  let scan_dirs =
-    root_dir
-    :: List.map
-         (fun dir -> if Filename.is_relative dir then Filename.concat root_dir dir else dir)
-         include_paths
-  in
-  let scan_files =
-    scan_dirs
-    |> List.filter (fun dir -> Sys.file_exists dir && Sys.is_directory dir)
-    |> List.concat_map (fun base_dir ->
-           Project_loader.walk_cml_files base_dir base_dir
-           |> List.map (fun path -> (base_dir, path)))
-  in
-  let* scanned_modules =
-    all
-      (List.map
-         (fun (base_dir, module_path) ->
-           let module_name = Project_loader.module_name_of_path ~base_dir module_path in
-           Parsing.parse_file ~module_name module_path)
-         scan_files)
-  in
-  let modules_by_key =
-    List.fold_left
-      (fun acc module_ ->
-        StringMap.add (qname_key module_.Syntax.Ast.module_name) module_ acc)
-      StringMap.empty (base_program.Syntax.Ast.modules @ scanned_modules)
-  in
-  let program =
-    { Syntax.Ast.root_module = base_program.root_module;
-      modules = modules_by_key |> StringMap.bindings |> List.map snd }
-  in
+  let* program = Loader.load ~include_paths ~root_path:path in
   check program
