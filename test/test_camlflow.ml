@@ -323,6 +323,22 @@ let main (n : int) : int =
   let result = run_program ~input:(`Int 4) program in
   Alcotest.(check int) "recursive result" 10 (get_output_int result.output)
 
+let test_bool_match_patterns () =
+  with_temp_dir "camlflow-bool-match-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+let main (flag : bool) : int =
+  match flag with
+  | true -> 1
+  | false -> 0
+|};
+  let program = check_file main in
+  let true_result = run_program ~input:(`Bool true) program in
+  let false_result = run_program ~input:(`Bool false) program in
+  Alcotest.(check int) "true branch" 1 (get_output_int true_result.output);
+  Alcotest.(check int) "false branch" 0 (get_output_int false_result.output)
+
 let test_float_operators () =
   with_temp_dir "camlflow-float-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
@@ -478,6 +494,8 @@ let () =
             test_qualified_refs_without_open;
           Alcotest.test_case "recursion and int builtins" `Quick
             test_recursion_and_int_builtins;
+          Alcotest.test_case "bool match patterns" `Quick
+            test_bool_match_patterns;
           Alcotest.test_case "float operators" `Quick
             test_float_operators;
           Alcotest.test_case "default provider hook for bound agent" `Quick

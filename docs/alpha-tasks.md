@@ -29,7 +29,7 @@ Constraints:
   - [x] unsaturated skill calls
   - [x] unreachable match cases
   - [x] unsupported library/module calls
-- [ ] Ensure no known case that should fail at check-time still slips to runtime
+- [x] Ensure no known case that should fail at check-time still slips to runtime
 
 ### P1 targeted diagnostics
 - [x] Improve invalid provider output shape errors with invocation kind/name and declared return type
@@ -41,7 +41,7 @@ Constraints:
 - [x] `dune test` passes with the new conformance tests
 - [x] Non-exhaustive matches fail during checking, not runtime
 - [x] Provider output shape mismatches report invocation context clearly
-- [ ] No newly added spec test exposes an unresolved Alpha conformance bug
+- [x] No newly added spec test exposes an unresolved Alpha conformance bug
 
 ---
 
