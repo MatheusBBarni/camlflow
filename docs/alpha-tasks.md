@@ -67,18 +67,18 @@ Constraints:
 - [x] compiled IR roundtrip
 
 ### Minimal example additions
-- [ ] Add one runnable example covering variants + pattern matching
-- [ ] Prefer combining records + variants + `match` in that example if it keeps the example small
-- [ ] Add a Make target only if it materially improves discoverability
+- [x] Add one runnable example covering variants + pattern matching
+- [x] Prefer combining records + variants + `match` in that example if it keeps the example small
+- [x] Add a Make target only if it materially improves discoverability
 
 ### Docs follow-up
-- [ ] Update `README.md` example list once the new example exists
-- [ ] Mark the two Alpha checklist items complete only after tests/examples are in place
+- [x] Update `README.md` example list once the new example exists
+- [x] Mark the two Alpha checklist items complete only after tests/examples are in place
 
 ### Done criteria for Task 2
-- [ ] Every spec-required negative behavior has an automated test
-- [ ] At least one runnable example covers variants + `match`
-- [ ] README Alpha status can be updated honestly
+- [x] Every spec-required negative behavior has an automated test
+- [x] At least one runnable example covers variants + `match`
+- [x] README Alpha status can be updated honestly
 
 ---
 

@@ -128,6 +128,12 @@ dune exec camlflow -- run examples/qualified-imports/main.cml --input-json '"Ada
 dune exec camlflow -- run examples/recursion/main.cml --input-json '4'
 ```
 
+### Run variants + match example
+
+```sh
+dune exec camlflow -- run examples/variants-match/main.cml
+```
+
 ## Example CamlFlow source
 
 ```ocaml
@@ -146,6 +152,7 @@ Default runtime providers are deterministic. For `string` outputs they synthesiz
 - `examples/local-skill/` — prompt-backed local skill via `--skills`
 - `examples/qualified-imports/` — qualified module refs without `open`
 - `examples/recursion/` — recursion and int builtins
+- `examples/variants-match/` — records, variants, and pattern matching with a zero-arg `main`
 - `examples/inline-agent/` — executable `Agent.define`
 - `examples/provider-hooks/` — embedded OCaml host using runtime provider hooks
 
@@ -169,6 +176,7 @@ make run-basic
 make run-local-skill
 make run-qualified
 make run-recursion
+make run-variants-match
 make run-inline-agent
 make run-provider-hooks
 ```
@@ -186,17 +194,17 @@ make run-provider-hooks
 
 ## Roadmap
 
-### Alpha (MVP) — WE ARE HERE
+### Alpha (MVP) — COMPLETE
 
-Current focus: validate core language shape and execution model.
+Completed focus: validate core language shape and execution model.
 
 - [x] CLI for parsing, checking, compiling, and running CamlFlow programs
 - [x] Unit and end-to-end tests to validate outputs and behavior
 - [x] Typed parser, checker, JSON IR, and deterministic runtime
 - [x] Local skill loading and provider hook support
 - [x] Basic developer workflows through examples, docs, and Make targets
-- [ ] Continue improving MVP stability, diagnostics, and language ergonomics
-- [ ] Expand examples and test coverage for more workflow patterns
+- [x] Continue improving MVP stability, diagnostics, and language ergonomics
+- [x] Expand examples and test coverage for more workflow patterns
 
 ### Beta 1
 

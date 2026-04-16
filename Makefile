@@ -1,4 +1,4 @@
-.PHONY: help build test clean cli-help completion-bash completion-zsh completion-fish parse-basic check-basic compile-basic run run-basic run-local-skill run-qualified run-recursion run-inline-agent run-provider-hooks all
+.PHONY: help build test clean cli-help completion-bash completion-zsh completion-fish parse-basic check-basic compile-basic run run-basic run-local-skill run-qualified run-recursion run-variants-match run-inline-agent run-provider-hooks all
 
 DUNE ?= dune
 BINARY ?= camlflow
@@ -26,6 +26,7 @@ help:
 	@printf "  make run-local-skill      Run examples/local-skill/main.cml\n"
 	@printf "  make run-qualified        Run examples/qualified-imports/main.cml\n"
 	@printf "  make run-recursion        Run examples/recursion/main.cml\n"
+	@printf "  make run-variants-match   Run examples/variants-match/main.cml\n"
 	@printf "  make run-inline-agent     Run examples/inline-agent/main.cml\n"
 	@printf "  make run-provider-hooks   Run embedded OCaml provider-hooks host example\n"
 	@printf "  make clean                Clean dune build artifacts\n\n"
@@ -97,6 +98,9 @@ run-qualified:
 
 run-recursion:
 	$(DUNE) exec $(BINARY) -- run examples/recursion/main.cml --input-json '$(RECURSION_INPUT)'
+
+run-variants-match:
+	$(DUNE) exec $(BINARY) -- run examples/variants-match/main.cml
 
 run-inline-agent:
 	$(DUNE) exec $(BINARY) -- run examples/inline-agent/main.cml --input-json '$(INLINE_AGENT_INPUT)'
