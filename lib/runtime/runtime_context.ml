@@ -6,6 +6,7 @@ type named_handler =
   (Yojson.Safe.t, string) result
 
 type inline_agent_provider =
+  name:string ->
   definition:Ir.agent_definition ->
   input:Yojson.Safe.t ->
   return_type:Ir.typ ->
@@ -56,7 +57,7 @@ type t = {
 let default_named_handler ~name:_ ~input:_ ~return_type ~types =
   Value.default_json types return_type
 
-let default_inline_agent_provider ~definition:_ ~input:_ ~return_type ~types =
+let default_inline_agent_provider ~name:_ ~definition:_ ~input:_ ~return_type ~types =
   Value.default_json types return_type
 
 let default_prompt_skill_provider ~name:_ ~markdown:_ ~input:_ ~return_type ~types =

@@ -84,28 +84,28 @@ Rules:
 - [x] Keep current deterministic execution unchanged when `--provider` is omitted
 
 ### Task 2 — JSON Schema generation
-- [ ] Generate JSON Schema from CamlFlow return types
-- [ ] Cover primitives, records, variants, options, tuples, and lists
-- [ ] Add unit tests for schema generation
+- [x] Generate JSON Schema from CamlFlow return types
+- [x] Cover primitives, records, variants, options, tuples, and lists
+- [x] Add unit tests for schema generation
 
 ### Task 3 — Prompt-envelope synthesis
-- [ ] Build distinct envelopes for agent and skill execution
-- [ ] Include invocation metadata, typed input JSON, return-type guidance, and schema details
-- [ ] Include `SKILL.md` for local skills and inline prompt metadata for inline agents
-- [ ] Add offline tests for prompt construction
+- [x] Build distinct envelopes for agent and skill execution
+- [x] Include invocation metadata, typed input JSON, return-type guidance, and schema details
+- [x] Include `SKILL.md` for local skills and inline prompt metadata for inline agents
+- [x] Add offline tests for prompt construction
 
 ### Task 4 — Codex adapter
-- [ ] Shell out through `codex exec`
-- [ ] Use `--output-schema` and `--output-last-message`
-- [ ] Map normalized CamlFlow provider options onto Codex CLI flags
-- [ ] Implement provider preflight and error mapping
-- [ ] Fail fast on unsupported inline settings
+- [x] Shell out through `codex exec`
+- [x] Use `--output-schema` and `--output-last-message`
+- [x] Map normalized CamlFlow provider options onto Codex CLI flags
+- [x] Implement provider preflight and error mapping
+- [x] Fail fast on unsupported inline settings
 
 ### Task 5 — Runtime and CLI wiring
-- [ ] Build provider-backed runtime contexts from `run`
-- [ ] Add provider tracing support
-- [ ] Preserve old deterministic behavior when `--provider` is not set
-- [ ] Support both source and compiled IR runs
+- [x] Build provider-backed runtime contexts from `run`
+- [x] Add provider tracing support
+- [x] Preserve old deterministic behavior when `--provider` is not set
+- [x] Support both source and compiled IR runs
 
 ### Task 6 — Tests, example, and docs
 - [ ] Keep automated tests offline and deterministic

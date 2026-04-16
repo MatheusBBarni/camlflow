@@ -3,8 +3,11 @@ module Parsing = Parsing
 module Typing = Typing
 module Runtime = Runtime
 module Ir = Ir
+module Loc = Loc
 module Value = Value
 module Provider = Provider
+module Provider_schema = Provider_schema
+module Provider_prompt = Provider_prompt
 module Providers = Providers
 module Cli = Cli
 

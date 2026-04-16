@@ -63,7 +63,7 @@ agent reviewer : code:string -> string =
   Agent.define ~model:"stub" ~system_prompt:"Review tersely"
 ```
 
-The hook receives the parsed inline definition metadata.
+The hook receives the inline agent name plus the parsed inline definition metadata.
 
 ### 5. Prompt-backed local skill provider
 
@@ -130,7 +130,7 @@ let context =
        | Bound_skill -> Ok (`String ("skill:" ^ invocation.invocation_name))
        | _ -> Error "unexpected invocation kind")
   |> Camlflow.Runtime.Context.with_inline_agent_provider
-       (fun ~definition:_ ~input:_ ~return_type:_ ~types:_ ->
+       (fun ~name:_ ~definition:_ ~input:_ ~return_type:_ ~types:_ ->
          Ok (`String "inline-review"))
   |> Camlflow.Runtime.Context.with_prompt_skill_provider
        (fun ~name:_ ~markdown:_ ~input:_ ~return_type:_ ~types:_ ->

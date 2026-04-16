@@ -42,7 +42,7 @@ let () =
     in
     let context =
       Camlflow.Runtime.Context.with_inline_agent_provider context
-        (fun ~definition:_ ~input:_ ~return_type:_ ~types:_ ->
+        (fun ~name:_ ~definition:_ ~input:_ ~return_type:_ ~types:_ ->
           Ok (`String "inline-review"))
     in
     Camlflow.Runtime.Context.with_effect_observer context
