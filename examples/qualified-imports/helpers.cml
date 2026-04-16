@@ -1,0 +1,4 @@
+type payload = { name : string }
+
+let make (name : string) : payload =
+  { name = name }

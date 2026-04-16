@@ -8,6 +8,7 @@ depends: [
   "ocaml" {>= "5.1"}
   "dune" {>= "3.22"}
   "menhir"
+  "yojson"
   "alcotest" {with-test}
 ]
 build: [

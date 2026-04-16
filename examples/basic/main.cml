@@ -1,0 +1,5 @@
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  greeting ^ "!"
