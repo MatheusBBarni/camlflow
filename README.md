@@ -183,3 +183,47 @@ make run-provider-hooks
 - `lib/` — parser, typing, IR, runtime
 - `bin/main.ml` — CLI
 - `test/test_camlflow.ml` — end-to-end tests
+
+## Roadmap
+
+### Alpha (MVP) — WE ARE HERE
+
+Current focus: validate core language shape and execution model.
+
+- [x] CLI for parsing, checking, compiling, and running CamlFlow programs
+- [x] Unit and end-to-end tests to validate outputs and behavior
+- [x] Typed parser, checker, JSON IR, and deterministic runtime
+- [x] Local skill loading and provider hook support
+- [x] Basic developer workflows through examples, docs, and Make targets
+- [ ] Continue improving MVP stability, diagnostics, and language ergonomics
+- [ ] Expand examples and test coverage for more workflow patterns
+
+### Beta 1
+
+Goal: validate CamlFlow inside real AI coding environments.
+
+- [ ] Integrate with Codex (Codex CLI, OAuth)
+- [ ] Test CamlFlow programs from within AI tools such as Codex
+- [ ] Validate that generated outputs and orchestration behavior work as intended in real usage
+- [ ] Iterate on language/runtime behavior based on AI-tool feedback
+
+### Beta 2
+
+Goal: build the developer experience (DX) layer around the language.
+
+- [ ] Add LSP support for CamlFlow
+- [ ] Integrate with IDEs and editors
+- [ ] Build editor extensions, icons, and related UX pieces
+- [ ] Add a CamlFlow configuration file for project setup
+- [ ] Allow users to define entrypoint location, skills location, and related project settings in config
+- [ ] Improve project ergonomics for day-to-day development
+
+### Beta 3
+
+Goal: expand model/provider integrations and advanced CLI control.
+
+- [ ] Integrate with Claude Code
+- [ ] Integrate with Claude CLI
+- [ ] Improve the CLI so users can choose model, reasoning mode, and related execution settings
+- [ ] Generalize runtime/provider selection across supported AI coding tools
+- [ ] Refine multi-provider workflow execution experience
