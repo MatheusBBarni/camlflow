@@ -135,6 +135,32 @@ let test_cli_completion_script_mentions_commands () =
   if not (contains_substring script "parse check compile run completion") then
     Alcotest.failf "unexpected completion script: %s" script
 
+let test_wrong_argument_labels_fail () =
+  with_temp_dir "camlflow-labels-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+let add ~(x : int) ~(y : int) : int =
+  x + y
+
+let main : int =
+  add ~x:1 ~z:2
+|};
+  expect_error_contains "wrong argument labels" "argument label mismatch"
+    (Camlflow.Typing.check_file main)
+
+let test_unsupported_library_module_call_fails () =
+  with_temp_dir "camlflow-stdlib-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+let main : int =
+  List.length []
+|};
+  expect_error_contains "unsupported library/module call"
+    "qualified library/module calls such as List.<value> are unsupported"
+    (Camlflow.Typing.check_file main)
+
 let test_check_run_and_ir_roundtrip () =
   with_temp_dir "camlflow-main-" @@ fun dir ->
   let helpers = Filename.concat dir "helpers.cml" in
@@ -233,6 +259,32 @@ let main (name : string) : string =
   | Error error ->
       if not (String.contains error '*') then
         Alcotest.failf "unexpected error: %s" error
+
+let test_unsaturated_agent_call_fails () =
+  with_temp_dir "camlflow-unsat-agent-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main : string =
+  greeter
+|};
+  expect_error_contains "unsaturated agent call" "must be fully applied"
+    (Camlflow.Typing.check_file main)
+
+let test_unsaturated_skill_call_fails () =
+  with_temp_dir "camlflow-unsat-skill-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+skill caveman : prompt:string -> string = Skill.bind "caveman"
+
+let main : string =
+  caveman
+|};
+  expect_error_contains "unsaturated skill call" "must be fully applied"
+    (Camlflow.Typing.check_file main)
 
 let test_qualified_refs_without_open () =
   with_temp_dir "camlflow-qualified-" @@ fun dir ->
@@ -404,6 +456,10 @@ let () =
             test_cli_completion_command;
           Alcotest.test_case "cli completion script" `Quick
             test_cli_completion_script_mentions_commands;
+          Alcotest.test_case "wrong argument labels fail" `Quick
+            test_wrong_argument_labels_fail;
+          Alcotest.test_case "unsupported library/module call fails" `Quick
+            test_unsupported_library_module_call_fails;
           Alcotest.test_case "check run and IR roundtrip" `Quick
             test_check_run_and_ir_roundtrip;
           Alcotest.test_case "local skill resolution" `Quick
@@ -414,6 +470,10 @@ let () =
             test_non_exhaustive_match_fails;
           Alcotest.test_case "effectful call requires let*" `Quick
             test_effectful_call_requires_let_star;
+          Alcotest.test_case "unsaturated agent call fails" `Quick
+            test_unsaturated_agent_call_fails;
+          Alcotest.test_case "unsaturated skill call fails" `Quick
+            test_unsaturated_skill_call_fails;
           Alcotest.test_case "qualified refs without open" `Quick
             test_qualified_refs_without_open;
           Alcotest.test_case "recursion and int builtins" `Quick

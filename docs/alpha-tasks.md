@@ -22,25 +22,25 @@ Constraints:
 ### P0 semantic blockers
 - [x] Fix check-time exhaustiveness enforcement for `match`
 - [ ] Audit remaining spec-required check-time failures and close any gaps:
-  - [ ] wrong argument labels
-  - [ ] `let*` misuse
-  - [ ] effectful top-level bindings
-  - [ ] unsaturated agent calls
-  - [ ] unsaturated skill calls
-  - [ ] unreachable match cases
-  - [ ] unsupported library/module calls
+  - [x] wrong argument labels
+  - [x] `let*` misuse
+  - [x] effectful top-level bindings
+  - [x] unsaturated agent calls
+  - [x] unsaturated skill calls
+  - [x] unreachable match cases
+  - [x] unsupported library/module calls
 - [ ] Ensure no known case that should fail at check-time still slips to runtime
 
 ### P1 targeted diagnostics
 - [x] Improve invalid provider output shape errors with invocation kind/name and declared return type
-- [ ] Improve diagnostics for unsupported library/module calls
-- [ ] Confirm non-exhaustive and unreachable match diagnostics remain clear and source-located
-- [ ] Confirm effect misuse diagnostics remain clear (`let*`, top-level effects)
+- [x] Improve diagnostics for unsupported library/module calls
+- [x] Confirm non-exhaustive and unreachable match diagnostics remain clear and source-located
+- [x] Confirm effect misuse diagnostics remain clear (`let*`, top-level effects)
 
 ### Done criteria for Task 1
-- [ ] `dune test` passes with the new conformance tests
-- [ ] Non-exhaustive matches fail during checking, not runtime
-- [ ] Provider output shape mismatches report invocation context clearly
+- [x] `dune test` passes with the new conformance tests
+- [x] Non-exhaustive matches fail during checking, not runtime
+- [x] Provider output shape mismatches report invocation context clearly
 - [ ] No newly added spec test exposes an unresolved Alpha conformance bug
 
 ---
@@ -51,14 +51,14 @@ Constraints:
 - [ ] zero-arg `main`
 - [x] single-arg `main`
 - [x] unresolved `open`
-- [ ] wrong argument labels
-- [ ] unsupported library/module calls
-- [ ] non-exhaustive match
+- [x] wrong argument labels
+- [x] unsupported library/module calls
+- [x] non-exhaustive match
 - [x] unreachable match case
 - [x] effectful top-level bindings
-- [ ] unsaturated agent call
-- [ ] unsaturated skill call
-- [ ] invalid provider output shape
+- [x] unsaturated agent call
+- [x] unsaturated skill call
+- [x] invalid provider output shape
 - [x] invalid runtime input shape
 - [x] local skill resolution
 - [x] `Agent.define` / provider hook execution

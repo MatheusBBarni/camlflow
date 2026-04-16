@@ -19,10 +19,11 @@ let resolve_module_path ~from_dir ~include_paths (module_name : Syntax.Ast.qname
   match List.find_opt Sys.file_exists candidates with
   | Some path -> Ok path
   | None ->
+      let module_text = Syntax.Ast.string_of_qname module_name in
       Error
-        (Printf.sprintf "unable to resolve module %s; looked for %s"
-           (Syntax.Ast.string_of_qname module_name)
-           (String.concat ", " candidates))
+        (Printf.sprintf
+           "unable to resolve module %s; looked for %s. CamlFlow MVP only resolves project .cml modules, and qualified library/module calls such as %s.<value> are unsupported"
+           module_text (String.concat ", " candidates) module_text)
 
 let module_prefix_of_qname (name : Syntax.Ast.qname) : Syntax.Ast.qname option =
   match List.rev name with

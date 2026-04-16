@@ -437,7 +437,8 @@ let ensure_reachable env typ patterns loc =
   in
   loop [] patterns
 
-let rec infer_expr env ?expected ?(allow_effectful_call = false) (expr : Syntax.Ast.expr) :
+let rec infer_expr env ?expected ?(allow_effectful_call = false)
+    ?(allow_callable_reference = false) (expr : Syntax.Ast.expr) :
     (Ir.expr * inferred, string) result =
   match expr.Syntax.Ast.expr_desc with
   | Syntax.Ast.ELiteral literal ->
@@ -452,6 +453,13 @@ let rec infer_expr env ?expected ?(allow_effectful_call = false) (expr : Syntax.
         | _ -> Env.lookup_value env name
       in
       let* value = value_result in
+      let* () =
+        match (allow_callable_reference, value.Env.value_kind) with
+        | false, (Env.Agent | Env.Skill) ->
+            type_error expr.expr_loc
+              "agents and skills must be fully applied and cannot be used as values"
+        | _ -> Ok ()
+      in
       let* () = match expected with None -> Ok () | Some expected -> ensure_type expected value.Env.value_typ expr.expr_loc in
       Ok ({ Ir.expr_loc = expr.expr_loc; expr_desc = Ir.EVar name }, { inferred_type = value.Env.value_typ; effectful = false; callable_kind = Some value.Env.value_kind })
   | Syntax.Ast.ETuple items ->
@@ -677,7 +685,7 @@ and infer_apply env ?(allow_effectful_call = false) ?expected expr fn args =
   | Syntax.Ast.EVar [ name ] when is_builtin_name name ->
       infer_builtin_apply env ?expected expr name args
   | _ ->
-      let* fn_ir, fn_info = infer_expr env fn in
+      let* fn_ir, fn_info = infer_expr env ~allow_callable_reference:true fn in
       match fn_info.inferred_type with
       | Ir.TFunc (params, result_type) ->
           if List.length args > List.length params then type_error expr.expr_loc "too many arguments in function application"
