@@ -15,6 +15,7 @@ type options = {
   input_file : string option;
   input_json : string option;
   skills_dir : string option;
+  provider_options : Provider.settings;
 }
 
 type parsed = {
@@ -41,6 +42,7 @@ let default_options =
     input_file = None;
     input_json = None;
     skills_dir = None;
+    provider_options = Provider.default_settings;
   }
 
 let command_name = function
@@ -70,6 +72,9 @@ let usage_text =
       "  camlflow compile <file.cml> [-I dir]... [-o artifact.json]";
       "  camlflow run <file.cml|artifact.json> [-I dir]... [--entry name]";
       "               [--input file.json | --input-json json] [--skills dir]";
+      "               [--provider codex] [--model name] [--reasoning level]";
+      "               [--provider-profile name] [--provider-config key=value]...";
+      "               [--sandbox mode] [--allow-write-dir dir]... [--trace-provider]";
       "  camlflow completion <bash|zsh|fish>";
       "";
       "Commands:";
@@ -80,14 +85,22 @@ let usage_text =
       "  completion   Emit a shell completion script";
       "";
       "Common options:";
-      "  -h, --help        Show help text";
-      "  -I <dir>          Add an include path for module resolution";
+      "  -h, --help              Show help text";
+      "  -I <dir>                Add an include path for module resolution";
       "";
       "Run options:";
-      "  --entry <name>    Entrypoint to run (default: main)";
-      "  --input <path>    Read entrypoint JSON input from a file";
-      "  --input-json <j>  Read entrypoint JSON input from an inline JSON string";
-      "  --skills <dir>    Resolve local skills from <dir>/<name>/SKILL.md";
+      "  --entry <name>          Entrypoint to run (default: main)";
+      "  --input <path>          Read entrypoint JSON input from a file";
+      "  --input-json <j>        Read entrypoint JSON input from an inline JSON string";
+      "  --skills <dir>          Resolve local skills from <dir>/<name>/SKILL.md";
+      "  --provider <name>       Provider to use for unresolved effects (codex)";
+      "  --model <name>          Override provider model when the workflow does not set one";
+      "  --reasoning <level>     Provider-agnostic reasoning level: low, medium, high, max";
+      "  --provider-profile <n>  Provider profile name";
+      "  --provider-config <kv>  Provider config override in key=value form (repeatable)";
+      "  --sandbox <mode>        Sandbox mode: read-only, workspace-write, danger-full-access";
+      "  --allow-write-dir <d>   Extra writable directory for provider execution (repeatable)";
+      "  --trace-provider        Print provider step trace metadata to stderr";
       "";
       "Examples:";
       "  camlflow help run";
@@ -95,6 +108,7 @@ let usage_text =
       "  camlflow check examples/qualified-imports/main.cml";
       "  camlflow compile examples/basic/main.cml -o /tmp/basic.ir.json";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"'";
+      "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider codex --model gpt-5.4-mini";
       "  camlflow completion bash > /tmp/camlflow.bash";
     ]
 
@@ -165,9 +179,13 @@ let run_help_text =
       "Usage:";
       "  camlflow run <file.cml|artifact.json> [-I dir]... [--entry name]";
       "               [--input file.json | --input-json json] [--skills dir]";
+      "               [--provider codex] [--model name] [--reasoning level]";
+      "               [--provider-profile name] [--provider-config key=value]...";
+      "               [--sandbox mode] [--allow-write-dir dir]... [--trace-provider]";
       "";
       "Description:";
       "  Execute a CamlFlow program from source or a compiled JSON IR artifact.";
+      "  Provider-backed execution remains opt-in through --provider.";
       "";
       "Accepted flags:";
       "  -h, --help";
@@ -176,10 +194,19 @@ let run_help_text =
       "  --input <path>";
       "  --input-json <json>";
       "  --skills <dir>";
+      "  --provider <name>";
+      "  --model <name>";
+      "  --reasoning <level>";
+      "  --provider-profile <name>";
+      "  --provider-config <key=value>";
+      "  --sandbox <mode>";
+      "  --allow-write-dir <dir>";
+      "  --trace-provider";
       "";
       "Examples:";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"'";
       "  camlflow run /tmp/basic.ir.json --input-json '\"Ada\"'";
+      "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider codex --model gpt-5.4-mini";
     ]
 
 let completion_help_text =
@@ -243,7 +270,57 @@ let parse_flags args =
         loop { options with input_json = Some json } positionals rest
     | "--skills" :: dir :: rest ->
         loop { options with skills_dir = Some dir } positionals rest
-    | ("-I" | "-o" | "--entry" | "--input" | "--input-json" | "--skills")
+    | "--provider" :: name :: rest ->
+        let* provider = Provider.name_of_string name in
+        let provider_options =
+          { options.provider_options with provider = Some provider }
+        in
+        loop { options with provider_options } positionals rest
+    | "--model" :: name :: rest ->
+        let provider_options =
+          { options.provider_options with model = Some name }
+        in
+        loop { options with provider_options } positionals rest
+    | "--reasoning" :: level :: rest ->
+        let* reasoning = Provider.reasoning_of_string level in
+        let provider_options =
+          { options.provider_options with reasoning = Some reasoning }
+        in
+        loop { options with provider_options } positionals rest
+    | "--provider-profile" :: profile :: rest ->
+        let provider_options =
+          { options.provider_options with provider_profile = Some profile }
+        in
+        loop { options with provider_options } positionals rest
+    | "--provider-config" :: config :: rest ->
+        let* config = Provider.config_of_string config in
+        let provider_options =
+          {
+            options.provider_options with
+            provider_configs = options.provider_options.provider_configs @ [ config ];
+          }
+        in
+        loop { options with provider_options } positionals rest
+    | "--sandbox" :: mode :: rest ->
+        let* sandbox = Provider.sandbox_of_string mode in
+        let provider_options = { options.provider_options with sandbox } in
+        loop { options with provider_options } positionals rest
+    | "--allow-write-dir" :: dir :: rest ->
+        let provider_options =
+          {
+            options.provider_options with
+            allow_write_dirs = options.provider_options.allow_write_dirs @ [ dir ];
+          }
+        in
+        loop { options with provider_options } positionals rest
+    | "--trace-provider" :: rest ->
+        let provider_options =
+          { options.provider_options with trace_provider = true }
+        in
+        loop { options with provider_options } positionals rest
+    | ( "-I" | "-o" | "--entry" | "--input" | "--input-json" | "--skills"
+      | "--provider" | "--model" | "--reasoning" | "--provider-profile"
+      | "--provider-config" | "--sandbox" | "--allow-write-dir" )
       :: [] as trailing ->
         Error (Printf.sprintf "missing value for flag %s" (List.hd trailing))
     | flag :: _ when String.length flag > 0 && flag.[0] = '-' ->
@@ -352,6 +429,37 @@ let ensure_exactly_one_file command_name positionals =
         (Printf.sprintf "%s expects exactly one file argument, got %d"
            command_name (List.length positionals))
 
+let provider_disallowed_flags (settings : Provider.settings) =
+  [
+    Option.map (Fun.const "--provider") settings.provider;
+    Option.map (Fun.const "--model") settings.model;
+    Option.map (Fun.const "--reasoning") settings.reasoning;
+    Option.map (Fun.const "--provider-profile") settings.provider_profile;
+    (match settings.provider_configs with [] -> None | _ -> Some "--provider-config");
+    (if settings.sandbox = Provider.default_sandbox then None else Some "--sandbox");
+    (match settings.allow_write_dirs with [] -> None | _ -> Some "--allow-write-dir");
+    (if settings.trace_provider then Some "--trace-provider" else None);
+  ]
+
+let explicit_provider_dependency_flags (settings : Provider.settings) =
+  [
+    Option.map (Fun.const "--model") settings.model;
+    Option.map (Fun.const "--reasoning") settings.reasoning;
+    Option.map (Fun.const "--provider-profile") settings.provider_profile;
+    (match settings.provider_configs with [] -> None | _ -> Some "--provider-config");
+    (if settings.sandbox = Provider.default_sandbox then None else Some "--sandbox");
+    (match settings.allow_write_dirs with [] -> None | _ -> Some "--allow-write-dir");
+    (if settings.trace_provider then Some "--trace-provider" else None);
+  ]
+
+let ensure_provider_selected settings =
+  match List.filter_map Fun.id (explicit_provider_dependency_flags settings) with
+  | [] -> Ok ()
+  | flags ->
+      Error
+        (Printf.sprintf "run requires --provider when using %s"
+           (String.concat ", " (List.map (Printf.sprintf "flag %s") flags)))
+
 let validate (parsed : parsed) =
   let options = parsed.options in
   match parsed.command with
@@ -371,6 +479,7 @@ let validate (parsed : parsed) =
           Option.map (Fun.const "--input-json") options.input_json;
           Option.map (Fun.const "--skills") options.skills_dir;
         ]
+        @ provider_disallowed_flags options.provider_options
       in
       ensure_no_flags "completion" disallowed
   | Parse ->
@@ -384,6 +493,7 @@ let validate (parsed : parsed) =
           Option.map (Fun.const "--input-json") options.input_json;
           Option.map (Fun.const "--skills") options.skills_dir;
         ]
+        @ provider_disallowed_flags options.provider_options
       in
       ensure_no_flags "parse" disallowed
   | Check ->
@@ -396,6 +506,7 @@ let validate (parsed : parsed) =
           Option.map (Fun.const "--input-json") options.input_json;
           Option.map (Fun.const "--skills") options.skills_dir;
         ]
+        @ provider_disallowed_flags options.provider_options
       in
       ensure_no_flags "check" disallowed
   | Compile ->
@@ -407,6 +518,7 @@ let validate (parsed : parsed) =
           Option.map (Fun.const "--input-json") options.input_json;
           Option.map (Fun.const "--skills") options.skills_dir;
         ]
+        @ provider_disallowed_flags options.provider_options
       in
       ensure_no_flags "compile" disallowed
   | Run ->
@@ -415,6 +527,11 @@ let validate (parsed : parsed) =
         match (options.input_file, options.input_json) with
         | Some _, Some _ -> Error "run accepts either --input or --input-json, not both"
         | _ -> Ok ()
+      in
+      let* () =
+        match options.provider_options.provider with
+        | Some _ -> Ok ()
+        | None -> ensure_provider_selected options.provider_options
       in
       match options.output with
       | Some _ -> Error "run does not accept flag -o"
@@ -430,9 +547,12 @@ let bash_completion_script =
       "  cmd=\"${COMP_WORDS[1]}\"";
       "";
       "  case \"$prev\" in";
-      "    -I|--skills) COMPREPLY=( $(compgen -d -- \"$cur\") ); return 0 ;;";
+      "    -I|--skills|--allow-write-dir) COMPREPLY=( $(compgen -d -- \"$cur\") ); return 0 ;;";
       "    -o|--input) COMPREPLY=( $(compgen -f -- \"$cur\") ); return 0 ;;";
-      "    --entry) return 0 ;;";
+      "    --provider) COMPREPLY=( $(compgen -W \"codex\" -- \"$cur\") ); return 0 ;;";
+      "    --reasoning) COMPREPLY=( $(compgen -W \"low medium high max\" -- \"$cur\") ); return 0 ;;";
+      "    --sandbox) COMPREPLY=( $(compgen -W \"read-only workspace-write danger-full-access\" -- \"$cur\") ); return 0 ;;";
+      "    --entry|--model|--provider-profile|--provider-config) return 0 ;;";
       "  esac";
       "";
       "  if [[ ${COMP_CWORD} -eq 1 ]]; then";
@@ -452,7 +572,7 @@ let bash_completion_script =
       "    compile)";
       "      COMPREPLY=( $(compgen -W \"-h --help -I -o\" -- \"$cur\") $(compgen -f -- \"$cur\") ) ;;";
       "    run)";
-      "      COMPREPLY=( $(compgen -W \"-h --help -I --entry --input --input-json --skills\" -- \"$cur\") $(compgen -f -- \"$cur\") ) ;;";
+      "      COMPREPLY=( $(compgen -W \"-h --help -I --entry --input --input-json --skills --provider --model --reasoning --provider-profile --provider-config --sandbox --allow-write-dir --trace-provider\" -- \"$cur\") $(compgen -f -- \"$cur\") ) ;;";
       "    *) COMPREPLY=() ;;";
       "  esac";
       "}";
@@ -485,7 +605,7 @@ let zsh_completion_script =
       "  parse) _arguments '-h[show help]' '--help[show help]' '*:file:_files' ;;";
       "  check) _arguments '-h[show help]' '--help[show help]' '-I+[include path]:dir:_files -/' '*:file:_files' ;;";
       "  compile) _arguments '-h[show help]' '--help[show help]' '-I+[include path]:dir:_files -/' '-o+[output file]:file:_files' '*:file:_files' ;;";
-      "  run) _arguments '-h[show help]' '--help[show help]' '-I+[include path]:dir:_files -/' '--entry+[entrypoint name]:entry' '--input+[json file]:file:_files' '--input-json+[inline json]:json' '--skills+[skills directory]:dir:_files -/' '*:file:_files' ;;";
+      "  run) _arguments '-h[show help]' '--help[show help]' '-I+[include path]:dir:_files -/' '--entry+[entrypoint name]:entry' '--input+[json file]:file:_files' '--input-json+[inline json]:json' '--skills+[skills directory]:dir:_files -/' '--provider+[provider name]:provider:(codex)' '--model+[provider model]:model' '--reasoning+[reasoning level]:reasoning:(low medium high max)' '--provider-profile+[provider profile]:profile' '--provider-config+[provider config override]:config' '--sandbox+[sandbox mode]:sandbox:(read-only workspace-write danger-full-access)' '--allow-write-dir+[extra writable directory]:dir:_files -/' '--trace-provider[print provider step trace metadata]' '*:file:_files' ;;";
       "esac";
     ]
 
@@ -510,6 +630,14 @@ let fish_completion_script =
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l input -d 'JSON input file' -r";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l input-json -d 'Inline JSON input' -r";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l skills -d 'Skills directory' -r -a '(__fish_complete_directories)'";
+      "complete -c camlflow -n '__fish_seen_subcommand_from run' -l provider -d 'Provider name' -r -a 'codex'";
+      "complete -c camlflow -n '__fish_seen_subcommand_from run' -l model -d 'Provider model' -r";
+      "complete -c camlflow -n '__fish_seen_subcommand_from run' -l reasoning -d 'Reasoning level' -r -a 'low medium high max'";
+      "complete -c camlflow -n '__fish_seen_subcommand_from run' -l provider-profile -d 'Provider profile' -r";
+      "complete -c camlflow -n '__fish_seen_subcommand_from run' -l provider-config -d 'Provider config override' -r";
+      "complete -c camlflow -n '__fish_seen_subcommand_from run' -l sandbox -d 'Sandbox mode' -r -a 'read-only workspace-write danger-full-access'";
+      "complete -c camlflow -n '__fish_seen_subcommand_from run' -l allow-write-dir -d 'Extra writable directory' -r -a '(__fish_complete_directories)'";
+      "complete -c camlflow -n '__fish_seen_subcommand_from run' -l trace-provider -d 'Print provider step trace metadata'";
     ]
 
 let completion_script = function

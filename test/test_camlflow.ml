@@ -133,7 +133,81 @@ let test_cli_completion_command () =
 let test_cli_completion_script_mentions_commands () =
   let script = Camlflow.Cli.completion_script Camlflow.Cli.Bash in
   if not (contains_substring script "parse check compile run completion") then
-    Alcotest.failf "unexpected completion script: %s" script
+    Alcotest.failf "unexpected completion script: %s" script;
+  if not (contains_substring script "--provider --model --reasoning") then
+    Alcotest.failf "provider flags missing from completion script: %s" script
+
+let test_cli_run_provider_flags_parse () =
+  let parsed =
+    parse_cli
+      [
+        "run";
+        "main.cml";
+        "--provider";
+        "codex";
+        "--model";
+        "gpt-5.4-mini";
+        "--reasoning";
+        "high";
+        "--provider-profile";
+        "daily";
+        "--provider-config";
+        "foo=bar";
+        "--sandbox";
+        "read-only";
+        "--allow-write-dir";
+        "tmp";
+        "--trace-provider";
+      ]
+  in
+  (match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "run validate failed: %s" error);
+  let settings = parsed.options.provider_options in
+  Alcotest.(check string) "provider" "codex"
+    (match settings.provider with
+    | Some provider -> Camlflow.Provider.name_to_string provider
+    | None -> "none");
+  Alcotest.(check string) "model" "gpt-5.4-mini"
+    (match settings.model with
+    | Some model -> model
+    | None -> "none");
+  Alcotest.(check string) "reasoning" "high"
+    (match settings.reasoning with
+    | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
+    | None -> "none");
+  Alcotest.(check string) "provider profile" "daily"
+    (match settings.provider_profile with
+    | Some profile -> profile
+    | None -> "none");
+  Alcotest.(check string) "provider config" "foo=bar"
+    (match settings.provider_configs with
+    | [ config ] -> Camlflow.Provider.config_to_string config
+    | _ -> "unexpected");
+  Alcotest.(check string) "sandbox" "read-only"
+    (Camlflow.Provider.sandbox_to_string settings.sandbox);
+  Alcotest.(check (list string)) "write dirs" [ "tmp" ]
+    settings.allow_write_dirs;
+  Alcotest.(check bool) "trace provider" true settings.trace_provider
+
+let test_cli_provider_flags_require_provider () =
+  let parsed = parse_cli [ "run"; "main.cml"; "--model"; "gpt-5.4-mini" ] in
+  expect_error_contains "provider required" "run requires --provider"
+    (Camlflow.Cli.validate parsed)
+
+let test_cli_unknown_provider_rejected () =
+  expect_error_contains "unknown provider" "unknown provider unknown"
+    (Camlflow.Cli.parse_argv [ "run"; "main.cml"; "--provider"; "unknown" ])
+
+let test_cli_invalid_provider_config_rejected () =
+  expect_error_contains "invalid provider config"
+    "provider config must have the form key=value"
+    (Camlflow.Cli.parse_argv [ "run"; "main.cml"; "--provider-config"; "oops" ])
+
+let test_cli_check_rejects_provider_flags () =
+  let parsed = parse_cli [ "check"; "main.cml"; "--provider"; "codex" ] in
+  expect_error_contains "check rejects provider flags" "flag --provider"
+    (Camlflow.Cli.validate parsed)
 
 let test_wrong_argument_labels_fail () =
   with_temp_dir "camlflow-labels-" @@ fun dir ->
@@ -486,6 +560,16 @@ let () =
             test_cli_completion_command;
           Alcotest.test_case "cli completion script" `Quick
             test_cli_completion_script_mentions_commands;
+          Alcotest.test_case "cli run provider flags parse" `Quick
+            test_cli_run_provider_flags_parse;
+          Alcotest.test_case "cli provider flags require provider" `Quick
+            test_cli_provider_flags_require_provider;
+          Alcotest.test_case "cli unknown provider rejected" `Quick
+            test_cli_unknown_provider_rejected;
+          Alcotest.test_case "cli invalid provider config rejected" `Quick
+            test_cli_invalid_provider_config_rejected;
+          Alcotest.test_case "cli check rejects provider flags" `Quick
+            test_cli_check_rejects_provider_flags;
           Alcotest.test_case "wrong argument labels fail" `Quick
             test_wrong_argument_labels_fail;
           Alcotest.test_case "unsupported library/module call fails" `Quick
