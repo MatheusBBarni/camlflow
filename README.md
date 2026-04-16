@@ -1,11 +1,21 @@
 # CamlFlow
 
-CamlFlow MVP for typed agent orchestration in an OCaml-style DSL.
+CamlFlow is a typed agent-orchestration language and runtime built around an
+OCaml-style DSL.
 
-## Implemented in this repo
+This repository contains the completed Alpha/MVP vertical slice:
+- parser
+- type checker
+- compiled JSON IR
+- deterministic local runtime
+- CLI
+- tests
+- runnable examples
+
+## What this MVP includes
 
 - OCaml-style parser for CamlFlow source files (`.cml`)
-- typed checking for:
+- type checking for:
   - `type`, `let`, `agent`, `skill`, `open`
   - records, variants, tuples, lists, options
   - `if`, `match`, recursion, labeled calls, `let*`
@@ -43,6 +53,17 @@ CamlFlow MVP for typed agent orchestration in an OCaml-style DSL.
 - imperative features
 - user-defined parametric types
 
+## Quickstart
+
+```sh
+dune build
+dune test
+make run-basic
+make run-variants-match
+```
+
+Use `dune exec camlflow -- --help` to see the full CLI.
+
 ## Build
 
 ```sh
@@ -56,6 +77,8 @@ dune test
 ```
 
 ## CLI
+
+All commands below run through `dune exec camlflow -- ...`.
 
 Show help:
 
@@ -134,7 +157,7 @@ dune exec camlflow -- run examples/recursion/main.cml --input-json '4'
 dune exec camlflow -- run examples/variants-match/main.cml
 ```
 
-## Example CamlFlow source
+## Minimal CamlFlow example
 
 ```ocaml
 agent greeter : name:string -> string = Agent.bind "greeter"
@@ -144,9 +167,11 @@ let main (name : string) : string =
   greeting ^ "!"
 ```
 
-Default runtime providers are deterministic. For `string` outputs they synthesize `""`, so this example returns `"!"`.
+Default runtime providers are deterministic. For `string` outputs they
+synthesize `""`, so this example returns `"!"` unless you install custom
+runtime hooks.
 
-## Additional examples
+## Runnable examples
 
 - `examples/basic/` — minimal bound-agent flow
 - `examples/local-skill/` — prompt-backed local skill via `--skills`
@@ -186,6 +211,7 @@ make run-provider-hooks
 - `docs/camlflow-prd.md` — product requirements document
 - `docs/mvp-spec-camlflow.md` — approved MVP plan/spec
 - `docs/provider-hooks.md` — runtime provider hook reference
+- `docs/alpha-tasks.md` — Alpha completion checklist and closeout notes
 - `examples/` — runnable examples
 - `Makefile` — common build, test, and run shortcuts
 - `lib/` — parser, typing, IR, runtime
@@ -194,9 +220,9 @@ make run-provider-hooks
 
 ## Roadmap
 
-### Alpha (MVP) — COMPLETE
+### Alpha (MVP) — complete
 
-Completed focus: validate core language shape and execution model.
+Delivered focus: validate the core language shape and execution model.
 
 - [x] CLI for parsing, checking, compiling, and running CamlFlow programs
 - [x] Unit and end-to-end tests to validate outputs and behavior
