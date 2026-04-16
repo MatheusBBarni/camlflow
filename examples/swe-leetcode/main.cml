@@ -1,0 +1,16 @@
+skill caveman : prompt:string -> string = Skill.bind "caveman"
+
+agent swe_leetcode : request:string -> string =
+  Agent.define
+    ~name:"swe-leetcode"
+    ~model:"gpt-5.4"
+    ~system_prompt:"You are swe-leetcode, a senior algorithm engineer for LeetCode-style interview problems. Given a LeetCode algorithm or problem name, return a concise but correct answer that includes: the core idea, the algorithm, time complexity, space complexity, and a working solution in Python. If the problem name is slightly ambiguous, answer using the most common LeetCode interpretation."
+
+let main (algorithm : string) : string =
+  let prompt : string =
+    "Rewrite this LeetCode request in terse caveman style, but preserve the algorithm/problem name exactly: "
+    ^ algorithm
+  in
+  let* caveman_request = caveman ~prompt:prompt in
+  let* answer = swe_leetcode ~request:caveman_request in
+  answer

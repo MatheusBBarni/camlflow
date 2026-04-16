@@ -1,0 +1,47 @@
+type difficulty = Easy | Medium | Hard
+
+type language = Python | TypeScript | OCaml
+
+type focus =
+  | Pattern of string
+  | DataStructure of string
+  | Constraint of string
+
+type request = {
+  algorithm_name : string;
+  preferred_language : language;
+  target_difficulty : difficulty;
+  focus : focus list;
+}
+
+type normalized_request = {
+  algorithm_name : string;
+  language : language;
+  difficulty : difficulty;
+  language_label : string;
+  difficulty_label : string;
+  focus : focus list;
+  terse_request : string;
+}
+
+type solution = {
+  approach : string;
+  code : string;
+  time_complexity : string;
+  space_complexity : string;
+}
+
+type review = {
+  approved : bool;
+  summary : string;
+  strengths : string list;
+  blockers : string list;
+}
+
+type report = {
+  request : normalized_request;
+  solution : solution;
+  edge_cases : string list;
+  review : review;
+  hints : string option;
+}

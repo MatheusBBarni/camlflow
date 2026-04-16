@@ -70,6 +70,71 @@ let parse_cli argv =
   | Ok parsed -> parsed
   | Error error -> Alcotest.failf "cli parse failed: %s" error
 
+let schema_for_type ?(types = Camlflow.Value.StringMap.empty) typ =
+  match Camlflow.Provider_schema.of_type ~types typ with
+  | Ok schema -> schema
+  | Error error -> Alcotest.failf "schema generation failed: %s" error
+
+let assoc_field name = function
+  | `Assoc fields -> List.assoc_opt name fields
+  | _ -> None
+
+let expect_assoc_field name json =
+  match assoc_field name json with
+  | Some value -> value
+  | None -> Alcotest.failf "missing JSON field %s in %s" name (Yojson.Safe.to_string json)
+
+let expect_string_field name expected json =
+  match expect_assoc_field name json with
+  | `String value -> Alcotest.(check string) name expected value
+  | other ->
+      Alcotest.failf "expected field %s to be a string, got %s" name
+        (Yojson.Safe.to_string other)
+
+let find_type_decl program local_name =
+  let rec find_in_decls = function
+    | [] -> None
+    | Camlflow.Ir.TypeDecl decl :: _
+      when String.equal
+             (List.hd (List.rev decl.Camlflow.Ir.type_name))
+             local_name ->
+        Some decl
+    | _ :: rest -> find_in_decls rest
+  in
+  let rec find_in_modules = function
+    | [] -> Alcotest.failf "type decl %s not found" local_name
+    | module_ :: rest -> (
+        match find_in_decls module_.Camlflow.Ir.module_decls with
+        | Some decl -> decl
+        | None -> find_in_modules rest)
+  in
+  find_in_modules program.Camlflow.Ir.modules
+
+let make_invocation ?(kind = Camlflow.Runtime.Context.Bound_agent)
+    ?(name = "step") ?(input = `Assoc []) ?(return_type = Camlflow.Ir.TString)
+    ?(types = Camlflow.Value.StringMap.empty) ?working_directory
+    ?skills_directory ?markdown ?definition () =
+  {
+    Camlflow.Runtime.Context.invocation_kind = kind;
+    invocation_name = name;
+    invocation_input = input;
+    invocation_return_type = return_type;
+    invocation_types = types;
+    invocation_working_directory = working_directory;
+    invocation_skills_directory = skills_directory;
+    invocation_markdown = markdown;
+    invocation_definition = definition;
+  }
+
+let render_prompt (invocation : Camlflow.Runtime.Context.invocation) =
+  let output_schema =
+    schema_for_type ~types:invocation.invocation_types
+      invocation.invocation_return_type
+  in
+  match Camlflow.Provider_prompt.render ~invocation ~output_schema with
+  | Ok rendered -> rendered
+  | Error error -> Alcotest.failf "prompt rendering failed: %s" error
+
 let test_parse_source () =
   let source =
     {|
@@ -133,7 +198,345 @@ let test_cli_completion_command () =
 let test_cli_completion_script_mentions_commands () =
   let script = Camlflow.Cli.completion_script Camlflow.Cli.Bash in
   if not (contains_substring script "parse check compile run completion") then
-    Alcotest.failf "unexpected completion script: %s" script
+    Alcotest.failf "unexpected completion script: %s" script;
+  if not (contains_substring script "--provider --model --reasoning") then
+    Alcotest.failf "provider flags missing from completion script: %s" script
+
+let test_cli_run_provider_flags_parse () =
+  let parsed =
+    parse_cli
+      [
+        "run";
+        "main.cml";
+        "--provider";
+        "codex";
+        "--model";
+        "gpt-5.4-mini";
+        "--reasoning";
+        "high";
+        "--provider-profile";
+        "daily";
+        "--provider-config";
+        "foo=bar";
+        "--sandbox";
+        "read-only";
+        "--allow-write-dir";
+        "tmp";
+        "--trace-provider";
+      ]
+  in
+  (match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "run validate failed: %s" error);
+  let settings = parsed.options.provider_options in
+  Alcotest.(check string) "provider" "codex"
+    (match settings.provider with
+    | Some provider -> Camlflow.Provider.name_to_string provider
+    | None -> "none");
+  Alcotest.(check string) "model" "gpt-5.4-mini"
+    (match settings.model with
+    | Some model -> model
+    | None -> "none");
+  Alcotest.(check string) "reasoning" "high"
+    (match settings.reasoning with
+    | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
+    | None -> "none");
+  Alcotest.(check string) "provider profile" "daily"
+    (match settings.provider_profile with
+    | Some profile -> profile
+    | None -> "none");
+  Alcotest.(check string) "provider config" "foo=bar"
+    (match settings.provider_configs with
+    | [ config ] -> Camlflow.Provider.config_to_string config
+    | _ -> "unexpected");
+  Alcotest.(check string) "sandbox" "read-only"
+    (Camlflow.Provider.sandbox_to_string settings.sandbox);
+  Alcotest.(check (list string)) "write dirs" [ "tmp" ]
+    settings.allow_write_dirs;
+  Alcotest.(check bool) "trace provider" true settings.trace_provider
+
+let test_cli_provider_flags_require_provider () =
+  let parsed = parse_cli [ "run"; "main.cml"; "--model"; "gpt-5.4-mini" ] in
+  expect_error_contains "provider required" "run requires --provider"
+    (Camlflow.Cli.validate parsed)
+
+let test_cli_unknown_provider_rejected () =
+  expect_error_contains "unknown provider" "unknown provider unknown"
+    (Camlflow.Cli.parse_argv [ "run"; "main.cml"; "--provider"; "unknown" ])
+
+let test_cli_invalid_provider_config_rejected () =
+  expect_error_contains "invalid provider config"
+    "provider config must have the form key=value"
+    (Camlflow.Cli.parse_argv [ "run"; "main.cml"; "--provider-config"; "oops" ])
+
+let test_cli_check_rejects_provider_flags () =
+  let parsed = parse_cli [ "check"; "main.cml"; "--provider"; "codex" ] in
+  expect_error_contains "check rejects provider flags" "flag --provider"
+    (Camlflow.Cli.validate parsed)
+
+let test_provider_schema_for_tuple_and_option () =
+  let schema =
+    schema_for_type
+      (Camlflow.Ir.TTuple
+         [
+           Camlflow.Ir.TString;
+           Camlflow.Ir.TOption Camlflow.Ir.TInt;
+           Camlflow.Ir.TList Camlflow.Ir.TBool;
+         ])
+  in
+  expect_string_field "$schema" "https://json-schema.org/draft/2020-12/schema"
+    schema;
+  expect_string_field "type" "array" schema;
+  (match expect_assoc_field "prefixItems" schema with
+  | `List [ first; second; third ] ->
+      expect_string_field "type" "string" first;
+      (match expect_assoc_field "oneOf" second with
+      | `List [ none_case; some_case ] ->
+          expect_string_field "type" "object" none_case;
+          expect_string_field "const" "None"
+            (expect_assoc_field "tag" (expect_assoc_field "properties" none_case));
+          expect_string_field "type" "object" some_case;
+          expect_string_field "const" "Some"
+            (expect_assoc_field "tag" (expect_assoc_field "properties" some_case));
+          expect_string_field "type" "integer"
+            (expect_assoc_field "value" (expect_assoc_field "properties" some_case))
+      | other ->
+          Alcotest.failf "unexpected option schema: %s"
+            (Yojson.Safe.to_string other));
+      expect_string_field "type" "array" third;
+      expect_string_field "type" "boolean" (expect_assoc_field "items" third)
+  | other ->
+      Alcotest.failf "unexpected tuple schema: %s" (Yojson.Safe.to_string other))
+
+let test_provider_schema_for_named_types () =
+  with_temp_dir "camlflow-schema-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+type review = Approved | NeedsChanges of string
+
+type report = { author : string; review : review }
+
+let main : report =
+  { author = "Ada"; review = Approved }
+|};
+  let program = check_file main in
+  let types = Camlflow.Value.type_index_of_program program in
+  let report_decl = find_type_decl program "report" in
+  let review_decl = find_type_decl program "review" in
+  let report_key = Camlflow.Syntax.Ast.string_of_qname report_decl.Camlflow.Ir.type_name in
+  let review_key = Camlflow.Syntax.Ast.string_of_qname review_decl.Camlflow.Ir.type_name in
+  let schema =
+    schema_for_type ~types (Camlflow.Ir.TRecord report_decl.Camlflow.Ir.type_name)
+  in
+  expect_string_field "$schema" "https://json-schema.org/draft/2020-12/schema"
+    schema;
+  expect_string_field "$ref" ("#/$defs/" ^ report_key) schema;
+  (match expect_assoc_field "$defs" schema with
+  | `Assoc defs ->
+      let report_schema =
+        match List.assoc_opt report_key defs with
+        | Some schema -> schema
+        | None -> Alcotest.failf "missing report schema def %s" report_key
+      in
+      let review_schema =
+        match List.assoc_opt review_key defs with
+        | Some schema -> schema
+        | None -> Alcotest.failf "missing review schema def %s" review_key
+      in
+      expect_string_field "type" "object" report_schema;
+      expect_string_field "$ref" ("#/$defs/" ^ review_key)
+        (expect_assoc_field "review" (expect_assoc_field "properties" report_schema));
+      (match expect_assoc_field "oneOf" review_schema with
+      | `List [ approved; needs_changes ] ->
+          expect_string_field "const" "Approved"
+            (expect_assoc_field "tag" (expect_assoc_field "properties" approved));
+          expect_string_field "const" "NeedsChanges"
+            (expect_assoc_field "tag"
+               (expect_assoc_field "properties" needs_changes));
+          expect_string_field "type" "string"
+            (expect_assoc_field "value"
+               (expect_assoc_field "properties" needs_changes))
+      | other ->
+          Alcotest.failf "unexpected variant schema: %s"
+            (Yojson.Safe.to_string other))
+  | other -> Alcotest.failf "unexpected defs payload: %s" (Yojson.Safe.to_string other))
+
+let test_provider_prompt_for_bound_agent () =
+  let rendered =
+    render_prompt
+      (make_invocation ~name:"greeter"
+         ~input:(`Assoc [ ("name", `String "Ada") ])
+         ~working_directory:"/workspace" ())
+  in
+  Alcotest.(check (option string)) "requested model" None
+    rendered.requested_model;
+  Alcotest.(check (list string)) "unsupported settings" []
+    rendered.unsupported_settings;
+  if not (contains_substring rendered.prompt "- role: agent") then
+    Alcotest.failf "missing agent role in prompt: %s" rendered.prompt;
+  if not (contains_substring rendered.prompt "- name: greeter") then
+    Alcotest.failf "missing step name in prompt: %s" rendered.prompt;
+  if not (contains_substring rendered.prompt "\"Ada\"") then
+    Alcotest.failf "missing input JSON in prompt: %s" rendered.prompt;
+  if not (contains_substring rendered.prompt "Return only JSON") then
+    Alcotest.failf "missing output contract in prompt: %s" rendered.prompt
+
+let test_provider_prompt_for_local_skill () =
+  let rendered =
+    render_prompt
+      (make_invocation ~kind:Camlflow.Runtime.Context.Local_prompt_skill
+         ~name:"caveman" ~markdown:"# Caveman\n\nReply tersely."
+         ~skills_directory:"/workspace/skills" ())
+  in
+  if not (contains_substring rendered.prompt "- role: skill") then
+    Alcotest.failf "missing skill role in prompt: %s" rendered.prompt;
+  if not
+       (contains_substring rendered.prompt
+          "Local skill specification (SKILL.md):")
+  then Alcotest.failf "missing SKILL.md section in prompt: %s" rendered.prompt;
+  if not (contains_substring rendered.prompt "Reply tersely.") then
+    Alcotest.failf "missing skill markdown body in prompt: %s" rendered.prompt
+
+let test_provider_prompt_for_inline_agent () =
+  let definition =
+    {
+      Camlflow.Ir.define_model = Some "gpt-5.4-mini";
+      define_temperature = Some 0.1;
+      define_system_prompt = Some "Review tersely";
+      define_metadata = [ ("tone", Camlflow.Ir.LString "terse") ];
+      define_loc = Camlflow.Loc.none;
+    }
+  in
+  let rendered =
+    render_prompt
+      (make_invocation ~kind:Camlflow.Runtime.Context.Inline_agent
+         ~name:"reviewer" ~definition ())
+  in
+  Alcotest.(check (option string)) "requested model" (Some "gpt-5.4-mini")
+    rendered.requested_model;
+  Alcotest.(check (list string)) "unsupported settings" [ "temperature" ]
+    rendered.unsupported_settings;
+  if not (contains_substring rendered.prompt "Inline agent system prompt:") then
+    Alcotest.failf "missing inline system prompt section: %s" rendered.prompt;
+  if not (contains_substring rendered.prompt "Review tersely") then
+    Alcotest.failf "missing inline system prompt body: %s" rendered.prompt;
+  if not (contains_substring rendered.prompt "Inline agent metadata (JSON):") then
+    Alcotest.failf "missing inline metadata section: %s" rendered.prompt;
+  if not (contains_substring rendered.prompt "\"tone\"") then
+    Alcotest.failf "missing inline metadata payload: %s" rendered.prompt
+
+let test_codex_build_exec_args () =
+  let settings =
+    {
+      Camlflow.Provider.default_settings with
+      provider = Some Camlflow.Provider.Codex;
+      model = Some "gpt-5.4-mini";
+      reasoning = Some Camlflow.Provider.Max;
+      provider_profile = Some "daily";
+      provider_configs = [ { Camlflow.Provider.key = "foo"; value = "bar" } ];
+      sandbox = Camlflow.Provider.Read_only;
+      allow_write_dirs = [ "tmp"; "/abs/cache" ];
+    }
+  in
+  let argv =
+    Camlflow.Providers_codex.build_exec_args ~working_directory:"/workspace"
+      ~settings ~model:settings.model ~schema_path:"/tmp/schema.json"
+      ~output_path:"/tmp/out.json"
+  in
+  let expected =
+    [
+      "codex";
+      "exec";
+      "--skip-git-repo-check";
+      "-C";
+      "/workspace";
+      "--sandbox";
+      "read-only";
+      "--output-schema";
+      "/tmp/schema.json";
+      "--output-last-message";
+      "/tmp/out.json";
+      "--model";
+      "gpt-5.4-mini";
+      "--profile";
+      "daily";
+      "--config";
+      "model_reasoning_effort=\"xhigh\"";
+      "--config";
+      "foo=bar";
+      "--add-dir";
+      "/workspace/tmp";
+      "--add-dir";
+      "/abs/cache";
+      "-";
+    ]
+  in
+  Alcotest.(check (list string)) "codex argv" expected argv
+
+let test_codex_preflight_validation () =
+  expect_error_contains "missing codex" "provider codex is not available"
+    (Camlflow.Providers_codex.validate_preflight_status ~codex_available:false
+       ~logged_in:false);
+  expect_error_contains "missing login" "provider codex requires login"
+    (Camlflow.Providers_codex.validate_preflight_status ~codex_available:true
+       ~logged_in:false);
+  (match
+     Camlflow.Providers_codex.validate_preflight_status ~codex_available:true
+       ~logged_in:true
+   with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "unexpected preflight error: %s" error)
+
+let test_codex_wrapped_response_schema () =
+  let wrapped =
+    match
+      Camlflow.Providers_codex.wrapped_response_schema
+        (`Assoc [ ("$schema", `String "https://json-schema.org/draft/2020-12/schema"); ("type", `String "string") ])
+    with
+    | Ok schema -> schema
+    | Error error -> Alcotest.failf "wrapped schema failed: %s" error
+  in
+  expect_string_field "type" "object" wrapped;
+  expect_string_field "$schema" "https://json-schema.org/draft/2020-12/schema"
+    wrapped;
+  expect_string_field "type" "string"
+    (expect_assoc_field "result" (expect_assoc_field "properties" wrapped))
+
+let test_codex_inline_temperature_fails_fast () =
+  with_temp_dir "camlflow-codex-temp-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+agent reviewer : code:string -> string =
+  Agent.define ~temperature:0.1 ~system_prompt:"Review tersely"
+
+let main (code : string) : string =
+  let* review = reviewer ~code:code in
+  review
+|};
+  let program = check_file main in
+  let settings =
+    {
+      Camlflow.Provider.default_settings with
+      provider = Some Camlflow.Provider.Codex;
+    }
+  in
+  let base_context =
+    Camlflow.Runtime.Context.empty
+    |> fun context -> Camlflow.Runtime.Context.with_working_directory context dir
+  in
+  let context =
+    match
+      Camlflow.Providers_codex.build_runtime_context ~working_directory:dir
+        ~settings base_context
+    with
+    | Ok context -> context
+    | Error error -> Alcotest.failf "build runtime context failed: %s" error
+  in
+  expect_error_contains "inline temperature unsupported"
+    "provider codex does not support inline setting(s) temperature"
+    (Camlflow.Runtime.execute ~context ~input:(`String "let x = 1") program)
 
 let test_wrong_argument_labels_fail () =
   with_temp_dir "camlflow-labels-" @@ fun dir ->
@@ -442,7 +845,7 @@ let main (prompt : string) : string =
         Ok (`String "prompt-output"))
     |> fun context ->
     Camlflow.Runtime.Context.with_inline_agent_provider context
-      (fun ~definition:_ ~input:_ ~return_type:_ ~types:_ ->
+      (fun ~name:_ ~definition:_ ~input:_ ~return_type:_ ~types:_ ->
         Ok (`String "inline-output"))
     |> fun context ->
     Camlflow.Runtime.Context.with_effect_observer context
@@ -486,6 +889,34 @@ let () =
             test_cli_completion_command;
           Alcotest.test_case "cli completion script" `Quick
             test_cli_completion_script_mentions_commands;
+          Alcotest.test_case "cli run provider flags parse" `Quick
+            test_cli_run_provider_flags_parse;
+          Alcotest.test_case "cli provider flags require provider" `Quick
+            test_cli_provider_flags_require_provider;
+          Alcotest.test_case "cli unknown provider rejected" `Quick
+            test_cli_unknown_provider_rejected;
+          Alcotest.test_case "cli invalid provider config rejected" `Quick
+            test_cli_invalid_provider_config_rejected;
+          Alcotest.test_case "cli check rejects provider flags" `Quick
+            test_cli_check_rejects_provider_flags;
+          Alcotest.test_case "provider schema for tuple and option" `Quick
+            test_provider_schema_for_tuple_and_option;
+          Alcotest.test_case "provider schema for named types" `Quick
+            test_provider_schema_for_named_types;
+          Alcotest.test_case "provider prompt for bound agent" `Quick
+            test_provider_prompt_for_bound_agent;
+          Alcotest.test_case "provider prompt for local skill" `Quick
+            test_provider_prompt_for_local_skill;
+          Alcotest.test_case "provider prompt for inline agent" `Quick
+            test_provider_prompt_for_inline_agent;
+          Alcotest.test_case "codex build exec args" `Quick
+            test_codex_build_exec_args;
+          Alcotest.test_case "codex preflight validation" `Quick
+            test_codex_preflight_validation;
+          Alcotest.test_case "codex wrapped response schema" `Quick
+            test_codex_wrapped_response_schema;
+          Alcotest.test_case "codex inline temperature fails fast" `Quick
+            test_codex_inline_temperature_fails_fast;
           Alcotest.test_case "wrong argument labels fail" `Quick
             test_wrong_argument_labels_fail;
           Alcotest.test_case "unsupported library/module call fails" `Quick

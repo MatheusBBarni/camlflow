@@ -1,0 +1,30 @@
+open Types
+
+skill caveman : prompt:string -> string = Skill.bind "caveman"
+
+skill edge_case_planner : problem:string -> audience:string -> must_cover:string list -> string list =
+  Skill.bind "edge-case-planner"
+
+agent draft_solver : request:normalized_request -> draft_solution =
+  Agent.bind "draft-solver"
+
+agent answer_packager : request:normalized_request -> draft:draft_solution -> edge_cases:string list -> solution_pack =
+  Agent.define
+    ~name:"problem-coach-packager"
+    ~style:"practical"
+    ~system_prompt:"You turn an algorithm draft into a directly useful user-facing answer pack. The answer must be practical, concise, and immediately usable. Respect the requested audience, preserve the problem name, and make sure the final code matches the requested language."
+
+let main (request : request) : solution_pack =
+  let normalized = Helpers.normalize_request request in
+  let caveman_prompt = Helpers.render_caveman_prompt normalized in
+  let* terse_request = caveman ~prompt:caveman_prompt in
+  let normalized = Helpers.with_terse_request normalized terse_request in
+  let* edge_cases =
+    edge_case_planner ~problem:normalized.problem_name
+      ~audience:normalized.audience_label ~must_cover:normalized.must_cover
+  in
+  let* draft = draft_solver ~request:normalized in
+  let* answer =
+    answer_packager ~request:normalized ~draft:draft ~edge_cases:edge_cases
+  in
+  answer

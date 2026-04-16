@@ -584,8 +584,9 @@ and apply_callable env _loc callable args =
                     ~return_type:callable.callable_return_type ~types:env.state.types
               | None -> env.state.context.default_provider invocation))
       | InlineAgent definition ->
-          env.state.context.inline_agent_provider ~definition ~input
-            ~return_type:callable.callable_return_type ~types:env.state.types
+          env.state.context.inline_agent_provider ~name:callable.callable_name
+            ~definition ~input ~return_type:callable.callable_return_type
+            ~types:env.state.types
     in
     let step_kind, step_name =
       match invocation.Context.invocation_kind with

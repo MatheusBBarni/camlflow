@@ -3,4 +3,4 @@
 (library
  (name camlflow)
  (public_name camlflow)
- (libraries compiler-libs.common yojson))
+ (libraries compiler-libs.common yojson unix))

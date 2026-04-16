@@ -3,6 +3,21 @@
 CamlFlow is a typed agent-orchestration language and runtime built around an
 OCaml-style DSL.
 
+The goal is to let you develop AI workflows programmatically:
+you describe the workflow in code, type-check it, compile it, and run it.
+That means you can:
+
+- use skills
+- use agents
+- create skills
+- create agents
+- reuse agents you already created
+
+Instead of stitching the workflow together with ad-hoc prompts, you write
+typed source code with explicit inputs, outputs, and sequencing.
+Project-local skills live under `skills/<name>/SKILL.md`, and inline agents
+can be declared directly in `.cml` code.
+
 This repository contains the completed Alpha/MVP vertical slice:
 - parser
 - type checker
@@ -52,6 +67,131 @@ This repository contains the completed Alpha/MVP vertical slice:
 - full OCaml stdlib compatibility
 - imperative features
 - user-defined parametric types
+
+## Concrete input/output examples
+
+### 1) Bound agent flow
+
+**Workflow input** (`examples/basic/main.cml`):
+
+```ocaml
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  greeting ^ "!"
+```
+
+**Command**
+
+```sh
+dune exec camlflow -- run examples/basic/main.cml --input-json '"Ada"'
+```
+
+**Output**
+
+```text
+steps: 1
+"!"
+```
+
+### 2) Pure typed computation
+
+**Workflow input** (`examples/recursion/main.cml`):
+
+```ocaml
+let rec sum_to (n : int) : int =
+  if n = 0 then 0 else n + sum_to (n - 1)
+
+let main (n : int) : int =
+  sum_to n
+```
+
+**Command**
+
+```sh
+dune exec camlflow -- run examples/recursion/main.cml --input-json '4'
+```
+
+**Output**
+
+```text
+steps: 0
+10
+```
+
+### 3) Zero-input workflow with variants + match
+
+**Workflow input** (`examples/variants-match/main.cml`):
+
+```ocaml
+type review = Approved | NeedsChanges of string
+
+type report = { author : string; review : review }
+
+let summarize (report : report) : string =
+  match report.review with
+  | Approved -> report.author ^ " approved"
+  | NeedsChanges reason -> report.author ^ " needs changes: " ^ reason
+
+let main : string =
+  let report : report =
+    { author = "Ada"; review = NeedsChanges "add more tests" }
+  in
+  summarize report
+```
+
+**Command**
+
+```sh
+dune exec camlflow -- run examples/variants-match/main.cml
+```
+
+**Output**
+
+```text
+steps: 0
+"Ada needs changes: add more tests"
+```
+
+### 4) Existing agent + local skill + inline agent via provider hooks
+
+**Workflow input** (`examples/provider-hooks/workflow.cml`):
+
+```ocaml
+skill caveman : prompt:string -> string = Skill.bind "caveman"
+agent greeter : name:string -> string = Agent.bind "greeter"
+agent reviewer : code:string -> string =
+  Agent.define ~model:"stub" ~system_prompt:"Review tersely"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  let* short = caveman ~prompt:greeting in
+  let* review = reviewer ~code:short in
+  review
+```
+
+**Host command**
+
+```sh
+dune exec examples/provider-hooks/host.exe
+```
+
+**Output**
+
+```text
+steps: 3
+"inline-review"
+observed: bound-agent greeter
+observed: local-prompt-skill caveman
+observed: inline-agent reviewer
+```
+
+The default CLI runtime is deterministic. Unless you install custom provider
+hooks, bound agents and skills synthesize placeholder outputs, which is why
+the basic example returns `"!"` and the local-skill example returns `""`.
+The provider-hooks example shows how to replace those defaults with host-
+defined behavior.
 
 ## Quickstart
 
@@ -139,6 +279,51 @@ dune exec camlflow -- run examples/local-skill/main.cml \
   --input-json '"hello"'
 ```
 
+### Run with Codex provider
+
+```sh
+dune exec camlflow -- run examples/basic/main.cml \
+  --input-json '"Ada"' \
+  --provider codex \
+  --model gpt-5.4-mini \
+  --reasoning low \
+  --sandbox read-only
+```
+
+### Run Codex provider example with a local skill + inline agent
+
+```sh
+dune exec camlflow -- run examples/codex/main.cml \
+  --skills examples/codex/skills \
+  --input-json '"Ada"' \
+  --provider codex \
+  --model gpt-5.4-mini \
+  --reasoning low \
+  --sandbox read-only
+```
+
+### Run swe-leetcode example
+
+```sh
+dune exec camlflow -- run examples/swe-leetcode/main.cml \
+  --skills examples/swe-leetcode/skills \
+  --input-json '"two sum"' \
+  --provider codex \
+  --sandbox read-only
+```
+
+### Run problem-coach example
+
+```sh
+dune exec camlflow -- run examples/problem-coach/main.cml \
+  --skills examples/problem-coach/skills \
+  --input examples/problem-coach/input.json \
+  --provider codex \
+  --model gpt-5.4-mini \
+  --reasoning low \
+  --sandbox read-only
+```
+
 ### Run qualified multi-file example
 
 ```sh
@@ -180,11 +365,18 @@ runtime hooks.
 - `examples/variants-match/` — records, variants, and pattern matching with a zero-arg `main`
 - `examples/inline-agent/` — executable `Agent.define`
 - `examples/provider-hooks/` — embedded OCaml host using runtime provider hooks
+- `examples/codex/` — CLI Codex provider run using a bound agent, local skill, and inline agent
+- `examples/swe-leetcode/` — inline LeetCode solver agent using the caveman skill and a fixed model
+- `examples/problem-coach/` — multi-step solver that returns a directly useful final answer pack
 
-## Provider hook docs
+## Provider docs
 
+- `docs/provider-execution.md` — CLI provider-backed execution and Codex usage
 - `docs/provider-hooks.md` — hook model, invocation metadata, and embedding guide
 - `examples/provider-hooks/README.md` — runnable provider-hooks example
+- `examples/codex/README.md` — runnable Codex provider example
+- `examples/swe-leetcode/README.md` — runnable swe-leetcode example
+- `examples/problem-coach/README.md` — runnable problem-coach example
 
 ## Make targets
 
@@ -210,8 +402,10 @@ make run-provider-hooks
 
 - `docs/camlflow-prd.md` — product requirements document
 - `docs/mvp-spec-camlflow.md` — approved MVP plan/spec
+- `docs/provider-execution.md` — CLI provider-backed execution guide
 - `docs/provider-hooks.md` — runtime provider hook reference
 - `docs/alpha-tasks.md` — Alpha completion checklist and closeout notes
+- `docs/beta-1-tasks.md` — Beta 1 implementation checklist
 - `examples/` — runnable examples
 - `Makefile` — common build, test, and run shortcuts
 - `lib/` — parser, typing, IR, runtime

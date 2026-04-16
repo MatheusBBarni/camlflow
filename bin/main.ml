@@ -116,21 +116,46 @@ let print_compile include_paths output path =
       Printf.printf "compiled %d module(s)\n"
         (List.length program.Camlflow.Ir.modules))
 
+let resolve_path ~working_directory path =
+  if Filename.is_relative path then Filename.concat working_directory path else path
+
 let print_run (options : Camlflow.Cli.options) path =
+  let working_directory = Sys.getcwd () in
   let () =
     match options.skills_dir with
     | Some dir -> or_die (ensure_directory "skills directory" dir)
     | None -> ()
   in
+  let () =
+    List.iter
+      (fun dir ->
+        or_die
+          (ensure_directory "allowed write directory"
+             (resolve_path ~working_directory dir)))
+      options.provider_options.allow_write_dirs
+  in
   let program = or_die (load_program options.include_paths path) in
-  let context =
+  let base_context =
     let context = Camlflow.Runtime.Context.empty in
     let context =
-      Camlflow.Runtime.Context.with_working_directory context (Sys.getcwd ())
+      Camlflow.Runtime.Context.with_working_directory context working_directory
     in
     match options.skills_dir with
     | Some dir -> Camlflow.Runtime.Context.with_skills_directory context dir
     | None -> context
+  in
+  let context =
+    match options.provider_options.provider with
+    | None -> base_context
+    | Some provider ->
+        let adapter = Camlflow.Providers.find provider in
+        let () =
+          or_die
+            (adapter.preflight ~working_directory ~settings:options.provider_options)
+        in
+        or_die
+          (adapter.build_runtime_context ~working_directory
+             ~settings:options.provider_options base_context)
   in
   let input =
     or_die (read_json_source (options.input_file, options.input_json))
