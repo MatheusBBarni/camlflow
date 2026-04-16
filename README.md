@@ -302,6 +302,16 @@ dune exec camlflow -- run examples/codex/main.cml \
   --sandbox read-only
 ```
 
+### Run swe-leetcode example
+
+```sh
+dune exec camlflow -- run examples/swe-leetcode/main.cml \
+  --skills examples/swe-leetcode/skills \
+  --input-json '"two sum"' \
+  --provider codex \
+  --sandbox read-only
+```
+
 ### Run qualified multi-file example
 
 ```sh
@@ -344,6 +354,7 @@ runtime hooks.
 - `examples/inline-agent/` — executable `Agent.define`
 - `examples/provider-hooks/` — embedded OCaml host using runtime provider hooks
 - `examples/codex/` — CLI Codex provider run using a bound agent, local skill, and inline agent
+- `examples/swe-leetcode/` — inline LeetCode solver agent using the caveman skill and a fixed model
 
 ## Provider docs
 
@@ -351,6 +362,7 @@ runtime hooks.
 - `docs/provider-hooks.md` — hook model, invocation metadata, and embedding guide
 - `examples/provider-hooks/README.md` — runnable provider-hooks example
 - `examples/codex/README.md` — runnable Codex provider example
+- `examples/swe-leetcode/README.md` — runnable swe-leetcode example
 
 ## Make targets
 
