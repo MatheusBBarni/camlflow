@@ -1,0 +1,47 @@
+open Types
+
+let language_to_string (language : language) : string =
+  match language with
+  | Types.Python -> "Python"
+  | Types.TypeScript -> "TypeScript"
+  | Types.OCaml -> "OCaml"
+
+let audience_to_string (audience : audience) : string =
+  match audience with
+  | Types.Interview -> "interview"
+  | Types.Study -> "study"
+  | Types.Implementation -> "implementation"
+
+let audience_hint (audience : audience) : string =
+  match audience with
+  | Types.Interview ->
+      "Optimize for a concise interview-ready explanation with the main tradeoff."
+  | Types.Study ->
+      "Optimize for teaching clarity and intuition before code."
+  | Types.Implementation ->
+      "Optimize for code the user can adapt directly in a real project."
+
+let normalize_request (request : request) : normalized_request =
+  {
+    problem_name = request.problem_name;
+    language_label = language_to_string request.language;
+    audience_label = audience_to_string request.audience;
+    audience_hint = audience_hint request.audience;
+    must_cover = request.must_cover;
+    terse_request = "";
+  }
+
+let with_terse_request (request : normalized_request) (terse_request : string) : normalized_request =
+  {
+    problem_name = request.problem_name;
+    language_label = request.language_label;
+    audience_label = request.audience_label;
+    audience_hint = request.audience_hint;
+    must_cover = request.must_cover;
+    terse_request = terse_request;
+  }
+
+let render_caveman_prompt (request : normalized_request) : string =
+  "Rewrite this problem request in terse caveman style, but preserve the problem name exactly. Problem: "
+  ^ request.problem_name ^ ". Audience: " ^ request.audience_label
+  ^ ". Language: " ^ request.language_label

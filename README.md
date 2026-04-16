@@ -312,6 +312,18 @@ dune exec camlflow -- run examples/swe-leetcode/main.cml \
   --sandbox read-only
 ```
 
+### Run problem-coach example
+
+```sh
+dune exec camlflow -- run examples/problem-coach/main.cml \
+  --skills examples/problem-coach/skills \
+  --input examples/problem-coach/input.json \
+  --provider codex \
+  --model gpt-5.4-mini \
+  --reasoning low \
+  --sandbox read-only
+```
+
 ### Run qualified multi-file example
 
 ```sh
@@ -355,6 +367,7 @@ runtime hooks.
 - `examples/provider-hooks/` — embedded OCaml host using runtime provider hooks
 - `examples/codex/` — CLI Codex provider run using a bound agent, local skill, and inline agent
 - `examples/swe-leetcode/` — inline LeetCode solver agent using the caveman skill and a fixed model
+- `examples/problem-coach/` — multi-step solver that returns a directly useful final answer pack
 
 ## Provider docs
 
@@ -363,6 +376,7 @@ runtime hooks.
 - `examples/provider-hooks/README.md` — runnable provider-hooks example
 - `examples/codex/README.md` — runnable Codex provider example
 - `examples/swe-leetcode/README.md` — runnable swe-leetcode example
+- `examples/problem-coach/README.md` — runnable problem-coach example
 
 ## Make targets
 
