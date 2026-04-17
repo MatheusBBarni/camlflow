@@ -378,6 +378,7 @@ runtime hooks.
 - `docs/json-rpc.md` — Phase 0 JSON-RPC host-integration contract
 - `docs/json-rpc-fixtures.md` — concrete JSON-RPC request/response transcripts
 - `docs/json-rpc-roadmap.md` — roadmap for CamlFlow as a host-integrated harness runtime
+- `docs/json-rpc-deferred-extensions.md` — design-only notes for cancellation, progress, and streaming
 - `docs/json-rpc-status.md` — current JSON-RPC progress summary and remaining work
 - `docs/json-rpc-checklist.md` — concise JSON-RPC remaining-tasks checklist
 - `examples/provider-hooks/README.md` — runnable provider-hooks example
@@ -416,6 +417,7 @@ make run-provider-hooks
 - `docs/json-rpc.md` — Phase 0 JSON-RPC host-integration contract
 - `docs/json-rpc-fixtures.md` — concrete JSON-RPC request/response transcripts
 - `docs/json-rpc-roadmap.md` — host-integration roadmap
+- `docs/json-rpc-deferred-extensions.md` — design-only notes for cancellation, progress, and streaming
 - `docs/json-rpc-status.md` — current JSON-RPC progress summary and remaining work
 - `docs/json-rpc-checklist.md` — concise JSON-RPC remaining-tasks checklist
 - `docs/alpha-tasks.md` — Alpha completion checklist and closeout notes

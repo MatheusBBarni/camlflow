@@ -10,6 +10,7 @@ The goal of this phase is not to finalize every request payload, but to lock the
 
 - `docs/json-rpc-fixtures.md` — concrete request/response transcripts
 - `docs/json-rpc-roadmap.md` — roadmap and deferred extension notes
+- `docs/json-rpc-deferred-extensions.md` — formalized design-only notes for later protocol work
 - `docs/json-rpc-status.md` — current progress snapshot and fuller summary
 - `docs/json-rpc-checklist.md` — concise remaining-task checklist
 

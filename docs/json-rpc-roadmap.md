@@ -411,6 +411,10 @@ Add:
 
 These are deliberately deferred design notes, not implementation requirements for the current slice.
 
+See also:
+
+- `docs/json-rpc-deferred-extensions.md`
+
 ## Cancellation design notes
 
 ### Why it matters

@@ -44,9 +44,9 @@ For the fuller narrative summary, see `docs/json-rpc-status.md`.
 
 ## Deferred design only
 
-- [ ] Formalize cancellation design before implementation
-- [ ] Formalize progress notification design before implementation
-- [ ] Formalize streaming design before implementation
+- [x] Formalize cancellation design before implementation
+- [x] Formalize progress notification design before implementation
+- [x] Formalize streaming design before implementation
 
 Recommended order:
 

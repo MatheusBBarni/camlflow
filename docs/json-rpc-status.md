@@ -179,6 +179,7 @@ Recent follow-up documentation additions include:
 - capability semantics and host-ignore rules in `docs/json-rpc.md`
 - expanded protocol fixtures for invalid requests, unknown methods, run failures, host effect errors, and shutdown/exit in `docs/json-rpc-fixtures.md`
 - deferred design notes for cancellation, progress, and streaming in `docs/json-rpc-roadmap.md`
+- a formal design-only extensions doc in `docs/json-rpc-deferred-extensions.md`
 - this status snapshot in `docs/json-rpc-status.md`
 - the short checklist in `docs/json-rpc-checklist.md`
 
@@ -186,25 +187,9 @@ Recent follow-up documentation additions include:
 
 ## Remaining tasks
 
-## Deferred design work
-
-### 1. Formalize deferred protocol extensions before implementation
-
-These should stay design-only until the core protocol is stable:
-
-- cancellation
-- progress notifications
-- streaming / chunked output notifications
-
-Recommended order:
-
-1. cancellation
-2. progress
-3. optional streaming
-
 ## Later / lower priority
 
-### 2. Add direct provider convenience adapters only after host mode is stable
+### 1. Add direct provider convenience adapters only after host mode is stable
 
 Examples:
 
