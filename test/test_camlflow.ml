@@ -138,18 +138,20 @@ let rpc_response_message = function
       | Error error -> Alcotest.failf "rpc response decode failed: %s" error)
   | _ -> None
 
+let find_rpc_requests method_ messages =
+  List.filter_map
+    (fun json ->
+      match rpc_request_message json with
+      | Some request
+        when String.equal request.Camlflow.Rpc_protocol.request_method method_ ->
+          Some request
+      | _ -> None)
+    messages
+
 let find_rpc_request method_ messages =
-  match
-    List.find_opt
-      (fun json ->
-        match rpc_request_message json with
-        | Some request -> String.equal request.Camlflow.Rpc_protocol.request_method method_
-        | None -> false)
-      messages
-  with
-  | Some json ->
-      (match rpc_request_message json with Some request -> request | None -> assert false)
-  | None -> Alcotest.failf "rpc request %s not found" method_
+  match find_rpc_requests method_ messages with
+  | request :: _ -> request
+  | [] -> Alcotest.failf "rpc request %s not found" method_
 
 let find_rpc_response_by_id expected_id messages =
   match
@@ -166,6 +168,19 @@ let find_rpc_response_by_id expected_id messages =
   | Some json ->
       (match rpc_response_message json with Some response -> response | None -> assert false)
   | None -> Alcotest.failf "rpc response %s not found" expected_id
+
+let find_rpc_response_without_id messages =
+  match
+    List.find_opt
+      (fun json ->
+        match rpc_response_message json with
+        | Some response -> Option.is_none response.Camlflow.Rpc_protocol.response_id
+        | None -> false)
+      messages
+  with
+  | Some json ->
+      (match rpc_response_message json with Some response -> response | None -> assert false)
+  | None -> Alcotest.fail "rpc response without id not found"
 
 let find_type_decl program local_name =
   let rec find_in_decls = function
@@ -666,6 +681,279 @@ let test_rpc_server_compile_includes_ir_version () =
           Alcotest.failf "expected artifact object, got %s"
             (Yojson.Safe.to_string other))
   | None -> Alcotest.fail "missing compile result"
+
+let test_rpc_server_invalid_request_error () =
+  let messages = [ `Assoc [ ("id", `Int 1); ("method", `String "initialize") ] ] in
+  let output = run_rpc_server_with_messages messages in
+  let diagnostic = find_rpc_request "camlflow/diagnostic" output in
+  (match diagnostic.Camlflow.Rpc_protocol.request_params with
+  | Some json ->
+      expect_string_field "method" "(invalid-request)" json;
+      expect_string_field "message" "missing jsonrpc version" json
+  | None -> Alcotest.fail "missing invalid-request diagnostic params");
+  let response = find_rpc_response_without_id output in
+  match response.Camlflow.Rpc_protocol.response_error with
+  | Some error ->
+      Alcotest.(check int) "invalid request error code" (-32600) error.error_code;
+      Alcotest.(check string) "invalid request error message"
+        "missing jsonrpc version" error.error_message
+  | None -> Alcotest.fail "missing invalid request error response"
+
+let test_rpc_server_method_not_found_error () =
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:(`Assoc []) "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:(`Assoc []) "camlflow/unknown";
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  let diagnostics = find_rpc_requests "camlflow/diagnostic" output in
+  let diagnostic =
+    match diagnostics with
+    | diagnostic :: _ -> diagnostic
+    | [] -> Alcotest.fail "missing method-not-found diagnostic"
+  in
+  (match diagnostic.Camlflow.Rpc_protocol.request_params with
+  | Some json ->
+      expect_string_field "method" "camlflow/unknown" json;
+      expect_string_field "message" "method not found" json
+  | None -> Alcotest.fail "missing method-not-found diagnostic params");
+  let response = find_rpc_response_by_id "2" output in
+  match response.Camlflow.Rpc_protocol.response_error with
+  | Some error ->
+      Alcotest.(check int) "method not found error code" (-32601)
+        error.error_code;
+      Alcotest.(check string) "method not found error message"
+        "method not found" error.error_message
+  | None -> Alcotest.fail "missing method not found response"
+
+let test_rpc_server_check_failure_error () =
+  with_temp_dir "camlflow-rpc-check-fail-" @@ fun dir ->
+  let missing = Filename.concat dir "missing.cml" in
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:(`Assoc []) "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+            [
+              ( "program",
+                `Assoc
+                  [
+                    ("path", `String missing);
+                    ("includePaths", `List []);
+                    ("skillsDir", `Null);
+                  ] );
+            ])
+        "camlflow/check";
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  let diagnostics = find_rpc_requests "camlflow/diagnostic" output in
+  let diagnostic =
+    match diagnostics with
+    | diagnostic :: _ -> diagnostic
+    | [] -> Alcotest.fail "missing check failure diagnostic"
+  in
+  (match diagnostic.Camlflow.Rpc_protocol.request_params with
+  | Some (`Assoc fields as json) ->
+      expect_string_field "method" "camlflow/check" json;
+      (match List.assoc_opt "message" fields with
+      | Some (`String message) ->
+          Alcotest.(check bool) "check failure mentions missing program" true
+            (contains_substring message "program path does not exist")
+      | _ -> Alcotest.fail "missing check failure message")
+  | Some other ->
+      Alcotest.failf "unexpected check failure diagnostic params: %s"
+        (Yojson.Safe.to_string other)
+  | None -> Alcotest.fail "missing check failure diagnostic params");
+  let response = find_rpc_response_by_id "2" output in
+  match response.Camlflow.Rpc_protocol.response_error with
+  | Some error ->
+      Alcotest.(check int) "check failure error code" (-32010) error.error_code;
+      Alcotest.(check bool) "check failure response mentions missing program" true
+        (contains_substring error.error_message "program path does not exist")
+  | None -> Alcotest.fail "missing check failure response"
+
+let test_rpc_server_compile_failure_error () =
+  with_temp_dir "camlflow-rpc-compile-fail-" @@ fun dir ->
+  let missing = Filename.concat dir "missing.cml" in
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:(`Assoc []) "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+            [
+              ( "program",
+                `Assoc
+                  [
+                    ("path", `String missing);
+                    ("includePaths", `List []);
+                    ("skillsDir", `Null);
+                  ] );
+            ])
+        "camlflow/compile";
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  let diagnostics = find_rpc_requests "camlflow/diagnostic" output in
+  let diagnostic =
+    match diagnostics with
+    | diagnostic :: _ -> diagnostic
+    | [] -> Alcotest.fail "missing compile failure diagnostic"
+  in
+  (match diagnostic.Camlflow.Rpc_protocol.request_params with
+  | Some (`Assoc fields as json) ->
+      expect_string_field "method" "camlflow/compile" json;
+      (match List.assoc_opt "message" fields with
+      | Some (`String message) ->
+          Alcotest.(check bool) "compile failure mentions missing program" true
+            (contains_substring message "program path does not exist")
+      | _ -> Alcotest.fail "missing compile failure message")
+  | Some other ->
+      Alcotest.failf "unexpected compile failure diagnostic params: %s"
+        (Yojson.Safe.to_string other)
+  | None -> Alcotest.fail "missing compile failure diagnostic params");
+  let response = find_rpc_response_by_id "2" output in
+  match response.Camlflow.Rpc_protocol.response_error with
+  | Some error ->
+      Alcotest.(check int) "compile failure error code" (-32011)
+        error.error_code;
+      Alcotest.(check bool) "compile failure response mentions missing program"
+        true (contains_substring error.error_message "program path does not exist")
+  | None -> Alcotest.fail "missing compile failure response"
+
+let test_rpc_server_run_failure_error () =
+  with_temp_dir "camlflow-rpc-run-fail-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main {|let main (name : string) : string = name|};
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:(`Assoc []) "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+            [
+              ( "program",
+                `Assoc
+                  [
+                    ("path", `String main);
+                    ("includePaths", `List []);
+                    ("skillsDir", `Null);
+                  ] );
+              ("entry", `String "main");
+            ])
+        "camlflow/run";
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  let traces = find_rpc_requests "camlflow/trace" output in
+  let has_run_error =
+    List.exists
+      (fun request ->
+        match request.Camlflow.Rpc_protocol.request_params with
+        | Some (`Assoc fields) -> (
+            match List.assoc_opt "event" fields with
+            | Some (`String event) -> String.equal event "run-error"
+            | _ -> false)
+        | _ -> false)
+      traces
+  in
+  Alcotest.(check bool) "run failure emits run-error trace" true has_run_error;
+  let diagnostics = find_rpc_requests "camlflow/diagnostic" output in
+  let diagnostic =
+    match diagnostics with
+    | diagnostic :: _ -> diagnostic
+    | [] -> Alcotest.fail "missing run failure diagnostic"
+  in
+  (match diagnostic.Camlflow.Rpc_protocol.request_params with
+  | Some (`Assoc fields as json) ->
+      expect_string_field "method" "camlflow/run" json;
+      (match List.assoc_opt "message" fields with
+      | Some (`String message) ->
+          Alcotest.(check bool) "run failure mentions missing input" true
+            (contains_substring message "entrypoint requires input")
+      | _ -> Alcotest.fail "missing run failure message")
+  | Some other ->
+      Alcotest.failf "unexpected run failure diagnostic params: %s"
+        (Yojson.Safe.to_string other)
+  | None -> Alcotest.fail "missing run failure diagnostic params");
+  let response = find_rpc_response_by_id "2" output in
+  match response.Camlflow.Rpc_protocol.response_error with
+  | Some error ->
+      Alcotest.(check int) "run failure error code" (-32012) error.error_code;
+      Alcotest.(check bool) "run failure response mentions missing input" true
+        (contains_substring error.error_message "entrypoint requires input")
+  | None -> Alcotest.fail "missing run failure response"
+
+let test_rpc_server_effect_error_propagation () =
+  with_temp_dir "camlflow-rpc-effect-fail-" @@ fun dir ->
+  let workflow = Filename.concat dir "workflow.cml" in
+  write_file workflow
+    {|
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  greeting
+|};
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:(`Assoc []) "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+            [
+              ( "program",
+                `Assoc
+                  [
+                    ("path", `String workflow);
+                    ("includePaths", `List []);
+                    ("skillsDir", `Null);
+                  ] );
+              ("entry", `String "main");
+              ("input", `String "Ada");
+            ])
+        "camlflow/run";
+      Camlflow.Rpc_protocol.error
+        ~id:(Camlflow.Rpc_protocol.String "effect-1") ~code:(-32000)
+        ~message:"model timeout" ();
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  let traces = find_rpc_requests "camlflow/trace" output in
+  let has_effect_error =
+    List.exists
+      (fun request ->
+        match request.Camlflow.Rpc_protocol.request_params with
+        | Some (`Assoc fields) -> (
+            match List.assoc_opt "event" fields with
+            | Some (`String event) -> String.equal event "effect-error"
+            | _ -> false)
+        | _ -> false)
+      traces
+  in
+  Alcotest.(check bool) "effect failure emits effect-error trace" true
+    has_effect_error;
+  let diagnostics = find_rpc_requests "camlflow/diagnostic" output in
+  Alcotest.(check bool) "effect failure emits diagnostics" true
+    (List.length diagnostics >= 2);
+  let response = find_rpc_response_by_id "2" output in
+  match response.Camlflow.Rpc_protocol.response_error with
+  | Some error ->
+      Alcotest.(check int) "effect failure error code" (-32012)
+        error.error_code;
+      Alcotest.(check bool) "effect failure response mentions host timeout" true
+        (contains_substring error.error_message
+           "host returned JSON-RPC error -32000 for greeter: model timeout")
+  | None -> Alcotest.fail "missing effect failure response"
 
 let test_provider_schema_for_tuple_and_option () =
   let schema =
@@ -1466,6 +1754,18 @@ let () =
             test_rpc_server_end_to_end_requires_initialize;
           Alcotest.test_case "rpc server compile includes IR version" `Quick
             test_rpc_server_compile_includes_ir_version;
+          Alcotest.test_case "rpc server invalid request error" `Quick
+            test_rpc_server_invalid_request_error;
+          Alcotest.test_case "rpc server method not found error" `Quick
+            test_rpc_server_method_not_found_error;
+          Alcotest.test_case "rpc server check failure error" `Quick
+            test_rpc_server_check_failure_error;
+          Alcotest.test_case "rpc server compile failure error" `Quick
+            test_rpc_server_compile_failure_error;
+          Alcotest.test_case "rpc server run failure error" `Quick
+            test_rpc_server_run_failure_error;
+          Alcotest.test_case "rpc server effect error propagation" `Quick
+            test_rpc_server_effect_error_propagation;
           Alcotest.test_case "provider schema for tuple and option" `Quick
             test_provider_schema_for_tuple_and_option;
           Alcotest.test_case "provider schema for named types" `Quick

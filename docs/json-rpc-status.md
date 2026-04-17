@@ -156,7 +156,7 @@ That is separate from the core host-protocol implementation summarized above.
 
 Last verified test run for the JSON-RPC bridge slice:
 
-- `dune test` passed with 60 tests after the versioning + fixture-doc work
+- `dune test` passed with 66 tests after protocol-error coverage was added
 
 Recent follow-up documentation additions include:
 
@@ -174,18 +174,7 @@ Recent follow-up documentation additions include:
 
 ## Tests and fixtures
 
-### 1. Expand automated coverage for protocol errors
-
-Useful additions:
-
-- invalid request (`-32600`)
-- method not found (`-32601`)
-- explicit `camlflow/check` failure (`-32010`)
-- explicit `camlflow/compile` failure (`-32011`)
-- explicit `camlflow/run` failure (`-32012`)
-- host effect error propagation from `camlflow/executeEffect`
-
-### 2. Expand fixture coverage
+### 1. Expand fixture coverage
 
 Useful additions to `docs/json-rpc-fixtures.md`:
 
@@ -197,7 +186,7 @@ Useful additions to `docs/json-rpc-fixtures.md`:
 
 ## Host / SDK integration validation
 
-### 3. Re-validate examples against the current docs
+### 2. Re-validate examples against the current docs
 
 Useful checks:
 
@@ -209,7 +198,7 @@ Goal:
 
 - ensure example hosts still match the documented request/response shapes
 
-### 4. Add stronger integration testing around host libraries
+### 3. Add stronger integration testing around host libraries
 
 Possible follow-up:
 
@@ -218,7 +207,7 @@ Possible follow-up:
 
 ## Deferred design work
 
-### 5. Formalize deferred protocol extensions before implementation
+### 4. Formalize deferred protocol extensions before implementation
 
 These should stay design-only until the core protocol is stable:
 
@@ -234,7 +223,7 @@ Recommended order:
 
 ## Later / lower priority
 
-### 6. Add direct provider convenience adapters only after host mode is stable
+### 5. Add direct provider convenience adapters only after host mode is stable
 
 Examples:
 

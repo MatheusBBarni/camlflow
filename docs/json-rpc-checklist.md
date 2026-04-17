@@ -20,12 +20,12 @@ For the fuller narrative summary, see `docs/json-rpc-status.md`.
 
 ## Tests
 
-- [ ] Add automated coverage for invalid request (`-32600`)
-- [ ] Add automated coverage for method not found (`-32601`)
-- [ ] Add automated coverage for `camlflow/check` failure (`-32010`)
-- [ ] Add automated coverage for `camlflow/compile` failure (`-32011`)
-- [ ] Add automated coverage for `camlflow/run` failure (`-32012`)
-- [ ] Add automated coverage for host effect error propagation from `camlflow/executeEffect`
+- [x] Add automated coverage for invalid request (`-32600`)
+- [x] Add automated coverage for method not found (`-32601`)
+- [x] Add automated coverage for `camlflow/check` failure (`-32010`)
+- [x] Add automated coverage for `camlflow/compile` failure (`-32011`)
+- [x] Add automated coverage for `camlflow/run` failure (`-32012`)
+- [x] Add automated coverage for host effect error propagation from `camlflow/executeEffect`
 
 ## Fixtures and docs
 
