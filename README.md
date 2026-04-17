@@ -376,6 +376,7 @@ runtime hooks.
 - `docs/provider-execution.md` — CLI provider-backed execution and Codex usage
 - `docs/provider-hooks.md` — hook model, invocation metadata, and embedding guide
 - `docs/json-rpc.md` — Phase 0 JSON-RPC host-integration contract
+- `docs/json-rpc-fixtures.md` — concrete JSON-RPC request/response transcripts
 - `docs/json-rpc-roadmap.md` — roadmap for CamlFlow as a host-integrated harness runtime
 - `examples/provider-hooks/README.md` — runnable provider-hooks example
 - `examples/json-rpc-host/README.md` — runnable JSON-RPC host example
@@ -411,6 +412,7 @@ make run-provider-hooks
 - `docs/provider-execution.md` — CLI provider-backed execution guide
 - `docs/provider-hooks.md` — runtime provider hook reference
 - `docs/json-rpc.md` — Phase 0 JSON-RPC host-integration contract
+- `docs/json-rpc-fixtures.md` — concrete JSON-RPC request/response transcripts
 - `docs/json-rpc-roadmap.md` — host-integration roadmap
 - `docs/alpha-tasks.md` — Alpha completion checklist and closeout notes
 - `docs/beta-1-tasks.md` — Beta 1 implementation checklist

@@ -156,6 +156,8 @@ type program = {
   modules : module_ list;
 }
 
+let ir_version = "0.1.0"
+
 let ( let* ) = Result.bind
 
 let all results =
@@ -911,12 +913,23 @@ let module_of_yojson = function
 let program_to_yojson (program : program) : Yojson.Safe.t =
   `Assoc
     [
+      ("version", `String ir_version);
       ("root_module", qname_to_yojson program.root_module);
       ("modules", `List (List.map module_to_yojson program.modules));
     ]
 
 let program_of_yojson = function
   | `Assoc fields ->
+      let* () =
+        match List.assoc_opt "version" fields with
+        | None -> Ok ()
+        | Some (`String version) when String.equal version ir_version -> Ok ()
+        | Some (`String version) ->
+            Error
+              (Printf.sprintf "unsupported IR version %s; expected %s" version
+                 ir_version)
+        | Some _ -> Error "field version must be a string"
+      in
       let* root_module = required_field fields "root_module" qname_of_yojson in
       let* modules = required_list_field fields "modules" module_of_yojson in
       Ok { root_module; modules }

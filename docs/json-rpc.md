@@ -127,6 +127,13 @@ A host-integrated run looks like this:
 
 The host is the JSON-RPC client and CamlFlow is the JSON-RPC server.
 
+During `initialize`, CamlFlow returns:
+
+- `protocolVersion`
+- `irVersion`
+- `capabilities`
+- `effectKinds`
+
 The first protocol version is expected to include:
 
 - `initialize`
@@ -187,6 +194,8 @@ A diagnostic payload includes:
 - `runId`
 - `step`
 - `effect` summary when relevant
+
+For concrete transcripts, see `docs/json-rpc-fixtures.md`.
 
 ---
 

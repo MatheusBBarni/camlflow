@@ -456,9 +456,22 @@ let test_rpc_server_run_request_parse () =
         (Option.is_some request.run_input)
   | Error error -> Alcotest.failf "run request parse failed: %s" error
 
+let test_ir_program_json_includes_version () =
+  with_temp_dir "camlflow-ir-version-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main "let main : string = \"ok\"\n";
+  let program = check_file main in
+  let json = Camlflow.Ir.program_to_yojson program in
+  expect_string_field "version" Camlflow.Ir.ir_version json;
+  let serialized = Camlflow.Ir.to_json_string program in
+  match Camlflow.Ir.of_json_string serialized with
+  | Ok _ -> ()
+  | Error error -> Alcotest.failf "IR roundtrip with version failed: %s" error
+
 let test_rpc_server_initialize_advertises_trace () =
   let json = Camlflow.Rpc_server.initialized_result () in
   expect_string_field "protocolVersion" "0.1.0" json;
+  expect_string_field "irVersion" Camlflow.Ir.ir_version json;
   (match expect_assoc_field "capabilities" json with
   | `Assoc fields ->
       (match List.assoc_opt "trace" fields with
@@ -617,6 +630,42 @@ let test_rpc_server_end_to_end_requires_initialize () =
       Alcotest.(check string) "pre-init error message" "server not initialized"
         error.error_message
   | None -> Alcotest.fail "missing error response"
+
+let test_rpc_server_compile_includes_ir_version () =
+  with_temp_dir "camlflow-rpc-compile-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main "let main : string = \"ok\"\n";
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:(`Assoc []) "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+            [
+              ( "program",
+                `Assoc
+                  [
+                    ("path", `String main);
+                    ("includePaths", `List []);
+                    ("skillsDir", `Null);
+                  ] );
+            ])
+        "camlflow/compile";
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  let response = find_rpc_response_by_id "2" output in
+  match response.Camlflow.Rpc_protocol.response_result with
+  | Some json ->
+      expect_string_field "irVersion" Camlflow.Ir.ir_version json;
+      (match expect_assoc_field "artifact" json with
+      | `Assoc _ as artifact ->
+          expect_string_field "version" Camlflow.Ir.ir_version artifact
+      | other ->
+          Alcotest.failf "expected artifact object, got %s"
+            (Yojson.Safe.to_string other))
+  | None -> Alcotest.fail "missing compile result"
 
 let test_provider_schema_for_tuple_and_option () =
   let schema =
@@ -1403,6 +1452,8 @@ let () =
             test_rpc_stdio_parse_content_length;
           Alcotest.test_case "rpc server run request parse" `Quick
             test_rpc_server_run_request_parse;
+          Alcotest.test_case "IR program JSON includes version" `Quick
+            test_ir_program_json_includes_version;
           Alcotest.test_case "rpc server initialize advertises trace" `Quick
             test_rpc_server_initialize_advertises_trace;
           Alcotest.test_case "rpc server diagnostic payload" `Quick
@@ -1413,6 +1464,8 @@ let () =
             test_rpc_server_end_to_end_run;
           Alcotest.test_case "rpc server end-to-end requires initialize" `Quick
             test_rpc_server_end_to_end_requires_initialize;
+          Alcotest.test_case "rpc server compile includes IR version" `Quick
+            test_rpc_server_compile_includes_ir_version;
           Alcotest.test_case "provider schema for tuple and option" `Quick
             test_provider_schema_for_tuple_and_option;
           Alcotest.test_case "provider schema for named types" `Quick

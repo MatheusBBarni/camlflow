@@ -121,6 +121,7 @@ let initialized_result () =
   `Assoc
     [
       ("protocolVersion", `String protocol_version);
+      ("irVersion", `String Ir.ir_version);
       ( "capabilities",
         `Assoc
           [
@@ -150,7 +151,8 @@ let check_result program =
       ("rootModule", `String (Syntax.Ast.string_of_qname program.Ir.root_module));
     ]
 
-let compile_result program = `Assoc [ ("artifact", Ir.program_to_yojson program) ]
+let compile_result program =
+  `Assoc [ ("irVersion", `String Ir.ir_version); ("artifact", Ir.program_to_yojson program) ]
 
 let run_result run_id (result : Runtime.execution_result) =
   `Assoc
