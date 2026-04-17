@@ -10,6 +10,7 @@ The host script:
 - handles nested `camlflow/executeEffect` requests
 - returns JSON outputs for each effect step
 - receives the final typed workflow output
+- logs optional `camlflow/trace` notifications
 
 It uses the existing provider-hooks workflow:
 

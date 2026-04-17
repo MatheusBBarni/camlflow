@@ -18,12 +18,11 @@ let string_of_id = function
   | String value -> value
 
 let request ?id ?params method_ =
+  let id_fields = match id with None -> [] | Some id -> [ ("id", id_to_yojson id) ] in
+  let param_fields = match params with None -> [] | Some params -> [ ("params", params) ] in
   `Assoc
     ([ ("jsonrpc", `String "2.0"); ("method", `String method_) ]
-    @
-    match id with None -> [] | Some id -> [ ("id", id_to_yojson id) ]
-    @
-    match params with None -> [] | Some params -> [ ("params", params) ])
+    @ id_fields @ param_fields)
 
 let success id result =
   `Assoc

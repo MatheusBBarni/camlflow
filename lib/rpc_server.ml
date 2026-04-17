@@ -4,6 +4,8 @@ let ( let* ) = Result.bind
 
 let protocol_version = "0.1.0"
 let effect_method = "camlflow/executeEffect"
+let trace_method = "camlflow/trace"
+let diagnostic_method = "camlflow/diagnostic"
 
 type server = {
   input : in_channel;
@@ -126,6 +128,8 @@ let initialized_result () =
             ("compile", `Bool true);
             ("run", `Bool true);
             ("executeEffect", `Bool true);
+            ("trace", `Bool true);
+            ("diagnostic", `Bool true);
             ("renderedPrompt", `Bool true);
             ("outputSchema", `Bool true);
           ] );
@@ -157,6 +161,50 @@ let run_result run_id (result : Runtime.execution_result) =
     ]
 
 let write_json server json = Rpc_stdio.write_message server.output json
+
+let notify server method_ params =
+  write_json server (Rpc_protocol.request ?params:(Some params) method_)
+
+let string_option_field name = function
+  | Some value -> (name, `String value)
+  | None -> (name, `Null)
+
+let int_option_field name = function
+  | Some value -> (name, `Int value)
+  | None -> (name, `Null)
+
+let effect_summary_field = function
+  | None -> ("effect", `Null)
+  | Some (request : Effect_request.t) ->
+      ( "effect",
+        `Assoc
+          [
+            ("kind", `String (Effect_request.kind_to_string request.kind));
+            ("name", `String request.name);
+          ] )
+
+let trace_payload ?run_id ?step ?request ?details event =
+  `Assoc
+    ([ ("event", `String event); string_option_field "runId" run_id; int_option_field "step" step; effect_summary_field request ]
+    @ match details with None -> [] | Some details -> [ ("details", details) ])
+
+let send_trace server ?run_id ?step ?request ?details event =
+  notify server trace_method (trace_payload ?run_id ?step ?request ?details event)
+
+let diagnostic_payload ?run_id ?step ?method_ ?request message =
+  `Assoc
+    [
+      ("severity", `String "error");
+      ("message", `String message);
+      string_option_field "method" method_;
+      string_option_field "runId" run_id;
+      int_option_field "step" step;
+      effect_summary_field request;
+    ]
+
+let send_diagnostic server ?run_id ?step ?method_ ?request message =
+  notify server diagnostic_method
+    (diagnostic_payload ?run_id ?step ?method_ ?request message)
 
 let read_json server =
   let* message = Rpc_stdio.read_message server.input in
@@ -217,13 +265,42 @@ let build_host_context server ~working_directory ~skills_dir run_id =
   let step_counter = ref 0 in
   let run invocation =
     incr step_counter;
-    let* execution =
-      Effect_bridge.execute ~step_index:!step_counter ~run_id
-        ~executor:(send_effect_request server) invocation
+    let step = !step_counter in
+    let* request = Effect_request.of_invocation ~step_index:step ~run_id invocation in
+    let* () = send_trace server ~run_id ~step ~request "effect-request" in
+    let execution_result =
+      Effect_bridge.execute_request ~executor:(send_effect_request server) request
     in
-    let* _ =
+    let* execution =
+      match execution_result with
+      | Ok execution -> Ok execution
+      | Error error ->
+          let* () =
+            send_trace server ~run_id ~step ~request
+              ~details:(`Assoc [ ("message", `String error) ])
+              "effect-error"
+          in
+          let* () = send_diagnostic server ~run_id ~step ~request error in
+          Error error
+    in
+    let validation =
       Effect_bridge.validate_execution ~source:"host" invocation execution
     in
+    let* () =
+      match validation with
+      | Ok _ ->
+          send_trace server ~run_id ~step ~request
+            ~details:(`Assoc [ ("status", `String "ok") ])
+            "effect-result"
+      | Error error ->
+          let* () =
+            send_trace server ~run_id ~step ~request
+              ~details:(`Assoc [ ("message", `String error) ])
+              "effect-error"
+          in
+          send_diagnostic server ~run_id ~step ~request error
+    in
+    let* _ = validation in
     Ok execution.Effect_bridge.output_json
   in
   let context = Context.with_working_directory Context.empty working_directory in
@@ -292,15 +369,43 @@ let handle_run server params =
   in
   server.next_run <- server.next_run + 1;
   let run_id = Printf.sprintf "run-%d" server.next_run in
+  let* () =
+    send_trace server ~run_id
+      ~details:
+        (`Assoc
+          [
+            ("programPath", `String request.run_program.program_path);
+            ("entry", `String request.run_entry);
+          ])
+      "run-start"
+  in
   let context =
     build_host_context server ~working_directory
       ~skills_dir:request.run_program.program_skills_dir run_id
   in
-  let* result =
+  let result =
     Runtime.execute ~context ~entry:request.run_entry ?input:request.run_input program
     |> Result.map_error (fun error ->
            Printf.sprintf "run failed for %s: %s"
              request.run_program.program_path error)
+  in
+  let* result =
+    match result with
+    | Ok result ->
+        let* () =
+          send_trace server ~run_id
+            ~details:(`Assoc [ ("stepsRun", `Int result.Runtime.steps_run) ])
+            "run-finish"
+        in
+        Ok result
+    | Error error ->
+        let* () =
+          send_trace server ~run_id
+            ~details:(`Assoc [ ("message", `String error) ])
+            "run-error"
+        in
+        let* () = send_diagnostic server ~run_id ~method_:"camlflow/run" error in
+        Error error
   in
   Ok (run_result run_id result)
 
@@ -321,6 +426,7 @@ let handle_request server (request : Rpc_protocol.request_message) =
   in
   let params = match request.Rpc_protocol.request_params with Some params -> params | None -> `Assoc [] in
   if method_requires_init request.request_method && not server.initialized then
+    let* () = send_diagnostic server ~method_:request.request_method "server not initialized" in
     let* () = reply_error ~code:(-32002) "server not initialized" in
     Ok Continue
   else
@@ -339,7 +445,9 @@ let handle_request server (request : Rpc_protocol.request_message) =
         let* () =
           match result with
           | Ok json -> reply_success json
-          | Error error -> reply_error ~code:(-32010) error
+          | Error error ->
+              let* () = send_diagnostic server ~method_:request.request_method error in
+              reply_error ~code:(-32010) error
         in
         Ok Continue
     | "camlflow/compile" ->
@@ -347,7 +455,9 @@ let handle_request server (request : Rpc_protocol.request_message) =
         let* () =
           match result with
           | Ok json -> reply_success json
-          | Error error -> reply_error ~code:(-32011) error
+          | Error error ->
+              let* () = send_diagnostic server ~method_:request.request_method error in
+              reply_error ~code:(-32011) error
         in
         Ok Continue
     | "camlflow/run" ->
@@ -355,10 +465,13 @@ let handle_request server (request : Rpc_protocol.request_message) =
         let* () =
           match result with
           | Ok json -> reply_success json
-          | Error error -> reply_error ~code:(-32012) error
+          | Error error ->
+              let* () = send_diagnostic server ~method_:request.request_method error in
+              reply_error ~code:(-32012) error
         in
         Ok Continue
     | _ ->
+        let* () = send_diagnostic server ~method_:request.request_method "method not found" in
         let* () = reply_error ~code:(-32601) "method not found" in
         Ok Continue
 
@@ -382,6 +495,7 @@ let run_stdio () =
           match parsed with
           | Ok request -> handle_request server request
           | Error error ->
+              let* () = send_diagnostic server ~method_:"(invalid-request)" error in
               let* () =
                 write_json server
                   (Rpc_protocol.error ~code:(-32600) ~message:error ())

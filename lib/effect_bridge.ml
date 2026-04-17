@@ -7,10 +7,13 @@ type execution = {
 
 let ( let* ) = Result.bind
 
-let execute ?step_index ?run_id ~executor invocation =
-  let* request = Effect_request.of_invocation ?step_index ?run_id invocation in
+let execute_request ~executor request =
   let* output_json = executor request in
   Ok { request; output_json }
+
+let execute ?step_index ?run_id ~executor invocation =
+  let* request = Effect_request.of_invocation ?step_index ?run_id invocation in
+  execute_request ~executor request
 
 let step_kind = function
   | Runtime.Context.Bound_agent -> "agent"

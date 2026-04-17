@@ -89,6 +89,16 @@ function handleMessage(message) {
     return;
   }
 
+  if (message.method === 'camlflow/trace') {
+    console.log('trace:', JSON.stringify(message.params));
+    return;
+  }
+
+  if (message.method === 'camlflow/diagnostic') {
+    console.log('diagnostic:', JSON.stringify(message.params));
+    return;
+  }
+
   const id = message.id == null ? null : String(message.id);
   if (!id || !pending.has(id)) {
     return;
@@ -114,6 +124,26 @@ child.on('exit', (code) => {
   }
 });
 
+function waitForExit() {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (timer !== null) clearTimeout(timer);
+      resolve();
+    };
+    if (child.exitCode !== null) {
+      finish();
+      return;
+    }
+    timer = setTimeout(() => child.kill('SIGKILL'), 1000);
+    child.once('exit', finish);
+    child.once('close', finish);
+  });
+}
+
 (async () => {
   const init = await sendRequest('initialize', {});
   console.log('initialize:', JSON.stringify(init, null, 2));
@@ -133,6 +163,7 @@ child.on('exit', (code) => {
   await sendRequest('shutdown', {});
   sendNotification('exit', {});
   child.stdin.end();
+  await waitForExit();
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

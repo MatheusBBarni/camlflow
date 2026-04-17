@@ -19,6 +19,7 @@ The host script:
   - bound agent `draft-solver`
   - inline agent `answer_packager`
 - prints the final structured workflow result
+- logs optional `camlflow/trace` notifications
 
 ## Run
 

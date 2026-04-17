@@ -144,12 +144,49 @@ The first protocol version is expected to include:
 
 - `camlflow/executeEffect`
 
-Optional later notifications may include:
+The current implementation also emits the optional notification:
 
 - `camlflow/trace`
+
+The current implementation also emits the optional notification:
+
 - `camlflow/diagnostic`
 
-These notifications are not required for the Phase 0 contract.
+Hosts may ignore `camlflow/trace` and `camlflow/diagnostic` if they do not need them.
+
+### `camlflow/trace` notifications
+
+The current trace stream is safe metadata only. It is intended for logging, debugging, and protocol inspection.
+
+Current events include:
+
+- `run-start`
+- `effect-request`
+- `effect-result`
+- `effect-error`
+- `run-finish`
+- `run-error`
+
+A trace payload includes:
+
+- `event`
+- `runId`
+- `step`
+- `effect` summary when relevant
+- optional `details`
+
+### `camlflow/diagnostic` notifications
+
+The current diagnostic stream is for machine-readable error reporting outside normal request failures.
+
+A diagnostic payload includes:
+
+- `severity`
+- `message`
+- `method`
+- `runId`
+- `step`
+- `effect` summary when relevant
 
 ---
 

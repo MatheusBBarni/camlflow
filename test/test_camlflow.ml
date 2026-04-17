@@ -331,6 +331,19 @@ let test_rpc_protocol_request_roundtrip () =
         | None -> "none")
   | Error error -> Alcotest.failf "rpc request parse failed: %s" error
 
+let test_rpc_protocol_notification_includes_params () =
+  let json =
+    Camlflow.Rpc_protocol.request ~params:(`Assoc [ ("event", `String "run-start") ])
+      "camlflow/trace"
+  in
+  match Camlflow.Rpc_protocol.request_of_yojson json with
+  | Ok request ->
+      Alcotest.(check string) "rpc notification method" "camlflow/trace"
+        request.Camlflow.Rpc_protocol.request_method;
+      Alcotest.(check bool) "rpc notification params present" true
+        (Option.is_some request.request_params)
+  | Error error -> Alcotest.failf "rpc notification parse failed: %s" error
+
 let test_rpc_stdio_parse_content_length () =
   match
     Camlflow.Rpc_stdio.parse_content_length
@@ -366,6 +379,69 @@ let test_rpc_server_run_request_parse () =
       Alcotest.(check bool) "run input present" true
         (Option.is_some request.run_input)
   | Error error -> Alcotest.failf "run request parse failed: %s" error
+
+let test_rpc_server_initialize_advertises_trace () =
+  let json = Camlflow.Rpc_server.initialized_result () in
+  expect_string_field "protocolVersion" "0.1.0" json;
+  (match expect_assoc_field "capabilities" json with
+  | `Assoc fields ->
+      (match List.assoc_opt "trace" fields with
+      | Some (`Bool true) -> ()
+      | other ->
+          Alcotest.failf "expected trace capability, got %s"
+            (match other with
+            | Some json -> Yojson.Safe.to_string json
+            | None -> "null"));
+      (match List.assoc_opt "diagnostic" fields with
+      | Some (`Bool true) -> ()
+      | other ->
+          Alcotest.failf "expected diagnostic capability, got %s"
+            (match other with
+            | Some json -> Yojson.Safe.to_string json
+            | None -> "null"))
+  | other ->
+      Alcotest.failf "expected capabilities object, got %s"
+        (Yojson.Safe.to_string other))
+
+let test_rpc_server_diagnostic_payload () =
+  let request = build_effect_request ~step_index:2 ~run_id:"run-1" (make_invocation ~name:"greeter" ()) in
+  let json =
+    Camlflow.Rpc_server.diagnostic_payload ~run_id:"run-1" ~step:2
+      ~method_:"camlflow/run" ~request "boom"
+  in
+  expect_string_field "severity" "error" json;
+  expect_string_field "message" "boom" json;
+  expect_string_field "method" "camlflow/run" json;
+  (match expect_assoc_field "effect" json with
+  | `Assoc fields ->
+      (match List.assoc_opt "name" fields with
+      | Some (`String name) ->
+          Alcotest.(check string) "diagnostic effect name" "greeter" name
+      | _ -> Alcotest.fail "missing diagnostic effect name")
+  | other ->
+      Alcotest.failf "expected effect object, got %s"
+        (Yojson.Safe.to_string other))
+
+let test_rpc_server_trace_payload () =
+  let request = build_effect_request ~step_index:2 ~run_id:"run-1" (make_invocation ~name:"greeter" ()) in
+  let json =
+    Camlflow.Rpc_server.trace_payload ~run_id:"run-1" ~step:2 ~request
+      ~details:(`Assoc [ ("status", `String "ok") ]) "effect-result"
+  in
+  expect_string_field "event" "effect-result" json;
+  (match expect_assoc_field "effect" json with
+  | `Assoc fields ->
+      (match List.assoc_opt "kind" fields with
+      | Some (`String kind) ->
+          Alcotest.(check string) "trace kind" "bound-agent" kind
+      | _ -> Alcotest.fail "missing trace effect kind");
+      (match List.assoc_opt "name" fields with
+      | Some (`String name) ->
+          Alcotest.(check string) "trace name" "greeter" name
+      | _ -> Alcotest.fail "missing trace effect name")
+  | other ->
+      Alcotest.failf "expected effect object, got %s"
+        (Yojson.Safe.to_string other))
 
 let test_provider_schema_for_tuple_and_option () =
   let schema =
@@ -1146,10 +1222,18 @@ let () =
             test_cli_check_rejects_provider_flags;
           Alcotest.test_case "rpc protocol request roundtrip" `Quick
             test_rpc_protocol_request_roundtrip;
+          Alcotest.test_case "rpc protocol notification includes params" `Quick
+            test_rpc_protocol_notification_includes_params;
           Alcotest.test_case "rpc stdio parse content length" `Quick
             test_rpc_stdio_parse_content_length;
           Alcotest.test_case "rpc server run request parse" `Quick
             test_rpc_server_run_request_parse;
+          Alcotest.test_case "rpc server initialize advertises trace" `Quick
+            test_rpc_server_initialize_advertises_trace;
+          Alcotest.test_case "rpc server diagnostic payload" `Quick
+            test_rpc_server_diagnostic_payload;
+          Alcotest.test_case "rpc server trace payload" `Quick
+            test_rpc_server_trace_payload;
           Alcotest.test_case "provider schema for tuple and option" `Quick
             test_provider_schema_for_tuple_and_option;
           Alcotest.test_case "provider schema for named types" `Quick
