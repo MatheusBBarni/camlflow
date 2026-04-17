@@ -20,12 +20,11 @@ The SDK targets the bridge as it exists today:
   - `exit`
 - server-to-host traffic:
   - request: `camlflow/executeEffect`
-  - notifications: `camlflow/trace`, `camlflow/diagnostic`, `camlflow/progress`
-  - reserved scaffold: `camlflow/outputChunk` (not emitted by the current server)
+  - notifications: `camlflow/trace`, `camlflow/diagnostic`, `camlflow/progress`, `camlflow/outputChunk`
 
 ## What it includes
 
-- protocol and payload types for initialize, run/check/compile, effect requests, trace, diagnostics, progress, and the reserved output-chunk scaffold
+- protocol and payload types for initialize, run/check/compile, effect requests, trace, diagnostics, progress, and advisory output-chunk notifications
 - a `Content-Length` parser/encoder for raw stream integrations
 - a high-level Node client that can:
   - attach to existing streams
@@ -77,12 +76,16 @@ const client = spawnCamlFlowClient({
   onProgress: async (progress) => {
     console.log("progress", progress);
   },
+  onOutputChunk: async (chunk) => {
+    console.log("outputChunk", chunk);
+  },
 });
 
 async function main(): Promise<void> {
   await client.initialize({
     notifications: {
       trace: true,
+      diagnostic: true,
       progress: true,
     },
   });
@@ -140,6 +143,7 @@ They now cover:
 - a larger structured-output workflow
 - host-side cancellation with `AbortSignal`
 - optional progress callbacks through `camlflow/progress`
+- advisory output-chunk callbacks through `camlflow/outputChunk`
 
 ## Session notification preferences
 
@@ -149,6 +153,7 @@ They now cover:
 await client.initialize({
   notifications: {
     trace: false,
+    diagnostic: true,
     progress: true,
   },
 });
@@ -175,22 +180,23 @@ The SDK can receive optional `camlflow/progress` notifications through `onProgre
 
 These notifications are advisory UI metadata. They do not replace the final typed result contract.
 
-## Reserved streaming scaffold
+## Output chunk notifications
 
-The SDK now includes a reserved `onOutputChunk` callback surface plus protocol types for future streaming work.
+The SDK now includes a live `onOutputChunk` callback surface plus effect-handler helpers for advisory streaming.
 
 Current behavior:
 
-- `initialize().capabilities.streaming` is `false`
-- the current server does not emit `camlflow/outputChunk`
-- hosts should treat streaming as unavailable unless a future server version advertises otherwise
+- `initialize().capabilities.streaming` is `true`
+- effect handlers receive a third `context` argument with `emitOutputChunk(...)`
+- CamlFlow relays those `camlflow/outputChunk` notifications back to the host session
+- streamed chunks remain advisory only; the final typed effect response still controls correctness
 
 ## Notes
 
 - `initialize()` returns both `protocolVersion` and `irVersion` so hosts can separately reason about transport compatibility and compiled-artifact compatibility.
 - `initialize().capabilities.cancelRequest` tells hosts whether `$/cancelRequest` is supported.
 - `initialize().capabilities.progress` tells hosts whether `camlflow/progress` may be emitted.
-- `initialize().capabilities.streaming` tells hosts whether `camlflow/outputChunk` is available; it is currently `false`.
+- `initialize().capabilities.streaming` tells hosts whether advisory `camlflow/outputChunk` notifications are available; it is currently `true`.
 - `compile()` returns `irVersion` plus the IR artifact as generic JSON by default. The bridge does not expose a smaller dedicated compile-artifact schema.
 - `effect.inlineDefinition` is typed from CamlFlow's current IR serialization, including inline agent metadata and source locations.
 - `exit` is modeled as a notification because that is how the current host examples shut the server down.

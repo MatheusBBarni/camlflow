@@ -113,7 +113,7 @@ CamlFlow is not responsible for owning:
 - framing: **Content-Length** headers
 - concurrency: **single active run** per server instance
 - execution style: **blocking nested effect requests**
-- no streaming in v1
+- no authoritative streaming in v1
 - no durable suspend/resume in v1
 
 ## Why Phase 0 matters
@@ -422,7 +422,7 @@ Three exceptions now exist:
 
 - CamlFlow has an initial cancellation slice using `$/cancelRequest` for active `camlflow/run` requests.
 - CamlFlow has an initial progress slice using `camlflow/progress` notifications.
-- CamlFlow now reserves a future streaming surface through `capabilities.streaming = false` and SDK notification scaffolding.
+- CamlFlow now exposes an initial advisory streaming relay through `capabilities.streaming = true`, `camlflow/outputChunk`, and SDK notification plumbing.
 
 The notes below therefore describe the remaining design space beyond those first implementations.
 
@@ -517,16 +517,16 @@ Some hosts may want token-by-token or chunked previews during effect execution.
 
 ### Current direction
 
-Keep streaming out of the core run contract for now, while reserving room for notifications like:
+Keep streaming out of the core run contract for now, while allowing advisory notifications like:
 
 - `camlflow/outputChunk`
 - `camlflow/effectStream`
 
-Current implemented scaffold:
+Current implemented slice:
 
-- `capabilities.streaming = false`
-- no streaming notifications are emitted yet
-- SDK notification plumbing can be extended without changing the typed final-result contract
+- `capabilities.streaming = true`
+- effect handlers may emit advisory `camlflow/outputChunk`
+- CamlFlow relays those notifications without changing the typed final-result contract
 
 ### Suggested semantics
 

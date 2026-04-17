@@ -553,6 +553,13 @@ let test_rpc_server_initialize_advertises_trace () =
             (match other with
             | Some json -> Yojson.Safe.to_string json
             | None -> "null"));
+      (match List.assoc_opt "streaming" fields with
+      | Some (`Bool true) -> ()
+      | other ->
+          Alcotest.failf "expected streaming capability, got %s"
+            (match other with
+            | Some json -> Yojson.Safe.to_string json
+            | None -> "null"));
       (match List.assoc_opt "cancelRequest" fields with
       | Some (`Bool true) -> ()
       | other ->
@@ -596,6 +603,19 @@ let test_rpc_server_progress_payload () =
   expect_int_field "completedSteps" 1 json;
   expect_int_field "knownSteps" 3 json;
   expect_bool_field "cancellable" true json
+
+let test_rpc_server_output_chunk_payload () =
+  let json =
+    Camlflow.Rpc_server.output_chunk_payload ~run_id:"run-1" ~step:2
+      ~stream_id:"stream-1" ~format:"text" ~delta:(`String "hello")
+      ~done_:false ()
+  in
+  expect_string_field "runId" "run-1" json;
+  expect_int_field "step" 2 json;
+  expect_string_field "streamId" "stream-1" json;
+  expect_string_field "format" "text" json;
+  expect_string_field "delta" "hello" json;
+  expect_bool_field "done" false json
 
 let test_rpc_server_trace_payload () =
   let request = build_effect_request ~step_index:2 ~run_id:"run-1" (make_invocation ~name:"greeter" ()) in
@@ -823,6 +843,47 @@ let main (name : string) : string =
     (List.length (find_rpc_requests "camlflow/trace" output));
   Alcotest.(check bool) "progress still enabled" true
     (List.length (find_rpc_requests "camlflow/progress" output) > 0)
+
+let test_rpc_server_initialize_can_disable_diagnostics () =
+  with_temp_dir "camlflow-rpc-diagnostic-prefs-" @@ fun dir ->
+  let workflow = Filename.concat dir "workflow.cml" in
+  write_file workflow {|let main (name : string) : string = name|};
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:
+          (`Assoc
+            [
+              ( "notifications",
+                `Assoc
+                  [ ("diagnostic", `Bool false); ("progress", `Bool true) ] );
+            ])
+        "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+            [
+              ( "program",
+                `Assoc
+                  [
+                    ("path", `String workflow);
+                    ("includePaths", `List []);
+                    ("skillsDir", `Null);
+                  ] );
+              ("entry", `String "main");
+            ])
+        "camlflow/run";
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  Alcotest.(check int) "diagnostics disabled" 0
+    (List.length (find_rpc_requests "camlflow/diagnostic" output));
+  let response = find_rpc_response_by_id "2" output in
+  match response.Camlflow.Rpc_protocol.response_error with
+  | Some error ->
+      Alcotest.(check int) "run failure still returned" (-32012)
+        error.error_code
+  | None -> Alcotest.fail "missing run failure response"
 
 let test_rpc_server_end_to_end_requires_initialize () =
   let messages =
@@ -1228,6 +1289,61 @@ let main (name : string) : string =
         "run cancelled by host" error.error_message
   | None -> Alcotest.fail "missing cancellation response"
 
+let test_rpc_server_cancellation_after_effect_response_before_run_finish () =
+  with_temp_dir "camlflow-rpc-cancel-after-effect-response-" @@ fun dir ->
+  let workflow = Filename.concat dir "workflow.cml" in
+  write_file workflow
+    {|
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  greeting
+|};
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:(`Assoc []) "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+            [
+              ( "program",
+                `Assoc
+                  [
+                    ("path", `String workflow);
+                    ("includePaths", `List []);
+                    ("skillsDir", `Null);
+                  ] );
+              ("entry", `String "main");
+              ("input", `String "Ada");
+            ])
+        "camlflow/run";
+      Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-1")
+        (`Assoc [ ("output", `String "hello Ada") ]);
+      Camlflow.Rpc_protocol.request
+        ~params:(`Assoc [ ("id", `Int 2) ]) "$/cancelRequest";
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  Alcotest.(check int) "run-finish not emitted after late cancellation" 0
+    (List.length
+       (List.filter
+          (fun request ->
+            match request.Camlflow.Rpc_protocol.request_params with
+            | Some (`Assoc fields) -> (
+                match List.assoc_opt "stage" fields with
+                | Some (`String stage) -> String.equal stage "run-finish"
+                | _ -> false)
+            | _ -> false)
+          (find_rpc_requests "camlflow/progress" output)));
+  let response = find_rpc_response_by_id "2" output in
+  match response.Camlflow.Rpc_protocol.response_error with
+  | Some error ->
+      Alcotest.(check int) "late cancellation error code" (-32800)
+        error.error_code
+  | None -> Alcotest.fail "missing late cancellation response"
+
 let test_rpc_server_cancellation_before_next_effect_request () =
   with_temp_dir "camlflow-rpc-cancel-between-effects-" @@ fun dir ->
   let workflow = Filename.concat dir "workflow.cml" in
@@ -1292,6 +1408,62 @@ let main (name : string) : string =
       Alcotest.(check int) "between-effects cancellation error code" (-32800)
         error.error_code
   | None -> Alcotest.fail "missing between-effects cancellation response"
+
+let test_rpc_server_relays_output_chunk_notifications () =
+  with_temp_dir "camlflow-rpc-output-chunk-" @@ fun dir ->
+  let input_path = Filename.concat dir "input.rpc" in
+  let output_path = Filename.concat dir "output.rpc" in
+  write_rpc_messages input_path [];
+  let input = In_channel.open_bin input_path in
+  let output_channel = Out_channel.open_bin output_path in
+  Fun.protect
+    ~finally:(fun () -> In_channel.close input; Out_channel.close output_channel)
+    (fun () ->
+      let server : Camlflow.Rpc_server.server =
+        {
+          input;
+          output = output_channel;
+          initialized = true;
+          shutdown_requested = false;
+          next_run = 1;
+          active_run = None;
+          pending_message = None;
+          trace_enabled = true;
+          diagnostics_enabled = true;
+          progress_enabled = true;
+        }
+      in
+      let request =
+        build_effect_request ~step_index:1 ~run_id:"run-1"
+          (make_invocation ~name:"greeter" ())
+      in
+      match
+        Camlflow.Rpc_server.handle_in_run_output_chunk server request
+          (`Assoc
+            [
+              ("runId", `String "run-1");
+              ("step", `Int 1);
+              ("streamId", `String "stream-1");
+              ("format", `String "text");
+              ("delta", `String "hello ");
+              ("done", `Bool false);
+            ])
+      with
+      | Ok () ->
+          Out_channel.flush output_channel;
+          let output = read_rpc_messages output_path in
+          let chunks = find_rpc_requests "camlflow/outputChunk" output in
+          Alcotest.(check int) "relayed chunk count" 1 (List.length chunks);
+          (match chunks with
+          | [ request ] -> (
+              match request.Camlflow.Rpc_protocol.request_params with
+              | Some json ->
+                  expect_string_field "streamId" "stream-1" json;
+                  expect_string_field "delta" "hello " json;
+                  expect_bool_field "done" false json
+              | None -> Alcotest.fail "missing relayed output chunk params")
+          | _ -> Alcotest.fail "expected relayed output chunk")
+      | Error error -> Alcotest.failf "output chunk relay failed: %s" error)
 
 let test_provider_schema_for_tuple_and_option () =
   let schema =
@@ -2214,6 +2386,8 @@ let () =
             test_rpc_server_diagnostic_payload;
           Alcotest.test_case "rpc server progress payload" `Quick
             test_rpc_server_progress_payload;
+          Alcotest.test_case "rpc server output chunk payload" `Quick
+            test_rpc_server_output_chunk_payload;
           Alcotest.test_case "rpc server trace payload" `Quick
             test_rpc_server_trace_payload;
           Alcotest.test_case "rpc server end-to-end run" `Quick
@@ -2222,6 +2396,8 @@ let () =
             test_rpc_server_end_to_end_progress_notifications;
           Alcotest.test_case "rpc server initialize notification preferences" `Quick
             test_rpc_server_initialize_notification_preferences;
+          Alcotest.test_case "rpc server initialize can disable diagnostics" `Quick
+            test_rpc_server_initialize_can_disable_diagnostics;
           Alcotest.test_case "rpc server end-to-end requires initialize" `Quick
             test_rpc_server_end_to_end_requires_initialize;
           Alcotest.test_case "rpc server compile includes IR version" `Quick
@@ -2240,8 +2416,14 @@ let () =
             test_rpc_server_effect_error_propagation;
           Alcotest.test_case "rpc server cancellation returns request cancelled" `Quick
             test_rpc_server_cancellation_returns_request_cancelled;
+          Alcotest.test_case
+            "rpc server cancellation after effect response before run finish"
+            `Quick
+            test_rpc_server_cancellation_after_effect_response_before_run_finish;
           Alcotest.test_case "rpc server cancellation before next effect request" `Quick
             test_rpc_server_cancellation_before_next_effect_request;
+          Alcotest.test_case "rpc server relays output chunk notifications" `Quick
+            test_rpc_server_relays_output_chunk_notifications;
           Alcotest.test_case "provider schema for tuple and option" `Quick
             test_provider_schema_for_tuple_and_option;
           Alcotest.test_case "provider schema for named types" `Quick

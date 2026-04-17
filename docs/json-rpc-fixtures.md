@@ -41,7 +41,7 @@ Notes:
       "trace": true,
       "diagnostic": true,
       "progress": true,
-      "streaming": false,
+      "streaming": true,
       "cancelRequest": true,
       "renderedPrompt": true,
       "outputSchema": true
@@ -168,6 +168,40 @@ This fixture uses a workflow like `examples/provider-hooks/workflow.cml`.
       "step": 1,
       "runId": "run-1"
     }
+  }
+}
+```
+
+### Host → CamlFlow optional output chunk, step 1
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/outputChunk",
+  "params": {
+    "runId": "run-1",
+    "step": 1,
+    "streamId": "greeter-stream",
+    "format": "text",
+    "delta": "hello ",
+    "done": false
+  }
+}
+```
+
+### CamlFlow → Host relayed output chunk, step 1
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/outputChunk",
+  "params": {
+    "runId": "run-1",
+    "step": 1,
+    "streamId": "greeter-stream",
+    "format": "text",
+    "delta": "hello ",
+    "done": false
   }
 }
 ```

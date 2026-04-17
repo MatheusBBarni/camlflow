@@ -36,16 +36,33 @@ function stringListField(record: JsonRecord, field: string): string[] {
 export { packageRoot, repoRoot };
 
 export function makeProviderHooksEffectHandler(): CamlFlowEffectHandler {
-  return async ({ effect }) => {
+  return async ({ effect }, _request, context) => {
     const input = asJsonRecord(effect.input);
+    const emitTextChunk = async (text: string): Promise<void> => {
+      await context.emitOutputChunk({
+        streamId: `provider-hooks-${context.step ?? 0}-${effect.name}`,
+        format: "text",
+        delta: text,
+        done: true,
+      });
+    };
 
     switch (`${effect.kind}:${effect.name}`) {
-      case "bound-agent:greeter":
-        return effectOutput(`hello ${stringField(input, "name", "friend")}`);
-      case "local-prompt-skill:caveman":
-        return effectOutput(stringField(input, "prompt").replace(/^hello\s+/i, "me "));
-      case "inline-agent:reviewer":
-        return effectOutput("inline-review");
+      case "bound-agent:greeter": {
+        const output = `hello ${stringField(input, "name", "friend")}`;
+        await emitTextChunk(output);
+        return effectOutput(output);
+      }
+      case "local-prompt-skill:caveman": {
+        const output = stringField(input, "prompt").replace(/^hello\s+/i, "me ");
+        await emitTextChunk(output);
+        return effectOutput(output);
+      }
+      case "inline-agent:reviewer": {
+        const output = "inline-review";
+        await emitTextChunk(output);
+        return effectOutput(output);
+      }
       default:
         return effectOutput("");
     }

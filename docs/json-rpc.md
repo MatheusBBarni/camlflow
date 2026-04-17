@@ -166,6 +166,7 @@ Host request params:
 {
   "notifications": {
     "trace": true,
+    "diagnostic": true,
     "progress": true
   }
 }
@@ -175,9 +176,9 @@ Current behavior:
 
 - `notifications` is optional
 - `notifications.trace` defaults to `true`
+- `notifications.diagnostic` defaults to `true`
 - `notifications.progress` defaults to `true`
-- hosts may disable either stream independently for the current session
-- diagnostics remain enabled regardless of these toggles
+- hosts may disable these streams independently for the current session
 
 Server result fields:
 
@@ -282,11 +283,11 @@ Current behavior:
 - the original `camlflow/run` request completes with error code `-32800`
 - CamlFlow emits `run-cancelled` through `camlflow/trace`
 - CamlFlow emits `run-cancelled` through `camlflow/progress`
-- CamlFlow currently also emits a cancellation diagnostic for observability
+- CamlFlow emits a cancellation diagnostic when diagnostic notifications are enabled for the session
 
 Current limitation:
 
-- this first slice is boundary-based, not preemptive; it is intended for cancellation while a run is blocked on effect execution or at the next observed effect boundary
+- this slice remains boundary-based rather than fully preemptive, but it now also drains pending cancellation control messages after effect completion and before final run success is committed
 
 ### Current error code table
 
@@ -407,17 +408,19 @@ The first protocol version is expected to include:
 
 - `camlflow/executeEffect`
 
-The current implementation may emit these optional notifications, depending on host initialize preferences:
+The current implementation may emit these optional notifications, depending on host initialize preferences and effect-handler behavior:
 
 - `camlflow/trace`
 - `camlflow/diagnostic`
 - `camlflow/progress`
+- `camlflow/outputChunk`
 
-The host may also send the optional notification:
+The host may also send optional notifications:
 
 - `$/cancelRequest`
+- `camlflow/outputChunk` during an active `camlflow/executeEffect`
 
-Hosts may ignore `camlflow/trace`, `camlflow/diagnostic`, and `camlflow/progress` if they do not need them.
+Hosts may ignore `camlflow/trace`, `camlflow/diagnostic`, `camlflow/progress`, and `camlflow/outputChunk` if they do not need them.
 
 ### Capability semantics
 
@@ -428,22 +431,22 @@ Current meaning:
 - `check`, `compile`, `run` — the server implements these host → server methods
 - `executeEffect` — the server may issue `camlflow/executeEffect` requests during effectful runs
 - `trace`, `diagnostic`, `progress` — the server may emit these optional notifications
-- `streaming` — reserved capability for future output-chunk notifications; the current server advertises `false`
+- `streaming` — the server may relay advisory `camlflow/outputChunk` notifications during effect execution
 - `cancelRequest` — the server supports host cancellation via `$/cancelRequest`
 - `renderedPrompt`, `outputSchema` — effect requests include these convenience fields
 
 Decision for `0.1.0`:
 
 - keep the current flat capability map
-- treat `trace`, `diagnostic`, and `progress` as optional observability features
+- treat `trace`, `diagnostic`, `progress`, and `outputChunk` as optional observability features
 - defer finer-grained capability sub-objects until a real compatibility need appears
 
 Host requirements for `0.1.0`:
 
 - hosts must send `initialize` before calling methods that require initialization
 - hosts that want to run effectful workflows must handle `camlflow/executeEffect`
-- hosts may ignore `camlflow/trace`, `camlflow/diagnostic`, and `camlflow/progress`
-- hosts may disable `camlflow/trace` and/or `camlflow/progress` for the current session through `initialize.params.notifications`
+- hosts may ignore `camlflow/trace`, `camlflow/diagnostic`, `camlflow/progress`, and `camlflow/outputChunk`
+- hosts may disable `camlflow/trace`, `camlflow/diagnostic`, and/or `camlflow/progress` for the current session through `initialize.params.notifications`
 - hosts may send `$/cancelRequest` when `capabilities.cancelRequest = true`
 - hosts should ignore unknown future capability keys
 
@@ -498,17 +501,18 @@ A progress payload includes:
 
 Progress is best-effort and safe to ignore. It does not replace final typed results or request error responses.
 
-### Reserved streaming scaffold
+### `camlflow/outputChunk` notifications
 
-The current bridge now reserves a future streaming surface through capability signaling.
+The current bridge now includes an initial advisory streaming relay.
 
 Current behavior:
 
-- `capabilities.streaming = false`
-- the server does not currently emit `camlflow/outputChunk`
-- hosts should treat streaming as unavailable unless a future server version advertises otherwise
+- `capabilities.streaming = true`
+- a host effect handler may emit `camlflow/outputChunk` during an active `camlflow/executeEffect`
+- CamlFlow relays those chunks back to the session as advisory notifications
+- the authoritative contract remains the final typed `camlflow/executeEffect` response and final `camlflow/run` result
 
-This keeps room for a future streaming notification without implying that typed workflow state can advance from partial output.
+This keeps room for richer future streaming without implying that typed workflow state can advance from partial output.
 
 ### `camlflow/diagnostic` notifications
 
@@ -576,6 +580,21 @@ Current notification shapes:
 ```
 
 `runId` may be `null` for non-run notifications such as `check-start` and `compile-start`.
+
+#### `camlflow/outputChunk`
+
+```json
+{
+  "runId": "string | null",
+  "step": "int | null",
+  "streamId": "string",
+  "format": "string",
+  "delta": "json",
+  "done": "bool"
+}
+```
+
+These notifications are advisory effect-output previews. Hosts may buffer or ignore them.
 
 ### Current host error propagation behavior
 
@@ -738,7 +757,7 @@ Phase 0 locks this direction so later implementation work can target one explici
 
 The first JSON-RPC version should not attempt to solve:
 
-- token streaming execution semantics beyond the reserved capability scaffold
+- token streaming execution semantics beyond the current advisory output-chunk relay
 - concurrent multi-run multiplexing on one connection
 - durable checkpoints
 - protocol-level retries

@@ -136,6 +136,7 @@ export interface CamlFlowCapabilities extends JsonObject {
 
 export interface CamlFlowNotificationPreferences extends JsonObject {
   trace?: boolean;
+  diagnostic?: boolean;
   progress?: boolean;
 }
 

@@ -43,12 +43,26 @@ type PendingRequest = {
 
 type MaybePromise<T> = T | Promise<T>;
 
+export interface CamlFlowEffectOutputChunk extends JsonObject {
+  streamId: string;
+  format: string;
+  delta: JsonValue;
+  done: boolean;
+}
+
+export interface CamlFlowEffectHandlerContext {
+  runId: string | null;
+  step: number | null;
+  emitOutputChunk: (chunk: CamlFlowEffectOutputChunk) => Promise<void>;
+}
+
 export type CamlFlowEffectHandler<
   TInput extends JsonValue = JsonValue,
   TOutput extends JsonValue = JsonValue,
 > = (
   params: CamlFlowExecuteEffectParams<TInput>,
   request: JsonRpcRequest<CamlFlowExecuteEffectParams<TInput>>,
+  context: CamlFlowEffectHandlerContext,
 ) => MaybePromise<CamlFlowExecuteEffectResult<TOutput>>;
 
 export interface CamlFlowJsonRpcClientOptions {
@@ -614,9 +628,11 @@ export class CamlFlowJsonRpcClient {
     }
 
     try {
+      const params = (request.params ?? {}) as CamlFlowExecuteEffectParams;
       const result = await this.effectHandler(
-        request.params as CamlFlowExecuteEffectParams,
+        params,
         request as JsonRpcRequest<CamlFlowExecuteEffectParams>,
+        this.createEffectHandlerContext(params),
       );
       await this.sendResponse(request.id, result);
     } catch (error) {
@@ -634,6 +650,28 @@ export class CamlFlowJsonRpcClient {
         methodError.data,
       );
     }
+  }
+
+  private createEffectHandlerContext(
+    params: CamlFlowExecuteEffectParams,
+  ): CamlFlowEffectHandlerContext {
+    return {
+      runId: params.runId ?? null,
+      step: params.step ?? null,
+      emitOutputChunk: async (chunk: CamlFlowEffectOutputChunk): Promise<void> => {
+        await this.notify<CamlFlowOutputChunkNotification>(
+          CAMLFLOW_METHODS.outputChunk,
+          {
+            runId: params.runId ?? null,
+            step: params.step ?? null,
+            streamId: chunk.streamId,
+            format: chunk.format,
+            delta: chunk.delta,
+            done: chunk.done,
+          },
+        );
+      },
+    };
   }
 
   private async handleNotification(

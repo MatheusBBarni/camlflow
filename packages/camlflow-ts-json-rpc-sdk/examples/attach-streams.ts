@@ -27,6 +27,9 @@ async function main(): Promise<void> {
       onProgress: async (progress) => {
         console.log("progress:", JSON.stringify(progress));
       },
+      onOutputChunk: async (chunk) => {
+        console.log("outputChunk:", JSON.stringify(chunk));
+      },
     },
     { child },
   );

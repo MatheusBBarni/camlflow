@@ -94,7 +94,7 @@ test('sdk smoke test covers initialize, compile, run, and progress', { timeout: 
     assert.equal(initialize.capabilities.trace, true);
     assert.equal(initialize.capabilities.diagnostic, true);
     assert.equal(initialize.capabilities.progress, true);
-    assert.equal(initialize.capabilities.streaming, false);
+    assert.equal(initialize.capabilities.streaming, true);
 
     const compile = await client.compile({
       program: {
@@ -185,6 +185,115 @@ test('sdk initialize can disable progress while keeping trace', { timeout: 30000
     assert.equal(result.output, 'inline-review');
     assert.ok(traces.some((entry) => entry.event === 'run-start'));
     assert.equal(progress.length, 0);
+  } finally {
+    await client.shutdownAndExit();
+  }
+});
+
+test('sdk initialize can disable diagnostics while keeping progress', { timeout: 30000 }, async () => {
+  const diagnostics = [];
+  const progress = [];
+  const client = spawnCamlFlowClient({
+    command: 'dune',
+    args: ['exec', './bin/main.exe', '--', 'serve', '--stdio'],
+    cwd: repoRoot,
+    onDiagnostic: async (diagnostic) => {
+      diagnostics.push(diagnostic);
+    },
+    onProgress: async (notification) => {
+      progress.push(notification);
+    },
+  });
+
+  try {
+    await client.initialize({
+      notifications: {
+        diagnostic: false,
+        progress: true,
+      },
+    });
+
+    await assert.rejects(
+      client.run({
+        program: {
+          path: 'examples/basic/main.cml',
+          includePaths: [],
+          skillsDir: null,
+        },
+        entry: 'main',
+      }),
+    );
+
+    assert.equal(diagnostics.length, 0);
+    assert.ok(progress.some((entry) => entry.stage === 'run-start'));
+    assert.ok(progress.some((entry) => entry.stage === 'run-error'));
+  } finally {
+    await client.shutdownAndExit();
+  }
+});
+
+test('sdk effect handlers can emit output chunks', { timeout: 30000 }, async () => {
+  const chunks = [];
+  let firstChunkResolve;
+  const firstChunk = new Promise((resolve) => {
+    firstChunkResolve = resolve;
+  });
+
+  const client = spawnCamlFlowClient({
+    command: 'dune',
+    args: ['exec', './bin/main.exe', '--', 'serve', '--stdio'],
+    cwd: repoRoot,
+    effectHandler: async ({ effect }, _request, context) => {
+      if (`${effect.kind}:${effect.name}` === 'bound-agent:greeter') {
+        const name = effect.input?.name ?? 'friend';
+        await context.emitOutputChunk({
+          streamId: 'greeter-stream',
+          format: 'text',
+          delta: 'hello ',
+          done: false,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        await context.emitOutputChunk({
+          streamId: 'greeter-stream',
+          format: 'text',
+          delta: String(name),
+          done: true,
+        });
+        return effectOutput(`hello ${name}`);
+      }
+      return effectOutput('');
+    },
+    onOutputChunk: async (chunk) => {
+      chunks.push(chunk);
+      firstChunkResolve();
+    },
+  });
+
+  try {
+    const initialize = await client.initialize();
+    assert.equal(initialize.capabilities.streaming, true);
+
+    const runPromise = client.run({
+      program: {
+        path: 'examples/basic/main.cml',
+        includePaths: [],
+        skillsDir: null,
+      },
+      entry: 'main',
+      input: 'Ada',
+    });
+
+    await firstChunk;
+    assert.ok(chunks.length >= 1);
+
+    const result = await runPromise;
+    assert.equal(result.output, 'hello Ada!');
+    assert.equal(chunks.length, 2);
+    assert.deepEqual(chunks.map((chunk) => chunk.delta), ['hello ', 'Ada']);
+    assert.deepEqual(chunks.map((chunk) => chunk.done), [false, true]);
+    assert.ok(chunks.every((chunk) => chunk.runId === 'run-1'));
+    assert.ok(chunks.every((chunk) => chunk.step === 1));
+    assert.ok(chunks.every((chunk) => chunk.streamId === 'greeter-stream'));
   } finally {
     await client.shutdownAndExit();
   }

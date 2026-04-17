@@ -7,6 +7,7 @@ let effect_method = "camlflow/executeEffect"
 let trace_method = "camlflow/trace"
 let diagnostic_method = "camlflow/diagnostic"
 let progress_method = "camlflow/progress"
+let output_chunk_method = "camlflow/outputChunk"
 let cancel_method = "$/cancelRequest"
 let request_cancelled_code = -32800
 let cancellation_message = "run cancelled by host"
@@ -30,6 +31,7 @@ type server = {
   mutable active_run : active_run option;
   mutable pending_message : Yojson.Safe.t option;
   mutable trace_enabled : bool;
+  mutable diagnostics_enabled : bool;
   mutable progress_enabled : bool;
 }
 
@@ -49,7 +51,17 @@ type loop_control = Continue | Stop
 
 type notification_preferences = {
   trace_enabled : bool;
+  diagnostics_enabled : bool;
   progress_enabled : bool;
+}
+
+type output_chunk = {
+  output_chunk_run_id : string option;
+  output_chunk_step : int option;
+  output_chunk_stream_id : string;
+  output_chunk_format : string;
+  output_chunk_delta : Yojson.Safe.t;
+  output_chunk_done : bool;
 }
 
 type run_error = Run_failed of string | Run_cancelled of string
@@ -71,6 +83,12 @@ let optional_string_field fields name =
   | None | Some `Null -> Ok None
   | Some (`String value) -> Ok (Some value)
   | Some _ -> Error (Printf.sprintf "field %s must be a string or null" name)
+
+let optional_int_field fields name =
+  match List.assoc_opt name fields with
+  | None | Some `Null -> Ok None
+  | Some (`Int value) -> Ok (Some value)
+  | Some _ -> Error (Printf.sprintf "field %s must be an int or null" name)
 
 let string_list_field fields name =
   match List.assoc_opt name fields with
@@ -127,18 +145,55 @@ let bool_field_with_default fields name default =
   | Some (`Bool value) -> Ok value
   | Some _ -> Error (Printf.sprintf "field %s must be a bool" name)
 
+let output_chunk_of_yojson = function
+  | `Assoc fields ->
+      let* output_chunk_run_id = optional_string_field fields "runId" in
+      let* output_chunk_step = optional_int_field fields "step" in
+      let* output_chunk_stream_id = string_field fields "streamId" in
+      let* output_chunk_format = string_field fields "format" in
+      let* output_chunk_delta =
+        match List.assoc_opt "delta" fields with
+        | Some json -> Ok json
+        | None -> Error "missing field delta"
+      in
+      let* output_chunk_done =
+        match List.assoc_opt "done" fields with
+        | Some (`Bool value) -> Ok value
+        | Some _ -> Error "field done must be a bool"
+        | None -> Error "missing field done"
+      in
+      Ok
+        {
+          output_chunk_run_id;
+          output_chunk_step;
+          output_chunk_stream_id;
+          output_chunk_format;
+          output_chunk_delta;
+          output_chunk_done;
+        }
+  | _ -> Error "output chunk params must be a JSON object"
+
 let notification_preferences_of_yojson = function
   | `Assoc fields -> (
       match List.assoc_opt "notifications" fields with
-      | None -> Ok { trace_enabled = true; progress_enabled = true }
+      | None ->
+          Ok
+            {
+              trace_enabled = true;
+              diagnostics_enabled = true;
+              progress_enabled = true;
+            }
       | Some (`Assoc notification_fields) ->
           let* trace_enabled =
             bool_field_with_default notification_fields "trace" true
           in
+          let* diagnostics_enabled =
+            bool_field_with_default notification_fields "diagnostic" true
+          in
           let* progress_enabled =
             bool_field_with_default notification_fields "progress" true
           in
-          Ok { trace_enabled; progress_enabled }
+          Ok { trace_enabled; diagnostics_enabled; progress_enabled }
       | Some _ -> Error "field notifications must be an object")
   | _ -> Error "initialize params must be a JSON object"
 
@@ -191,7 +246,7 @@ let initialized_result () =
             ("trace", `Bool true);
             ("diagnostic", `Bool true);
             ("progress", `Bool true);
-            ("streaming", `Bool false);
+            ("streaming", `Bool true);
             ("cancelRequest", `Bool true);
             ("renderedPrompt", `Bool true);
             ("outputSchema", `Bool true);
@@ -282,6 +337,21 @@ let send_progress (server : server) ?run_id ?step ?message ?completed_steps ?kno
          ?cancellable stage)
   else Ok ()
 
+let output_chunk_payload ?run_id ?step ~stream_id ~format ~delta ~done_ () =
+  `Assoc
+    [
+      string_option_field "runId" run_id;
+      int_option_field "step" step;
+      ("streamId", `String stream_id);
+      ("format", `String format);
+      ("delta", delta);
+      ("done", `Bool done_);
+    ]
+
+let send_output_chunk server ?run_id ?step ~stream_id ~format ~delta ~done_ () =
+  notify server output_chunk_method
+    (output_chunk_payload ?run_id ?step ~stream_id ~format ~delta ~done_ ())
+
 let diagnostic_payload ?run_id ?step ?method_ ?request message =
   `Assoc
     [
@@ -293,9 +363,11 @@ let diagnostic_payload ?run_id ?step ?method_ ?request message =
       effect_summary_field request;
     ]
 
-let send_diagnostic server ?run_id ?step ?method_ ?request message =
-  notify server diagnostic_method
-    (diagnostic_payload ?run_id ?step ?method_ ?request message)
+let send_diagnostic (server : server) ?run_id ?step ?method_ ?request message =
+  if server.diagnostics_enabled then
+    notify server diagnostic_method
+      (diagnostic_payload ?run_id ?step ?method_ ?request message)
+  else Ok ()
 
 let reply_success_message server request_id json =
   match request_id with
@@ -310,6 +382,29 @@ let reply_error_message server request_id ?data ~code message =
 let progress_message_for_effect action (request : Effect_request.t) =
   Printf.sprintf "%s %s %s" action
     (Effect_request.kind_to_string request.kind) request.name
+
+let output_chunk_matches_request (request : Effect_request.t) (chunk : output_chunk) =
+  request.Effect_request.run_id = chunk.output_chunk_run_id
+  && request.Effect_request.step_index = chunk.output_chunk_step
+
+let relay_output_chunk server (chunk : output_chunk) =
+  send_output_chunk server ?run_id:chunk.output_chunk_run_id
+    ?step:chunk.output_chunk_step ~stream_id:chunk.output_chunk_stream_id
+    ~format:chunk.output_chunk_format ~delta:chunk.output_chunk_delta
+    ~done_:chunk.output_chunk_done ()
+
+let handle_in_run_output_chunk server (request : Effect_request.t) params =
+  match output_chunk_of_yojson params with
+  | Error error ->
+      send_diagnostic server ?run_id:request.run_id ?step:request.step_index
+        ~method_:output_chunk_method ~request error
+  | Ok chunk ->
+      if output_chunk_matches_request request chunk then
+        relay_output_chunk server chunk
+      else
+        send_diagnostic server ?run_id:request.run_id ?step:request.step_index
+          ~method_:output_chunk_method ~request
+          "output chunk runId/step must match the active effect request"
 
 let active_run_matches_request active request_id =
   match active.request_id with
@@ -437,6 +532,10 @@ let rec drain_in_run_control_messages server =
                 in
                 drain_in_run_control_messages server))
 
+let drain_and_ensure_run_not_cancelled server ?step ?request () =
+  let* () = drain_in_run_control_messages server in
+  ensure_run_not_cancelled server ?step ?request ()
+
 let send_effect_request server (request : Effect_request.t) =
   let request_id =
     Rpc_protocol.String
@@ -505,7 +604,20 @@ let send_effect_request server (request : Effect_request.t) =
             in
             let* cancel_id = cancel_request_id_of_yojson cancel_params in
             let* matched = request_cancellation server cancel_id in
-            let* () = if matched then ensure_run_not_cancelled server ?step ~request () else Ok () in
+            let* () =
+              if matched then ensure_run_not_cancelled server ?step ~request ()
+              else Ok ()
+            in
+            wait_for_response ()
+        | Ok incoming
+          when String.equal incoming.Rpc_protocol.request_method output_chunk_method
+               && Option.is_none incoming.Rpc_protocol.request_id ->
+            let output_chunk_params =
+              match incoming.Rpc_protocol.request_params with
+              | Some params -> params
+              | None -> `Assoc []
+            in
+            let* () = handle_in_run_output_chunk server request output_chunk_params in
             wait_for_response ()
         | Ok incoming when Option.is_none incoming.Rpc_protocol.request_id ->
             wait_for_response ()
@@ -539,10 +651,9 @@ let build_host_context server ~working_directory ~skills_dir run_id =
     (match server.active_run with
     | Some active -> active.current_step <- Some step
     | None -> ());
-    let* () = drain_in_run_control_messages server in
-    let* () = ensure_run_not_cancelled server ~step () in
+    let* () = drain_and_ensure_run_not_cancelled server ~step () in
     let* request = Effect_request.of_invocation ~step_index:step ~run_id invocation in
-    let* () = ensure_run_not_cancelled server ~step ~request () in
+    let* () = drain_and_ensure_run_not_cancelled server ~step ~request () in
     let completed_steps =
       match server.active_run with Some active -> active.completed_steps | None -> step - 1
     in
@@ -569,12 +680,14 @@ let build_host_context server ~working_directory ~skills_dir run_id =
           let* () = send_diagnostic server ~run_id ~step ~request error in
           Error error
     in
+    let* () = drain_and_ensure_run_not_cancelled server ~step ~request () in
     let validation =
       Effect_bridge.validate_execution ~source:"host" invocation execution
     in
     let* () =
       match validation with
       | Ok _ ->
+          let* () = drain_and_ensure_run_not_cancelled server ~step ~request () in
           (match server.active_run with
           | Some active -> active.completed_steps <- step
           | None -> ());
@@ -607,8 +720,7 @@ let build_host_context server ~working_directory ~skills_dir run_id =
   in
   let context =
     Context.with_cancellation_check context (fun () ->
-        let* () = drain_in_run_control_messages server in
-        ensure_run_not_cancelled server ())
+        drain_and_ensure_run_not_cancelled server ())
   in
   let context = Context.with_default_provider context run in
   let context =
@@ -695,9 +807,8 @@ let handle_run server params =
          ~message:(Printf.sprintf "Running %s" request.run_entry)
          ~completed_steps:0 ?known_steps:None ~cancellable:true "run-start")
   in
-  let* () = lift (drain_in_run_control_messages server) in
   let* () =
-    match ensure_run_not_cancelled server () with
+    match drain_and_ensure_run_not_cancelled server () with
     | Ok () -> Ok ()
     | Error error -> Error (Run_cancelled error)
   in
@@ -722,6 +833,11 @@ let handle_run server params =
   let* result =
     match result with
     | Ok result ->
+        let* () =
+          match drain_and_ensure_run_not_cancelled server () with
+          | Ok () -> Ok ()
+          | Error error -> Error (Run_cancelled error)
+        in
         let* () =
           lift
             (send_trace server ~run_id
@@ -793,6 +909,7 @@ let handle_request server (request : Rpc_protocol.request_message) =
           | Ok preferences ->
               server.initialized <- true;
               server.trace_enabled <- preferences.trace_enabled;
+              server.diagnostics_enabled <- preferences.diagnostics_enabled;
               server.progress_enabled <- preferences.progress_enabled;
               reply_success (initialized_result ())
           | Error error ->
@@ -816,6 +933,18 @@ let handle_request server (request : Rpc_protocol.request_message) =
           | Error error ->
               let* () = send_diagnostic server ~method_:request.request_method error in
               reply_error ~code:(-32600) error
+        in
+        Ok Continue
+    | "camlflow/outputChunk" ->
+        let* () =
+          match request_id with
+          | None -> Ok ()
+          | Some _ ->
+              let message =
+                "camlflow/outputChunk is only accepted as a notification during effect execution"
+              in
+              let* () = send_diagnostic server ~method_:request.request_method message in
+              reply_error ~code:(-32600) message
         in
         Ok Continue
     | "camlflow/check" ->
@@ -902,6 +1031,7 @@ let run ~input ~output =
       active_run = None;
       pending_message = None;
       trace_enabled = true;
+      diagnostics_enabled = true;
       progress_enabled = true;
     }
   in

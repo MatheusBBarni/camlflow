@@ -27,7 +27,7 @@ These docs lock the core model:
 - framing is `Content-Length`
 - MVP execution is blocking request/response
 - MVP server supports one active run per server instance
-- v1 does not include suspend/resume or streaming
+- v1 does not include suspend/resume or authoritative incremental result streaming
 
 ### 2. Reusable effect request model was extracted
 
@@ -73,6 +73,8 @@ Current server-to-host method/notifications include:
 - `camlflow/executeEffect`
 - `camlflow/trace`
 - `camlflow/diagnostic`
+- `camlflow/progress`
+- `camlflow/outputChunk`
 
 ### 5. Host examples were added
 
@@ -250,26 +252,28 @@ Current progress scope is intentionally lightweight:
 - safe to ignore
 - step-oriented rather than percent-oriented
 
-### 17. Hosts can now opt in or out of trace and progress per session
+### 17. Hosts can now opt in or out of trace, diagnostic, and progress per session
 
 Completed:
 
 - optional `initialize.params.notifications.trace`
+- optional `initialize.params.notifications.diagnostic`
 - optional `initialize.params.notifications.progress`
 - server-side session toggles for those streams
 - SDK typing for initialize notification preferences
-- tests covering progress-disabled sessions
+- tests covering progress-disabled and diagnostic-disabled sessions
 
-### 18. A streaming scaffold now exists without enabling streaming semantics
+### 18. An initial advisory streaming relay now exists
 
 Completed:
 
-- `initialize.capabilities.streaming = false`
-- reserved SDK protocol type for `camlflow/outputChunk`
-- reserved SDK callback surface `onOutputChunk`
-- docs clarifying that streaming is still unavailable unless a future server advertises otherwise
+- `initialize.capabilities.streaming = true`
+- server relay support for advisory `camlflow/outputChunk`
+- SDK callback surface `onOutputChunk`
+- SDK effect-handler context support for `emitOutputChunk(...)`
+- tests covering relayed output-chunk behavior end to end
 
-This starts the streaming slice conservatively without pretending partial output is authoritative.
+This keeps streaming explicitly non-authoritative while making the notification surface real.
 
 ---
 
@@ -277,8 +281,8 @@ This starts the streaming slice conservatively without pretending partial output
 
 Last verified test run for the JSON-RPC bridge slice:
 
-- `dune test` passed with 77 tests after pure-compute cancellation and notification-preference follow-up work
-- `cd packages/camlflow-ts-json-rpc-sdk && npm test` passed with 10 Node tests, including SDK example, progress, cancellation, and notification-preference coverage
+- `dune test` passed with 81 tests after streaming-relay, diagnostic-preference, and cancellation-race follow-up work
+- `cd packages/camlflow-ts-json-rpc-sdk && npm test` passed with 12 Node tests, including SDK output-chunk, cancellation, and notification-preference coverage
 - an OpenCode-backed provider run completed successfully against the real OpenCode CLI
 
 Recent follow-up documentation additions include:
@@ -289,7 +293,7 @@ Recent follow-up documentation additions include:
 - capability semantics and host-ignore rules in `docs/json-rpc.md`
 - expanded protocol fixtures for invalid requests, unknown methods, run failures, host effect errors, cancellation, progress, and shutdown/exit in `docs/json-rpc-fixtures.md`
 - deferred design notes for streaming, plus narrowed follow-up notes for cancellation and progress, in `docs/json-rpc-roadmap.md`
-- a formal deferred-extensions doc that now treats cancellation and progress as partially implemented, with streaming reserved but still non-authoritative in `docs/json-rpc-deferred-extensions.md`
+- a formal deferred-extensions doc that now treats cancellation and progress as partially implemented, with streaming available as an advisory relay in `docs/json-rpc-deferred-extensions.md`
 - provider execution docs for both `codex` and `opencode` in `docs/provider-execution.md`
 - external CI coverage for OCaml tests, SDK smoke tests, and Node host examples in `.github/workflows/ci.yml`
 - runnable SDK-backed host examples in `packages/camlflow-ts-json-rpc-sdk/examples/`
@@ -305,11 +309,11 @@ The current JSON-RPC checklist is complete.
 Future follow-up beyond the checklist could still include:
 
 - deepening cancellation beyond the current slice:
-  - better race handling between cancellation and late effect responses
-  - deciding whether cancellation diagnostics should remain default or become optional
+  - decide whether first-observed terminal state should become an explicit cross-step policy
+  - decide whether cancellation should target only runs or also future nested request classes
 - deepening progress semantics:
   - decide whether pure-step milestones should expand further
   - decide whether known-step estimates should ever become non-null
-- deciding whether the reserved streaming scaffold should grow into real `outputChunk` emission
+- deciding whether advisory `outputChunk` relay should grow into richer automatic streaming semantics
 - more direct CLI/provider backends such as additional tool-specific adapters after more host feedback
 - publishing or packaging the SDK more formally once the example-driven integration surface feels stable

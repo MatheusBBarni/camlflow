@@ -6,7 +6,7 @@ Partially implemented.
 
 The current `0.1.0` bridge now includes an initial cancellation slice using `$/cancelRequest`.
 It also includes an initial progress slice using `camlflow/progress`.
-Streaming now has a reserved scaffold through capability signaling and SDK notification plumbing, but no server-side emission yet.
+Streaming now has an advisory relay through capability signaling, SDK notification plumbing, and host-emitted `camlflow/outputChunk` notifications.
 These notes exist to make future work more deliberate and more compatible with the current bridge.
 
 Current stable references:
@@ -290,13 +290,14 @@ That can improve UX, but it is dangerous if it becomes entangled with typed work
 
 ## Current direction
 
-A first scaffold now exists, but streaming is still not emitted by the server:
+An initial advisory relay now exists for streaming previews:
 
-- `capabilities.streaming = false`
-- the SDK reserves an `onOutputChunk` callback surface
-- no `camlflow/outputChunk` notifications are sent yet
+- `capabilities.streaming = true`
+- the SDK exposes an `onOutputChunk` callback surface
+- effect handlers can emit `camlflow/outputChunk`
+- CamlFlow relays those chunks back to the session during active effect execution
 
-If streaming is expanded later, it should remain explicitly non-authoritative.
+If streaming is expanded further, it should remain explicitly non-authoritative.
 
 Possible notification names:
 
@@ -342,10 +343,11 @@ Streaming events must **not**:
 Hosts are free to:
 
 - show streaming previews locally
-- buffer or discard chunks
+- emit advisory chunks from their effect handlers through the SDK context helper
+- buffer or discard relayed chunks
 - ignore the stream entirely
 
-CamlFlow should only relay stream events if there is a clear protocol need and the extension stays optional.
+CamlFlow currently acts as a relay only; final typed effect results still decide correctness.
 
 ## Non-goals
 
