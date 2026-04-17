@@ -6,6 +6,13 @@ Draft. This document locks the **Phase 0** contract for exposing CamlFlow as a h
 
 The goal of this phase is not to finalize every request payload, but to lock the core execution model before implementation.
 
+## Companion docs
+
+- `docs/json-rpc-fixtures.md` — concrete request/response transcripts
+- `docs/json-rpc-roadmap.md` — roadmap and deferred extension notes
+- `docs/json-rpc-status.md` — current progress snapshot and fuller summary
+- `docs/json-rpc-checklist.md` — concise remaining-task checklist
+
 ---
 
 ## Purpose
@@ -236,6 +243,65 @@ Host sends a notification or request with method `exit`.
 
 The current implementation stops the server loop after receiving it.
 
+### Current error code table
+
+The current implementation uses these JSON-RPC error codes.
+
+#### Standard JSON-RPC shaped errors
+
+- `-32600` — invalid JSON-RPC request payload
+- `-32601` — method not found
+
+#### CamlFlow server lifecycle errors
+
+- `-32002` — server not initialized
+
+#### CamlFlow operation errors
+
+- `-32010` — `camlflow/check` failed
+- `-32011` — `camlflow/compile` failed
+- `-32012` — `camlflow/run` failed
+
+### Error code semantics
+
+#### `-32600` invalid request
+
+Returned when the incoming payload is not a valid JSON-RPC request object for the current server.
+
+Typical causes:
+
+- missing `jsonrpc`
+- unsupported `jsonrpc` version
+- missing `method`
+- malformed request envelope
+
+#### `-32601` method not found
+
+Returned when the request method is well-formed but unsupported.
+
+#### `-32002` server not initialized
+
+Returned when the host calls a method that requires prior `initialize` before the server has been initialized.
+
+#### `-32010` check failed
+
+Returned when `camlflow/check` fails due to program loading, parse, module-resolution, or typing errors.
+
+#### `-32011` compile failed
+
+Returned when `camlflow/compile` fails due to program loading, parse, module-resolution, or typing errors.
+
+#### `-32012` run failed
+
+Returned when `camlflow/run` fails due to:
+
+- program load/check failures
+- invalid host effect responses
+- host-side effect execution failures
+- runtime evaluation errors
+
+When possible, CamlFlow also emits a `camlflow/diagnostic` notification alongside the request error response.
+
 ### Server → Client requests
 
 During a run, CamlFlow may send requests back to the host.
@@ -325,6 +391,16 @@ Current notification shapes:
 ```
 
 `effect` may be `null` when the diagnostic is not tied to a single effect step.
+
+### Current host error propagation behavior
+
+If the host returns a JSON-RPC error in response to `camlflow/executeEffect`, CamlFlow currently:
+
+1. treats the effect step as failed
+2. emits `camlflow/trace` / `camlflow/diagnostic` notifications when applicable
+3. fails the enclosing `camlflow/run` request with `-32012`
+
+This keeps the top-level run contract simple while preserving machine-readable detail in notifications.
 
 For concrete transcripts, see `docs/json-rpc-fixtures.md`.
 

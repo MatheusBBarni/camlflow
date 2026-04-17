@@ -407,6 +407,108 @@ Add:
 
 ---
 
+# Phase 4.5 — Deferred protocol extensions
+
+These are deliberately deferred design notes, not implementation requirements for the current slice.
+
+## Cancellation design notes
+
+### Why it matters
+
+Hosts may need to stop a long-running workflow when:
+
+- the user cancels from UI
+- the host times out
+- the host tears down the current session
+- the host decides an effect result is no longer needed
+
+### Proposed direction
+
+Add one of:
+
+- JSON-RPC request cancellation using `$/cancelRequest`
+- a CamlFlow-specific method such as `camlflow/cancelRun`
+
+### Suggested semantics
+
+- cancellation should target a **run** or a specific in-flight **request id**
+- if CamlFlow is currently blocked on `camlflow/executeEffect`, cancellation should fail the run cleanly
+- cancellation should be observable through notifications, likely:
+  - `camlflow/trace` with an event like `run-cancelled`
+  - `camlflow/diagnostic` when useful
+
+### Non-goal for now
+
+Do not implement partial unwinding or durable resume tied to cancellation in this phase.
+
+## Progress design notes
+
+### Why it matters
+
+Hosts often want UI feedback before the workflow completes.
+
+### Proposed direction
+
+Add a notification such as:
+
+- `camlflow/progress`
+
+### Suggested payload shape
+
+- `runId`
+- `stage` or `event`
+- `step`
+- `message`
+- optional counters such as `completedSteps` / `knownSteps`
+
+### Suggested usage
+
+- emit before an effect request starts
+- emit after an effect step completes
+- emit around pure compile/check/run milestones
+
+### Non-goal for now
+
+Do not attempt percent-perfect progress. Step-oriented progress is enough.
+
+## Streaming design notes
+
+### Why it matters
+
+Some hosts may want token-by-token or chunked previews during effect execution.
+
+### Proposed direction
+
+Keep streaming out of the core run contract initially, but reserve room for notifications like:
+
+- `camlflow/outputChunk`
+- `camlflow/effectStream`
+
+### Suggested semantics
+
+- streaming should be advisory only
+- the authoritative contract remains the final typed `output`
+- streamed chunks should never replace final type validation
+
+### Suggested host model
+
+- host may stream its own preview UI locally
+- CamlFlow should only relay stream events if there is a stable protocol need
+
+### Non-goal for now
+
+Do not couple streaming to typed workflow state changes. Only finalized JSON outputs should advance the workflow.
+
+## Recommended order for future extension work
+
+1. cancellation
+2. progress notifications
+3. optional streaming
+
+That order preserves correctness before UX enhancements.
+
+---
+
 # Phase 5 — Add tool-specific convenience adapters
 
 ## Goal
