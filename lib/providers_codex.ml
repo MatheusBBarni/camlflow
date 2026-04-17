@@ -183,54 +183,43 @@ let run_codex_exec ~working_directory ~settings ~prompt ~schema ~model =
                (process_status_message status)
                (String.trim stderr)))
 
-let invocation_kind_for_trace invocation =
-  match invocation.Runtime.Context.invocation_kind with
-  | Runtime.Context.Bound_agent -> "bound-agent"
-  | Runtime.Context.Bound_skill -> "bound-skill"
-  | Runtime.Context.Local_prompt_skill -> "local-prompt-skill"
-  | Runtime.Context.Inline_agent -> "inline-agent"
-
-let unsupported_settings_error invocation settings =
+let unsupported_settings_error (request : Effect_request.t) settings =
   Printf.sprintf "provider codex does not support inline setting(s) %s for %s %s"
     (String.concat ", " settings)
-    (match invocation.Runtime.Context.invocation_kind with
+    (match request.Effect_request.kind with
     | Runtime.Context.Inline_agent -> "agent"
     | Runtime.Context.Bound_agent -> "bound-agent"
     | Runtime.Context.Bound_skill -> "bound-skill"
     | Runtime.Context.Local_prompt_skill -> "local-prompt-skill")
-    invocation.Runtime.Context.invocation_name
+    request.Effect_request.name
 
 let execute_invocation ~working_directory ~settings ~step invocation =
-  let* output_schema =
-    Provider_schema.of_type ~types:invocation.Runtime.Context.invocation_types
-      invocation.Runtime.Context.invocation_return_type
-  in
-  let* wrapped_schema = wrapped_response_schema output_schema in
-  let* rendered = Provider_prompt.render ~invocation ~output_schema in
+  let* request = Effect_request.of_invocation ~step_index:step invocation in
+  let* wrapped_schema = wrapped_response_schema request.Effect_request.output_schema in
   let model =
-    match rendered.Provider_prompt.requested_model with
+    match request.Effect_request.requested_model with
     | Some model -> Some model
     | None -> settings.Provider.model
   in
-  let trace_kind = invocation_kind_for_trace invocation in
-  let trace_name = invocation.Runtime.Context.invocation_name in
+  let trace_kind = Effect_request.kind_to_string request.Effect_request.kind in
+  let trace_name = request.Effect_request.name in
   trace_start settings ~step ~kind:trace_kind ~name:trace_name ~model;
   let started_at = Unix.gettimeofday () in
   let result =
     let* () =
-      match rendered.Provider_prompt.unsupported_settings with
+      match request.Effect_request.unsupported_settings with
       | [] -> Ok ()
-      | settings -> Error (unsupported_settings_error invocation settings)
+      | settings -> Error (unsupported_settings_error request settings)
     in
     let effective_working_directory =
-      match invocation.Runtime.Context.invocation_working_directory with
+      match request.Effect_request.working_directory with
       | Some working_directory -> working_directory
       | None -> working_directory
     in
     let wrapped_prompt =
       String.concat "\n"
         [
-          rendered.Provider_prompt.prompt;
+          request.Effect_request.rendered_prompt;
           "";
           "Final response contract:";
           "Return a JSON object with exactly one field named result.";

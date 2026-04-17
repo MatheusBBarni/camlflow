@@ -8,6 +8,7 @@ module Value = Value
 module Provider = Provider
 module Provider_schema = Provider_schema
 module Provider_prompt = Provider_prompt
+module Effect_request = Effect_request
 module Providers_codex = Providers_codex
 module Providers = Providers
 module Cli = Cli

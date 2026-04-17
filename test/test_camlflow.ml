@@ -135,6 +135,12 @@ let render_prompt (invocation : Camlflow.Runtime.Context.invocation) =
   | Ok rendered -> rendered
   | Error error -> Alcotest.failf "prompt rendering failed: %s" error
 
+let build_effect_request ?step_index ?run_id
+    (invocation : Camlflow.Runtime.Context.invocation) =
+  match Camlflow.Effect_request.of_invocation ?step_index ?run_id invocation with
+  | Ok request -> request
+  | Error error -> Alcotest.failf "effect request failed: %s" error
+
 let test_parse_source () =
   let source =
     {|
@@ -436,6 +442,74 @@ let test_provider_prompt_for_inline_agent () =
     Alcotest.failf "missing inline metadata section: %s" rendered.prompt;
   if not (contains_substring rendered.prompt "\"tone\"") then
     Alcotest.failf "missing inline metadata payload: %s" rendered.prompt
+
+let test_effect_request_for_local_skill () =
+  let invocation =
+    make_invocation ~kind:Camlflow.Runtime.Context.Local_prompt_skill
+      ~name:"caveman" ~input:(`Assoc [ ("prompt", `String "hello") ])
+      ~return_type:Camlflow.Ir.TString ~skills_directory:"/workspace/skills"
+      ~markdown:"# Caveman\n\nReply tersely." ()
+  in
+  let request = build_effect_request ~step_index:7 ~run_id:"run-1" invocation in
+  Alcotest.(check string) "kind" "local-prompt-skill"
+    (Camlflow.Effect_request.kind_to_string request.kind);
+  Alcotest.(check string) "name" "caveman" request.name;
+  Alcotest.(check string) "declared return type" "string"
+    request.declared_return_type;
+  Alcotest.(check (option string)) "skills directory"
+    (Some "/workspace/skills") request.skills_directory;
+  Alcotest.(check (option string)) "skill markdown"
+    (Some "# Caveman\n\nReply tersely.") request.skill_markdown;
+  Alcotest.(check (option int)) "step index" (Some 7) request.step_index;
+  Alcotest.(check (option string)) "run id" (Some "run-1") request.run_id;
+  Alcotest.(check (option string)) "requested model" None request.requested_model;
+  Alcotest.(check (list string)) "unsupported settings" []
+    request.unsupported_settings;
+  expect_string_field "type" "string" request.output_schema;
+  if not (contains_substring request.rendered_prompt "Reply tersely.") then
+    Alcotest.failf "missing skill markdown in rendered prompt: %s"
+      request.rendered_prompt;
+  let json = Camlflow.Effect_request.to_yojson request in
+  expect_string_field "kind" "local-prompt-skill" json;
+  expect_string_field "role" "skill" json;
+  expect_string_field "name" "caveman" json
+
+let test_effect_request_for_inline_agent () =
+  let definition =
+    {
+      Camlflow.Ir.define_model = Some "gpt-5.4-mini";
+      define_temperature = Some 0.1;
+      define_system_prompt = Some "Review tersely";
+      define_metadata = [ ("tone", Camlflow.Ir.LString "terse") ];
+      define_loc = Camlflow.Loc.none;
+    }
+  in
+  let invocation =
+    make_invocation ~kind:Camlflow.Runtime.Context.Inline_agent
+      ~name:"reviewer" ~definition ~working_directory:"/workspace" ()
+  in
+  let request = build_effect_request invocation in
+  Alcotest.(check string) "kind" "inline-agent"
+    (Camlflow.Effect_request.kind_to_string request.kind);
+  Alcotest.(check (option string)) "requested model" (Some "gpt-5.4-mini")
+    request.requested_model;
+  Alcotest.(check (list string)) "unsupported settings" [ "temperature" ]
+    request.unsupported_settings;
+  Alcotest.(check (option string)) "working directory" (Some "/workspace")
+    request.working_directory;
+  Alcotest.(check bool) "inline definition present" true
+    (Option.is_some request.inline_definition);
+  if not (contains_substring request.rendered_prompt "Review tersely") then
+    Alcotest.failf "missing inline prompt in rendered request: %s"
+      request.rendered_prompt;
+  let json = Camlflow.Effect_request.to_yojson request in
+  expect_string_field "kind" "inline-agent" json;
+  expect_string_field "role" "agent" json;
+  (match expect_assoc_field "inlineDefinition" json with
+  | `Assoc _ -> ()
+  | other ->
+      Alcotest.failf "expected inlineDefinition object, got %s"
+        (Yojson.Safe.to_string other))
 
 let test_codex_build_exec_args () =
   let settings =
@@ -968,6 +1042,10 @@ let () =
             test_provider_prompt_for_local_skill;
           Alcotest.test_case "provider prompt for inline agent" `Quick
             test_provider_prompt_for_inline_agent;
+          Alcotest.test_case "effect request for local skill" `Quick
+            test_effect_request_for_local_skill;
+          Alcotest.test_case "effect request for inline agent" `Quick
+            test_effect_request_for_inline_agent;
           Alcotest.test_case "codex build exec args" `Quick
             test_codex_build_exec_args;
           Alcotest.test_case "codex preflight validation" `Quick
