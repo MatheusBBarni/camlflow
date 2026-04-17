@@ -63,6 +63,8 @@ let all_commands = [ Help; Parse; Check; Compile; Run; Serve; Completion ]
 let public_commands = [ Parse; Check; Compile; Run; Serve; Completion ]
 let public_command_names = List.map command_name public_commands
 let shell_names = [ "bash"; "zsh"; "fish" ]
+let provider_names_text = String.concat ", " Provider.available_provider_names
+let provider_completion_text = String.concat " " Provider.available_provider_names
 
 let usage_text =
   String.concat "\n"
@@ -76,7 +78,9 @@ let usage_text =
       "  camlflow compile <file.cml> [-I dir]... [-o artifact.json]";
       "  camlflow run <file.cml|artifact.json> [-I dir]... [--entry name]";
       "               [--input file.json | --input-json json] [--skills dir]";
-      "               [--provider codex] [--model name] [--reasoning level]";
+      (Printf.sprintf
+         "               [--provider <%s>] [--model name] [--reasoning level]"
+         provider_names_text);
       "               [--provider-profile name] [--provider-config key=value]...";
       "               [--sandbox mode] [--allow-write-dir dir]... [--trace-provider]";
       "  camlflow serve --stdio";
@@ -99,7 +103,9 @@ let usage_text =
       "  --input <path>          Read entrypoint JSON input from a file";
       "  --input-json <j>        Read entrypoint JSON input from an inline JSON string";
       "  --skills <dir>          Resolve local skills from <dir>/<name>/SKILL.md";
-      "  --provider <name>       Provider to use for unresolved effects (codex)";
+      (Printf.sprintf
+         "  --provider <name>       Provider to use for unresolved effects (%s)"
+         provider_names_text);
       "  --model <name>          Override provider model when the workflow does not set one";
       "  --reasoning <level>     Provider-agnostic reasoning level: low, medium, high, max";
       "  --provider-profile <n>  Provider profile name";
@@ -116,6 +122,7 @@ let usage_text =
       "  camlflow compile examples/basic/main.cml -o /tmp/basic.ir.json";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"'";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider codex --model gpt-5.4-mini";
+      "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider opencode --model openai/gpt-5.4-mini";
       "  camlflow serve --stdio";
       "  camlflow completion bash > /tmp/camlflow.bash";
     ]
@@ -187,7 +194,9 @@ let run_help_text =
       "Usage:";
       "  camlflow run <file.cml|artifact.json> [-I dir]... [--entry name]";
       "               [--input file.json | --input-json json] [--skills dir]";
-      "               [--provider codex] [--model name] [--reasoning level]";
+      (Printf.sprintf
+         "               [--provider <%s>] [--model name] [--reasoning level]"
+         provider_names_text);
       "               [--provider-profile name] [--provider-config key=value]...";
       "               [--sandbox mode] [--allow-write-dir dir]... [--trace-provider]";
       "";
@@ -215,6 +224,7 @@ let run_help_text =
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"'";
       "  camlflow run /tmp/basic.ir.json --input-json '\"Ada\"'";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider codex --model gpt-5.4-mini";
+      "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider opencode --model openai/gpt-5.4-mini";
     ]
 
 let serve_help_text =
@@ -603,7 +613,9 @@ let bash_completion_script =
       "  case \"$prev\" in";
       "    -I|--skills|--allow-write-dir) COMPREPLY=( $(compgen -d -- \"$cur\") ); return 0 ;;";
       "    -o|--input) COMPREPLY=( $(compgen -f -- \"$cur\") ); return 0 ;;";
-      "    --provider) COMPREPLY=( $(compgen -W \"codex\" -- \"$cur\") ); return 0 ;;";
+      (Printf.sprintf
+         "    --provider) COMPREPLY=( $(compgen -W \"%s\" -- \"$cur\") ); return 0 ;;"
+         provider_completion_text);
       "    --reasoning) COMPREPLY=( $(compgen -W \"low medium high max\" -- \"$cur\") ); return 0 ;;";
       "    --sandbox) COMPREPLY=( $(compgen -W \"read-only workspace-write danger-full-access\" -- \"$cur\") ); return 0 ;;";
       "    --entry|--model|--provider-profile|--provider-config) return 0 ;;";
@@ -663,7 +675,9 @@ let zsh_completion_script =
       "  parse) _arguments '-h[show help]' '--help[show help]' '*:file:_files' ;;";
       "  check) _arguments '-h[show help]' '--help[show help]' '-I+[include path]:dir:_files -/' '*:file:_files' ;;";
       "  compile) _arguments '-h[show help]' '--help[show help]' '-I+[include path]:dir:_files -/' '-o+[output file]:file:_files' '*:file:_files' ;;";
-      "  run) _arguments '-h[show help]' '--help[show help]' '-I+[include path]:dir:_files -/' '--entry+[entrypoint name]:entry' '--input+[json file]:file:_files' '--input-json+[inline json]:json' '--skills+[skills directory]:dir:_files -/' '--provider+[provider name]:provider:(codex)' '--model+[provider model]:model' '--reasoning+[reasoning level]:reasoning:(low medium high max)' '--provider-profile+[provider profile]:profile' '--provider-config+[provider config override]:config' '--sandbox+[sandbox mode]:sandbox:(read-only workspace-write danger-full-access)' '--allow-write-dir+[extra writable directory]:dir:_files -/' '--trace-provider[print provider step trace metadata]' '*:file:_files' ;;";
+      (Printf.sprintf
+         "  run) _arguments '-h[show help]' '--help[show help]' '-I+[include path]:dir:_files -/' '--entry+[entrypoint name]:entry' '--input+[json file]:file:_files' '--input-json+[inline json]:json' '--skills+[skills directory]:dir:_files -/' '--provider+[provider name]:provider:(%s)' '--model+[provider model]:model' '--reasoning+[reasoning level]:reasoning:(low medium high max)' '--provider-profile+[provider profile]:profile' '--provider-config+[provider config override]:config' '--sandbox+[sandbox mode]:sandbox:(read-only workspace-write danger-full-access)' '--allow-write-dir+[extra writable directory]:dir:_files -/' '--trace-provider[print provider step trace metadata]' '*:file:_files' ;;"
+         provider_completion_text);
       "esac";
     ]
 
@@ -689,7 +703,9 @@ let fish_completion_script =
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l input -d 'JSON input file' -r";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l input-json -d 'Inline JSON input' -r";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l skills -d 'Skills directory' -r -a '(__fish_complete_directories)'";
-      "complete -c camlflow -n '__fish_seen_subcommand_from run' -l provider -d 'Provider name' -r -a 'codex'";
+      (Printf.sprintf
+         "complete -c camlflow -n '__fish_seen_subcommand_from run' -l provider -d 'Provider name' -r -a '%s'"
+         provider_completion_text);
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l model -d 'Provider model' -r";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l reasoning -d 'Reasoning level' -r -a 'low medium high max'";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l provider-profile -d 'Provider profile' -r";

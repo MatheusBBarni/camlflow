@@ -162,14 +162,29 @@ Completed in `packages/camlflow-ts-json-rpc-sdk`:
   - `examples/json-rpc-problem-coach/host.js`
 - README instructions now mention `npm test` and the current version fields
 
+### 12. A second direct CLI provider adapter landed after protocol stabilization
+
+Completed:
+
+- `lib/providers_opencode.ml`
+- `lib/provider_schema.ml` now exposes a reusable wrapped response-schema helper
+- CLI/provider docs now cover `opencode`
+- README now shows `--provider opencode` usage
+
+Current direct CLI providers are now:
+
+- `codex`
+- `opencode`
+
 ---
 
 ## Last validated state
 
 Last verified test run for the JSON-RPC bridge slice:
 
-- `dune test` passed with 66 tests after protocol-error coverage was added
+- `dune test` passed with 71 tests after the `opencode` adapter slice
 - `cd packages/camlflow-ts-json-rpc-sdk && npm test` passed with 3 smoke tests
+- an OpenCode-backed provider run completed successfully against the real OpenCode CLI
 
 Recent follow-up documentation additions include:
 
@@ -180,6 +195,7 @@ Recent follow-up documentation additions include:
 - expanded protocol fixtures for invalid requests, unknown methods, run failures, host effect errors, and shutdown/exit in `docs/json-rpc-fixtures.md`
 - deferred design notes for cancellation, progress, and streaming in `docs/json-rpc-roadmap.md`
 - a formal design-only extensions doc in `docs/json-rpc-deferred-extensions.md`
+- provider execution docs for both `codex` and `opencode` in `docs/provider-execution.md`
 - this status snapshot in `docs/json-rpc-status.md`
 - the short checklist in `docs/json-rpc-checklist.md`
 
@@ -187,13 +203,10 @@ Recent follow-up documentation additions include:
 
 ## Remaining tasks
 
-## Later / lower priority
+The current JSON-RPC checklist is complete.
 
-### 1. Add direct provider convenience adapters only after host mode is stable
+Future follow-up beyond the checklist could still include:
 
-Examples:
-
-- more direct CLI/provider backends
-- tool-specific adapters built on top of the shared effect-request model
-
-This should remain secondary to keeping the host protocol stable and well-documented.
+- more direct CLI/provider backends such as additional tool-specific adapters
+- deeper CI integration for JS/TS host and SDK validation
+- eventual implementation of the deferred cancellation, progress, and streaming designs

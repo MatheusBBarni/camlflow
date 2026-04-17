@@ -317,6 +317,8 @@ let test_cli_completion_script_mentions_commands () =
     Alcotest.failf "unexpected completion script: %s" script;
   if not (contains_substring script "--provider --model --reasoning") then
     Alcotest.failf "provider flags missing from completion script: %s" script;
+  if not (contains_substring script "codex opencode") then
+    Alcotest.failf "provider completions missing adapter names: %s" script;
   if not (contains_substring script "--stdio") then
     Alcotest.failf "serve flags missing from completion script: %s" script
 
@@ -386,6 +388,33 @@ let test_cli_run_provider_flags_parse () =
   Alcotest.(check (list string)) "write dirs" [ "tmp" ]
     settings.allow_write_dirs;
   Alcotest.(check bool) "trace provider" true settings.trace_provider
+
+let test_cli_run_opencode_provider_parse () =
+  let parsed =
+    parse_cli
+      [
+        "run";
+        "main.cml";
+        "--provider";
+        "opencode";
+        "--model";
+        "openai/gpt-5.4-mini";
+        "--reasoning";
+        "low";
+      ]
+  in
+  (match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "run validate failed: %s" error);
+  let settings = parsed.options.provider_options in
+  Alcotest.(check string) "provider" "opencode"
+    (match settings.provider with
+    | Some provider -> Camlflow.Provider.name_to_string provider
+    | None -> "none");
+  Alcotest.(check string) "model" "openai/gpt-5.4-mini"
+    (match settings.model with
+    | Some model -> model
+    | None -> "none")
 
 let test_cli_provider_flags_require_provider () =
   let parsed = parse_cli [ "run"; "main.cml"; "--model"; "gpt-5.4-mini" ] in
@@ -1319,6 +1348,113 @@ let main (code : string) : string =
     "provider codex does not support inline setting(s) temperature"
     (Camlflow.Runtime.execute ~context ~input:(`String "let x = 1") program)
 
+let test_opencode_build_exec_args () =
+  let settings =
+    {
+      Camlflow.Provider.default_settings with
+      provider = Some Camlflow.Provider.Opencode;
+      model = Some "openai/gpt-5.4-mini";
+      reasoning = Some Camlflow.Provider.Max;
+    }
+  in
+  let argv =
+    Camlflow.Providers_opencode.build_exec_args ~working_directory:"/workspace"
+      ~settings ~model:settings.model ~prompt:"Reply with JSON"
+  in
+  let expected =
+    [
+      "opencode";
+      "run";
+      "--format";
+      "json";
+      "--pure";
+      "--dir";
+      "/workspace";
+      "--dangerously-skip-permissions";
+      "--model";
+      "openai/gpt-5.4-mini";
+      "--variant";
+      "max";
+      "Reply with JSON";
+    ]
+  in
+  Alcotest.(check (list string)) "opencode argv" expected argv
+
+let test_opencode_preflight_validation () =
+  expect_error_contains "missing opencode" "provider opencode is not available"
+    (Camlflow.Providers_opencode.validate_preflight_status
+       ~opencode_available:false);
+  (match
+     Camlflow.Providers_opencode.validate_preflight_status
+       ~opencode_available:true
+   with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "unexpected preflight error: %s" error)
+
+let test_opencode_parse_wrapped_response () =
+  let events =
+    match
+      Camlflow.Providers_opencode.json_line_events
+        (String.concat "\n"
+           [
+             "{\"type\":\"step_start\"}";
+             "{\"type\":\"text\",\"part\":{\"text\":\"{\\\"result\\\":\\\"hello\\\"}\"}}";
+             "{\"type\":\"step_finish\"}";
+           ])
+    with
+    | Ok events -> events
+    | Error error -> Alcotest.failf "opencode event parse failed: %s" error
+  in
+  let text =
+    match Camlflow.Providers_opencode.last_text_response events with
+    | Some text -> text
+    | None -> Alcotest.fail "missing opencode text response"
+  in
+  match
+    Camlflow.Providers_opencode.parse_wrapped_response ~trace_kind:"bound-agent"
+      ~trace_name:"greeter" text
+  with
+  | Ok (`String value) -> Alcotest.(check string) "opencode parsed result" "hello" value
+  | Ok json ->
+      Alcotest.failf "unexpected opencode parsed JSON: %s"
+        (Yojson.Safe.to_string json)
+  | Error error -> Alcotest.failf "opencode parse failed: %s" error
+
+let test_opencode_inline_temperature_fails_fast () =
+  with_temp_dir "camlflow-opencode-temp-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+agent reviewer : code:string -> string =
+  Agent.define ~temperature:0.1 ~system_prompt:"Review tersely"
+
+let main (code : string) : string =
+  let* review = reviewer ~code:code in
+  review
+|};
+  let program = check_file main in
+  let settings =
+    {
+      Camlflow.Provider.default_settings with
+      provider = Some Camlflow.Provider.Opencode;
+    }
+  in
+  let base_context =
+    Camlflow.Runtime.Context.empty
+    |> fun context -> Camlflow.Runtime.Context.with_working_directory context dir
+  in
+  let context =
+    match
+      Camlflow.Providers_opencode.build_runtime_context ~working_directory:dir
+        ~settings base_context
+    with
+    | Ok context -> context
+    | Error error -> Alcotest.failf "build runtime context failed: %s" error
+  in
+  expect_error_contains "inline temperature unsupported"
+    "provider opencode does not support inline setting(s) temperature"
+    (Camlflow.Runtime.execute ~context ~input:(`String "let x = 1") program)
+
 let test_wrong_argument_labels_fail () =
   with_temp_dir "camlflow-labels-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
@@ -1726,6 +1862,8 @@ let () =
             test_cli_run_provider_flags_parse;
           Alcotest.test_case "cli provider flags require provider" `Quick
             test_cli_provider_flags_require_provider;
+          Alcotest.test_case "cli run opencode provider parse" `Quick
+            test_cli_run_opencode_provider_parse;
           Alcotest.test_case "cli unknown provider rejected" `Quick
             test_cli_unknown_provider_rejected;
           Alcotest.test_case "cli invalid provider config rejected" `Quick
@@ -1792,6 +1930,14 @@ let () =
             test_codex_wrapped_response_schema;
           Alcotest.test_case "codex inline temperature fails fast" `Quick
             test_codex_inline_temperature_fails_fast;
+          Alcotest.test_case "opencode build exec args" `Quick
+            test_opencode_build_exec_args;
+          Alcotest.test_case "opencode preflight validation" `Quick
+            test_opencode_preflight_validation;
+          Alcotest.test_case "opencode parse wrapped response" `Quick
+            test_opencode_parse_wrapped_response;
+          Alcotest.test_case "opencode inline temperature fails fast" `Quick
+            test_opencode_inline_temperature_fails_fast;
           Alcotest.test_case "wrong argument labels fail" `Quick
             test_wrong_argument_labels_fail;
           Alcotest.test_case "unsupported library/module call fails" `Quick

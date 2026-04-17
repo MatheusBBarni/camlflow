@@ -56,4 +56,4 @@ Recommended order:
 
 ## Later
 
-- [ ] Add more direct provider convenience adapters only after host mode is stable
+- [x] Add more direct provider convenience adapters only after host mode is stable

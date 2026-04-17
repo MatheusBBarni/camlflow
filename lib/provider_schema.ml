@@ -157,3 +157,29 @@ let of_type ~types typ =
         ]
   in
   merge_assoc_fields extra_fields root
+
+let unwrap_schema_root = function
+  | `Assoc fields ->
+      let defs =
+        match List.assoc_opt "$defs" fields with Some (`Assoc defs) -> defs | _ -> []
+      in
+      let inner_fields =
+        List.filter
+          (fun (name, _) -> name <> "$schema" && name <> "$defs")
+          fields
+      in
+      Ok (`Assoc inner_fields, defs)
+  | _ -> Error "provider schema must be a JSON object"
+
+let wrapped_response_schema schema =
+  let* inner_schema, defs = unwrap_schema_root schema in
+  Ok
+    (`Assoc
+      (([
+          ("$schema", `String schema_uri);
+          ("type", `String "object");
+          ("properties", `Assoc [ ("result", inner_schema) ]);
+          ("required", `List [ `String "result" ]);
+          ("additionalProperties", `Bool false);
+        ])
+      @ match defs with [] -> [] | defs -> [ ("$defs", `Assoc defs) ]))

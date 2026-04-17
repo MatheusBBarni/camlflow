@@ -290,6 +290,16 @@ dune exec camlflow -- run examples/basic/main.cml \
   --sandbox read-only
 ```
 
+### Run with OpenCode provider
+
+```sh
+dune exec camlflow -- run examples/basic/main.cml \
+  --input-json '"Ada"' \
+  --provider opencode \
+  --model openai/gpt-5.4-mini \
+  --reasoning low
+```
+
 ### Run Codex provider example with a local skill + inline agent
 
 ```sh

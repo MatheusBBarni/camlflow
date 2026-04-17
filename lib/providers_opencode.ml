@@ -1,48 +1,53 @@
 let ( let* ) = Result.bind
 
-let provider_name = Provider.Codex
+let provider_name = Provider.Opencode
 
 let read_text_file path =
   try Ok (In_channel.with_open_bin path In_channel.input_all)
   with Sys_error message ->
     Error (Printf.sprintf "failed to read file %s: %s" path message)
 
-let write_text_file path content =
-  try
-    Out_channel.with_open_bin path (fun channel -> output_string channel content);
-    Ok ()
-  with Sys_error message ->
-    Error (Printf.sprintf "failed to write file %s: %s" path message)
-
 let remove_if_exists path = if Sys.file_exists path then Sys.remove path
-
-let codex_reasoning_value = function
-  | Provider.Low -> "low"
-  | Provider.Medium -> "medium"
-  | Provider.High -> "high"
-  | Provider.Max -> "xhigh"
-
-let resolve_path ~working_directory path =
-  if Filename.is_relative path then Filename.concat working_directory path else path
 
 let command_ok command = Sys.command command = 0
 
-let validate_preflight_status ~codex_available ~logged_in =
-  if not codex_available then
-    Error "provider codex is not available; install Codex CLI and ensure `codex` is on PATH"
-  else if not logged_in then
-    Error "provider codex requires login; run `codex login` first"
+let validate_preflight_status ~opencode_available =
+  if not opencode_available then
+    Error
+      "provider opencode is not available; install OpenCode CLI and ensure `opencode` is on PATH"
   else Ok ()
 
-let preflight ~working_directory:_ ~settings:_ =
+let unsupported_cli_flags (settings : Provider.settings) =
+  let flags =
+    List.filter_map Fun.id
+      [
+        Option.map (Fun.const "--provider-profile") settings.provider_profile;
+        (match settings.provider_configs with
+        | [] -> None
+        | _ -> Some "--provider-config");
+        (if settings.sandbox = Provider.default_sandbox then None
+         else Some "--sandbox");
+        (match settings.allow_write_dirs with
+        | [] -> None
+        | _ -> Some "--allow-write-dir");
+      ]
+  in
+  match flags with
+  | [] -> Ok ()
+  | flags ->
+      Error
+        (Printf.sprintf "provider opencode does not support %s"
+           (String.concat ", " flags))
+
+let preflight ~working_directory:_ ~settings =
+  let* () = unsupported_cli_flags settings in
   validate_preflight_status
-    ~codex_available:(command_ok "codex --version >/dev/null 2>&1")
-    ~logged_in:(command_ok "codex login status >/dev/null 2>&1")
+    ~opencode_available:(command_ok "opencode --version >/dev/null 2>&1")
 
 let trace_start settings ~step ~kind ~name ~model =
   if settings.Provider.trace_provider then
     Printf.eprintf
-      "provider[%d] start provider=codex kind=%s name=%s model=%s\n%!"
+      "provider[%d] start provider=opencode kind=%s name=%s model=%s\n%!"
       step kind name
       (match model with Some model -> model | None -> "(provider default)")
 
@@ -55,74 +60,124 @@ let process_status_message = function
   | Unix.WSIGNALED signal -> Printf.sprintf "signal %d" signal
   | Unix.WSTOPPED signal -> Printf.sprintf "stopped by signal %d" signal
 
-let build_exec_args ~working_directory ~settings ~model ~schema_path ~output_path =
+let opencode_reasoning_value = function
+  | Provider.Low -> "minimal"
+  | Provider.Medium -> "medium"
+  | Provider.High -> "high"
+  | Provider.Max -> "max"
+
+let build_exec_args ~working_directory ~settings ~model ~prompt =
   let base_args =
     [
-      "codex";
-      "exec";
-      "--skip-git-repo-check";
-      "-C";
+      "opencode";
+      "run";
+      "--format";
+      "json";
+      "--pure";
+      "--dir";
       working_directory;
-      "--sandbox";
-      Provider.sandbox_to_string settings.Provider.sandbox;
-      "--output-schema";
-      schema_path;
-      "--output-last-message";
-      output_path;
+      "--dangerously-skip-permissions";
     ]
   in
-  let model_args =
-    match model with Some model -> [ "--model"; model ] | None -> []
-  in
-  let profile_args =
-    match settings.Provider.provider_profile with
-    | Some profile -> [ "--profile"; profile ]
-    | None -> []
-  in
+  let model_args = match model with Some model -> [ "--model"; model ] | None -> [] in
   let reasoning_args =
     match settings.Provider.reasoning with
-    | Some reasoning ->
-        [
-          "--config";
-          Printf.sprintf "model_reasoning_effort=%S"
-            (codex_reasoning_value reasoning);
-        ]
+    | Some reasoning -> [ "--variant"; opencode_reasoning_value reasoning ]
     | None -> []
   in
-  let config_args =
-    List.concat
-      (List.map
-         (fun config -> [ "--config"; Provider.config_to_string config ])
-         settings.Provider.provider_configs)
-  in
-  let add_dir_args =
-    List.concat
-      (List.map
-         (fun dir -> [ "--add-dir"; resolve_path ~working_directory dir ])
-         settings.Provider.allow_write_dirs)
-  in
-  base_args @ model_args @ profile_args @ reasoning_args @ config_args @ add_dir_args @ [ "-" ]
+  base_args @ model_args @ reasoning_args @ [ prompt ]
 
-let wrapped_response_schema = Provider_schema.wrapped_response_schema
+let json_line_events stdout =
+  let rec loop acc = function
+    | [] -> Ok (List.rev acc)
+    | line :: rest when String.trim line = "" -> loop acc rest
+    | line :: rest ->
+        let* json =
+          try Ok (Yojson.Safe.from_string line) with
+          | Yojson.Json_error message ->
+              Error
+                (Printf.sprintf "opencode returned invalid JSON event: %s (line: %s)"
+                   message line)
+        in
+        loop (json :: acc) rest
+  in
+  loop [] (String.split_on_char '\n' stdout)
 
-let run_codex_exec ~working_directory ~settings ~prompt ~schema ~model =
-  let prompt_path = Filename.temp_file "camlflow-codex-prompt-" ".txt" in
-  let schema_path = Filename.temp_file "camlflow-codex-schema-" ".json" in
-  let output_path = Filename.temp_file "camlflow-codex-output-" ".json" in
-  let stdout_path = Filename.temp_file "camlflow-codex-stdout-" ".log" in
-  let stderr_path = Filename.temp_file "camlflow-codex-stderr-" ".log" in
-  let temp_paths = [ prompt_path; schema_path; output_path; stdout_path; stderr_path ] in
+let assoc_string_field name fields =
+  match List.assoc_opt name fields with
+  | Some (`String value) -> Some value
+  | _ -> None
+
+let rec nested_message = function
+  | `Assoc fields -> (
+      match assoc_string_field "message" fields with
+      | Some message -> Some message
+      | None ->
+          List.find_map
+            (fun (_, value) -> nested_message value)
+            fields)
+  | `List items -> List.find_map nested_message items
+  | _ -> None
+
+let last_error_message events =
+  List.rev events
+  |> List.find_map (function
+       | `Assoc fields -> (
+           match assoc_string_field "type" fields with
+           | Some "error" -> (
+               match List.assoc_opt "error" fields with
+               | Some error -> nested_message error
+               | None -> nested_message (`Assoc fields))
+           | _ -> None)
+       | _ -> None)
+
+let last_text_response events =
+  List.rev events
+  |> List.find_map (function
+       | `Assoc fields -> (
+           match assoc_string_field "type" fields with
+           | Some "text" -> (
+               match List.assoc_opt "part" fields with
+               | Some (`Assoc part_fields) -> assoc_string_field "text" part_fields
+               | _ -> None)
+           | _ -> None)
+       | _ -> None)
+
+let parse_wrapped_response ~trace_kind ~trace_name text =
+  let* wrapped_json =
+    try Ok (Yojson.Safe.from_string (String.trim text)) with
+    | Yojson.Json_error message ->
+        Error
+          (Printf.sprintf
+             "opencode returned invalid JSON for %s %s: %s (output: %s)"
+             trace_kind trace_name message (String.trim text))
+  in
+  match wrapped_json with
+  | `Assoc fields -> (
+      match List.assoc_opt "result" fields with
+      | Some result -> Ok result
+      | None ->
+          Error
+            (Printf.sprintf
+               "opencode returned JSON without result field for %s %s: %s"
+               trace_kind trace_name (Yojson.Safe.to_string wrapped_json)))
+  | _ ->
+      Error
+        (Printf.sprintf
+           "opencode returned non-object JSON wrapper for %s %s: %s" trace_kind
+           trace_name (Yojson.Safe.to_string wrapped_json))
+
+let run_opencode_exec ~working_directory ~settings ~prompt ~schema:_ ~model =
+  let stdout_path = Filename.temp_file "camlflow-opencode-stdout-" ".log" in
+  let stderr_path = Filename.temp_file "camlflow-opencode-stderr-" ".log" in
+  let temp_paths = [ stdout_path; stderr_path ] in
   Fun.protect
     ~finally:(fun () -> List.iter remove_if_exists temp_paths)
     (fun () ->
-      let* () = write_text_file prompt_path prompt in
-      let* () = write_text_file schema_path (Yojson.Safe.pretty_to_string schema) in
       let argv =
         Array.of_list
-          (build_exec_args ~working_directory ~settings ~model ~schema_path
-             ~output_path)
+          (build_exec_args ~working_directory ~settings ~model ~prompt)
       in
-      let prompt_fd = Unix.openfile prompt_path [ Unix.O_RDONLY ] 0 in
       let stdout_fd =
         Unix.openfile stdout_path [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ]
           0o644
@@ -134,32 +189,38 @@ let run_codex_exec ~working_directory ~settings ~prompt ~schema ~model =
       let status =
         try
           let pid =
-            Unix.create_process_env "codex" argv (Unix.environment ()) prompt_fd
-              stdout_fd stderr_fd
+            Unix.create_process_env "opencode" argv (Unix.environment ())
+              Unix.stdin stdout_fd stderr_fd
           in
-          Unix.close prompt_fd;
           Unix.close stdout_fd;
           Unix.close stderr_fd;
           snd (Unix.waitpid [] pid)
         with error ->
-          Unix.close prompt_fd;
           Unix.close stdout_fd;
           Unix.close stderr_fd;
           raise error
       in
       let* stdout = read_text_file stdout_path in
       let* stderr = read_text_file stderr_path in
-      let* last_message = read_text_file output_path in
       match status with
-      | Unix.WEXITED 0 -> Ok (stdout, stderr, last_message)
+      | Unix.WEXITED 0 -> Ok (stdout, stderr)
       | _ ->
+          let error_message =
+            match json_line_events stdout with
+            | Ok events -> last_error_message events
+            | Error _ -> None
+          in
           Error
-            (Printf.sprintf "codex exec failed with %s\n%s"
+            (Printf.sprintf "opencode run failed with %s\n%s"
                (process_status_message status)
-               (String.trim stderr)))
+               (match error_message with
+               | Some message -> message
+               | None ->
+                   let stderr = String.trim stderr in
+                   if String.equal stderr "" then String.trim stdout else stderr)))
 
 let unsupported_settings_error (request : Effect_request.t) settings =
-  Printf.sprintf "provider codex does not support inline setting(s) %s for %s %s"
+  Printf.sprintf "provider opencode does not support inline setting(s) %s for %s %s"
     (String.concat ", " settings)
     (match request.Effect_request.kind with
     | Runtime.Context.Inline_agent -> "agent"
@@ -169,7 +230,9 @@ let unsupported_settings_error (request : Effect_request.t) settings =
     request.Effect_request.name
 
 let execute_request ~working_directory ~settings ~step (request : Effect_request.t) =
-  let* wrapped_schema = wrapped_response_schema request.Effect_request.output_schema in
+  let* wrapped_schema =
+    Provider_schema.wrapped_response_schema request.Effect_request.output_schema
+  in
   let model =
     match request.Effect_request.requested_model with
     | Some model -> Some model
@@ -180,6 +243,7 @@ let execute_request ~working_directory ~settings ~step (request : Effect_request
   trace_start settings ~step ~kind:trace_kind ~name:trace_name ~model;
   let started_at = Unix.gettimeofday () in
   let result =
+    let* () = unsupported_cli_flags settings in
     let* () =
       match request.Effect_request.unsupported_settings with
       | [] -> Ok ()
@@ -202,32 +266,20 @@ let execute_request ~working_directory ~settings ~step (request : Effect_request
           Yojson.Safe.pretty_to_string wrapped_schema;
         ]
     in
-    let* _stdout, _stderr, last_message =
-      run_codex_exec ~working_directory:effective_working_directory ~settings
+    let* stdout, _stderr =
+      run_opencode_exec ~working_directory:effective_working_directory ~settings
         ~prompt:wrapped_prompt ~schema:wrapped_schema ~model
     in
-    let* wrapped_json =
-      try Ok (Yojson.Safe.from_string last_message) with
-      | Yojson.Json_error message ->
+    let* events = json_line_events stdout in
+    let* text =
+      match last_text_response events with
+      | Some text -> Ok text
+      | None ->
           Error
-            (Printf.sprintf
-               "codex returned invalid JSON for %s %s: %s (output: %s)"
-               trace_kind trace_name message (String.trim last_message))
+            (Printf.sprintf "opencode returned no final text response for %s %s"
+               trace_kind trace_name)
     in
-    (match wrapped_json with
-    | `Assoc fields -> (
-        match List.assoc_opt "result" fields with
-        | Some result -> Ok result
-        | None ->
-            Error
-              (Printf.sprintf
-                 "codex returned JSON without result field for %s %s: %s"
-                 trace_kind trace_name (Yojson.Safe.to_string wrapped_json)))
-    | _ ->
-        Error
-          (Printf.sprintf
-             "codex returned non-object JSON wrapper for %s %s: %s" trace_kind
-             trace_name (Yojson.Safe.to_string wrapped_json)))
+    parse_wrapped_response ~trace_kind ~trace_name text
   in
   let elapsed = Unix.gettimeofday () -. started_at in
   trace_end settings ~step

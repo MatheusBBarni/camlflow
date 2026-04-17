@@ -1,4 +1,4 @@
-type name = Codex
+type name = Codex | Opencode
 
 type reasoning = Low | Medium | High | Max
 
@@ -44,11 +44,15 @@ let default_settings =
     trace_provider = false;
   }
 
-let name_to_string = function Codex -> "codex"
-let available_provider_names = [ name_to_string Codex ]
+let name_to_string = function
+  | Codex -> "codex"
+  | Opencode -> "opencode"
+
+let available_provider_names = List.map name_to_string [ Codex; Opencode ]
 
 let name_of_string = function
   | "codex" -> Ok Codex
+  | "opencode" -> Ok Opencode
   | other ->
       Error
         (Printf.sprintf "unknown provider %s; expected one of: %s" other

@@ -14,6 +14,7 @@ module Rpc_protocol = Rpc_protocol
 module Rpc_stdio = Rpc_stdio
 module Rpc_server = Rpc_server
 module Providers_codex = Providers_codex
+module Providers_opencode = Providers_opencode
 module Providers = Providers
 module Cli = Cli
 
