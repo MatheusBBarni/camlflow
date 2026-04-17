@@ -366,6 +366,7 @@ runtime hooks.
 - `examples/inline-agent/` — executable `Agent.define`
 - `examples/provider-hooks/` — embedded OCaml host using runtime provider hooks
 - `examples/json-rpc-host/` — Node host speaking CamlFlow JSON-RPC over stdio
+- `examples/json-rpc-problem-coach/` — Node host running the structured problem-coach workflow over JSON-RPC
 - `examples/codex/` — CLI Codex provider run using a bound agent, local skill, and inline agent
 - `examples/swe-leetcode/` — inline LeetCode solver agent using the caveman skill and a fixed model
 - `examples/problem-coach/` — multi-step solver that returns a directly useful final answer pack
@@ -378,6 +379,7 @@ runtime hooks.
 - `docs/json-rpc-roadmap.md` — roadmap for CamlFlow as a host-integrated harness runtime
 - `examples/provider-hooks/README.md` — runnable provider-hooks example
 - `examples/json-rpc-host/README.md` — runnable JSON-RPC host example
+- `examples/json-rpc-problem-coach/README.md` — runnable structured JSON-RPC host example
 - `examples/codex/README.md` — runnable Codex provider example
 - `examples/swe-leetcode/README.md` — runnable swe-leetcode example
 - `examples/problem-coach/README.md` — runnable problem-coach example
