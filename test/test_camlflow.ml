@@ -141,6 +141,14 @@ let build_effect_request ?step_index ?run_id
   | Ok request -> request
   | Error error -> Alcotest.failf "effect request failed: %s" error
 
+let run_effect_bridge ?step_index ?run_id ~executor
+    (invocation : Camlflow.Runtime.Context.invocation) =
+  match
+    Camlflow.Effect_bridge.execute ?step_index ?run_id ~executor invocation
+  with
+  | Ok execution -> execution
+  | Error error -> Alcotest.failf "effect bridge failed: %s" error
+
 let test_parse_source () =
   let source =
     {|
@@ -510,6 +518,38 @@ let test_effect_request_for_inline_agent () =
   | other ->
       Alcotest.failf "expected inlineDefinition object, got %s"
         (Yojson.Safe.to_string other))
+
+let test_effect_bridge_executes_with_effect_request () =
+  let invocation =
+    make_invocation ~kind:Camlflow.Runtime.Context.Local_prompt_skill
+      ~name:"caveman" ~input:(`Assoc [ ("prompt", `String "hello") ])
+      ~skills_directory:"/workspace/skills"
+      ~markdown:"# Caveman\n\nReply tersely." ()
+  in
+  let execution =
+    run_effect_bridge ~step_index:3 ~run_id:"run-2"
+      ~executor:(fun request ->
+        Alcotest.(check string) "executor request name" "caveman" request.name;
+        Alcotest.(check (option int)) "executor step" (Some 3)
+          request.step_index;
+        Alcotest.(check (option string)) "executor run id" (Some "run-2")
+          request.run_id;
+        Ok (`String request.name))
+      invocation
+  in
+  Alcotest.(check string) "bridge request name" "caveman"
+    execution.request.name;
+  match execution.output_json with
+  | `String value -> Alcotest.(check string) "bridge output" "caveman" value
+  | json ->
+      Alcotest.failf "expected string bridge output, got %s"
+        (Yojson.Safe.to_string json)
+
+let test_effect_bridge_validation_error () =
+  let invocation = make_invocation ~name:"greeter" () in
+  expect_error_contains "effect bridge validation"
+    "host output for agent greeter does not match declared return type string"
+    (Camlflow.Effect_bridge.validate_output ~source:"host" invocation (`Int 7))
 
 let test_codex_build_exec_args () =
   let settings =
@@ -1046,6 +1086,10 @@ let () =
             test_effect_request_for_local_skill;
           Alcotest.test_case "effect request for inline agent" `Quick
             test_effect_request_for_inline_agent;
+          Alcotest.test_case "effect bridge executes with effect request" `Quick
+            test_effect_bridge_executes_with_effect_request;
+          Alcotest.test_case "effect bridge validation error" `Quick
+            test_effect_bridge_validation_error;
           Alcotest.test_case "codex build exec args" `Quick
             test_codex_build_exec_args;
           Alcotest.test_case "codex preflight validation" `Quick

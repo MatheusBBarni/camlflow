@@ -193,8 +193,7 @@ let unsupported_settings_error (request : Effect_request.t) settings =
     | Runtime.Context.Local_prompt_skill -> "local-prompt-skill")
     request.Effect_request.name
 
-let execute_invocation ~working_directory ~settings ~step invocation =
-  let* request = Effect_request.of_invocation ~step_index:step invocation in
+let execute_request ~working_directory ~settings ~step (request : Effect_request.t) =
   let* wrapped_schema = wrapped_response_schema request.Effect_request.output_schema in
   let model =
     match request.Effect_request.requested_model with
@@ -260,6 +259,14 @@ let execute_invocation ~working_directory ~settings ~step invocation =
     ~status:(match result with Ok _ -> "ok" | Error _ -> "error")
     ~elapsed;
   result
+
+let execute_invocation ~working_directory ~settings ~step invocation =
+  let* execution =
+    Effect_bridge.execute ~step_index:step
+      ~executor:(execute_request ~working_directory ~settings ~step)
+      invocation
+  in
+  Ok execution.Effect_bridge.output_json
 
 let build_runtime_context ~working_directory ~settings context =
   let step_counter = ref 0 in
