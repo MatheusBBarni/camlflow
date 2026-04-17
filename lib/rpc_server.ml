@@ -29,6 +29,8 @@ type server = {
   mutable next_run : int;
   mutable active_run : active_run option;
   mutable pending_message : Yojson.Safe.t option;
+  mutable trace_enabled : bool;
+  mutable progress_enabled : bool;
 }
 
 type program_ref = {
@@ -44,6 +46,11 @@ type run_request = {
 }
 
 type loop_control = Continue | Stop
+
+type notification_preferences = {
+  trace_enabled : bool;
+  progress_enabled : bool;
+}
 
 type run_error = Run_failed of string | Run_cancelled of string
 
@@ -114,6 +121,27 @@ let cancel_request_id_of_yojson = function
       | None -> Error "missing field id")
   | _ -> Error "cancel params must be a JSON object"
 
+let bool_field_with_default fields name default =
+  match List.assoc_opt name fields with
+  | None -> Ok default
+  | Some (`Bool value) -> Ok value
+  | Some _ -> Error (Printf.sprintf "field %s must be a bool" name)
+
+let notification_preferences_of_yojson = function
+  | `Assoc fields -> (
+      match List.assoc_opt "notifications" fields with
+      | None -> Ok { trace_enabled = true; progress_enabled = true }
+      | Some (`Assoc notification_fields) ->
+          let* trace_enabled =
+            bool_field_with_default notification_fields "trace" true
+          in
+          let* progress_enabled =
+            bool_field_with_default notification_fields "progress" true
+          in
+          Ok { trace_enabled; progress_enabled }
+      | Some _ -> Error "field notifications must be an object")
+  | _ -> Error "initialize params must be a JSON object"
+
 let ensure_file label path =
   if not (Sys.file_exists path) then
     Error (Printf.sprintf "%s does not exist: %s" label path)
@@ -163,6 +191,7 @@ let initialized_result () =
             ("trace", `Bool true);
             ("diagnostic", `Bool true);
             ("progress", `Bool true);
+            ("streaming", `Bool false);
             ("cancelRequest", `Bool true);
             ("renderedPrompt", `Bool true);
             ("outputSchema", `Bool true);
@@ -227,8 +256,10 @@ let trace_payload ?run_id ?step ?request ?details event =
     ([ ("event", `String event); string_option_field "runId" run_id; int_option_field "step" step; effect_summary_field request ]
     @ match details with None -> [] | Some details -> [ ("details", details) ])
 
-let send_trace server ?run_id ?step ?request ?details event =
-  notify server trace_method (trace_payload ?run_id ?step ?request ?details event)
+let send_trace (server : server) ?run_id ?step ?request ?details event =
+  if server.trace_enabled then
+    notify server trace_method (trace_payload ?run_id ?step ?request ?details event)
+  else Ok ()
 
 let progress_payload ?run_id ?step ?message ?completed_steps ?known_steps
     ?cancellable stage =
@@ -243,11 +274,13 @@ let progress_payload ?run_id ?step ?message ?completed_steps ?known_steps
       bool_option_field "cancellable" cancellable;
     ]
 
-let send_progress server ?run_id ?step ?message ?completed_steps ?known_steps
+let send_progress (server : server) ?run_id ?step ?message ?completed_steps ?known_steps
     ?cancellable stage =
-  notify server progress_method
-    (progress_payload ?run_id ?step ?message ?completed_steps ?known_steps
-       ?cancellable stage)
+  if server.progress_enabled then
+    notify server progress_method
+      (progress_payload ?run_id ?step ?message ?completed_steps ?known_steps
+         ?cancellable stage)
+  else Ok ()
 
 let diagnostic_payload ?run_id ?step ?method_ ?request message =
   `Assoc
@@ -572,6 +605,11 @@ let build_host_context server ~working_directory ~skills_dir run_id =
   let context =
     match skills_dir with Some dir -> Context.with_skills_directory context dir | None -> context
   in
+  let context =
+    Context.with_cancellation_check context (fun () ->
+        let* () = drain_in_run_control_messages server in
+        ensure_run_not_cancelled server ())
+  in
   let context = Context.with_default_provider context run in
   let context =
     Context.with_prompt_skill_provider context
@@ -749,8 +787,18 @@ let handle_request server (request : Rpc_protocol.request_message) =
   else
     match request.request_method with
     | "initialize" ->
-        server.initialized <- true;
-        let* () = reply_success (initialized_result ()) in
+        let result = notification_preferences_of_yojson params in
+        let* () =
+          match result with
+          | Ok preferences ->
+              server.initialized <- true;
+              server.trace_enabled <- preferences.trace_enabled;
+              server.progress_enabled <- preferences.progress_enabled;
+              reply_success (initialized_result ())
+          | Error error ->
+              let* () = send_diagnostic server ~method_:request.request_method error in
+              reply_error ~code:(-32600) error
+        in
         Ok Continue
     | "shutdown" ->
         server.shutdown_requested <- true;
@@ -853,6 +901,8 @@ let run ~input ~output =
       next_run = 0;
       active_run = None;
       pending_message = None;
+      trace_enabled = true;
+      progress_enabled = true;
     }
   in
   let rec loop () =

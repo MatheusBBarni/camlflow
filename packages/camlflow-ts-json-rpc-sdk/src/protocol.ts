@@ -89,6 +89,7 @@ export const CAMLFLOW_METHODS = {
   trace: "camlflow/trace",
   diagnostic: "camlflow/diagnostic",
   progress: "camlflow/progress",
+  outputChunk: "camlflow/outputChunk",
 } as const;
 
 export const CAMLFLOW_ERROR_CODES = {
@@ -127,9 +128,19 @@ export interface CamlFlowCapabilities extends JsonObject {
   trace: boolean;
   diagnostic: boolean;
   progress: boolean;
+  streaming: boolean;
   cancelRequest: boolean;
   renderedPrompt: boolean;
   outputSchema: boolean;
+}
+
+export interface CamlFlowNotificationPreferences extends JsonObject {
+  trace?: boolean;
+  progress?: boolean;
+}
+
+export interface CamlFlowInitializeParams extends JsonObject {
+  notifications?: CamlFlowNotificationPreferences;
 }
 
 export interface CamlFlowInitializeResult extends JsonObject {
@@ -312,6 +323,15 @@ export interface CamlFlowProgressNotification extends JsonObject {
   completedSteps: number | null;
   knownSteps: number | null;
   cancellable: boolean | null;
+}
+
+export interface CamlFlowOutputChunkNotification extends JsonObject {
+  runId: string | null;
+  step: number | null;
+  streamId: string;
+  format: string;
+  delta: JsonValue;
+  done: boolean;
 }
 
 export function effectOutput<TOutput extends JsonValue>(

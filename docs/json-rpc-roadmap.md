@@ -418,10 +418,11 @@ Add:
 
 Most of this section remains deliberately deferred design work.
 
-Two exceptions now exist:
+Three exceptions now exist:
 
 - CamlFlow has an initial cancellation slice using `$/cancelRequest` for active `camlflow/run` requests.
 - CamlFlow has an initial progress slice using `camlflow/progress` notifications.
+- CamlFlow now reserves a future streaming surface through `capabilities.streaming = false` and SDK notification scaffolding.
 
 The notes below therefore describe the remaining design space beyond those first implementations.
 
@@ -454,8 +455,10 @@ Possible future follow-up, only if the current shape proves insufficient:
 
 - cancellation should target a **run** or a specific in-flight **request id**
 - if CamlFlow is currently blocked on `camlflow/executeEffect`, cancellation should fail the run cleanly
+- pure compute should poll for cancellation at reasonable runtime checkpoints
 - cancellation should be observable through notifications, likely:
   - `camlflow/trace` with an event like `run-cancelled`
+  - `camlflow/progress` with stage `run-cancelled`
   - `camlflow/diagnostic` when useful
 
 ### Remaining non-goals for now
@@ -500,6 +503,7 @@ Current implemented coverage includes:
 - emit before an effect request starts
 - emit after an effect step completes
 - emit around pure compile/check/run milestones
+- allow hosts to opt out of trace and progress independently through initialize preferences when they do not need a stream
 
 ### Remaining non-goal for now
 
@@ -511,12 +515,18 @@ Do not attempt percent-perfect progress. Step-oriented progress is enough.
 
 Some hosts may want token-by-token or chunked previews during effect execution.
 
-### Proposed direction
+### Current direction
 
-Keep streaming out of the core run contract initially, but reserve room for notifications like:
+Keep streaming out of the core run contract for now, while reserving room for notifications like:
 
 - `camlflow/outputChunk`
 - `camlflow/effectStream`
+
+Current implemented scaffold:
+
+- `capabilities.streaming = false`
+- no streaming notifications are emitted yet
+- SDK notification plumbing can be extended without changing the typed final-result contract
 
 ### Suggested semantics
 

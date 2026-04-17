@@ -41,6 +41,7 @@ Notes:
       "trace": true,
       "diagnostic": true,
       "progress": true,
+      "streaming": false,
       "cancelRequest": true,
       "renderedPrompt": true,
       "outputSchema": true

@@ -778,6 +778,52 @@ let main (name : string) : string =
       expect_bool_field "cancellable" false json
   | None -> Alcotest.fail "missing run-finish progress params")
 
+let test_rpc_server_initialize_notification_preferences () =
+  with_temp_dir "camlflow-rpc-notification-prefs-" @@ fun dir ->
+  let workflow = Filename.concat dir "workflow.cml" in
+  write_file workflow
+    {|
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  greeting
+|};
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:
+          (`Assoc
+            [
+              ( "notifications",
+                `Assoc [ ("trace", `Bool false); ("progress", `Bool true) ] );
+            ])
+        "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+            [
+              ( "program",
+                `Assoc
+                  [
+                    ("path", `String workflow);
+                    ("includePaths", `List []);
+                    ("skillsDir", `Null);
+                  ] );
+              ("entry", `String "main");
+              ("input", `String "Ada");
+            ])
+        "camlflow/run";
+      Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-1")
+        (`Assoc [ ("output", `String "hello Ada") ]);
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  Alcotest.(check int) "trace disabled" 0
+    (List.length (find_rpc_requests "camlflow/trace" output));
+  Alcotest.(check bool) "progress still enabled" true
+    (List.length (find_rpc_requests "camlflow/progress" output) > 0)
+
 let test_rpc_server_end_to_end_requires_initialize () =
   let messages =
     [
@@ -2174,6 +2220,8 @@ let () =
             test_rpc_server_end_to_end_run;
           Alcotest.test_case "rpc server end-to-end progress notifications" `Quick
             test_rpc_server_end_to_end_progress_notifications;
+          Alcotest.test_case "rpc server initialize notification preferences" `Quick
+            test_rpc_server_initialize_notification_preferences;
           Alcotest.test_case "rpc server end-to-end requires initialize" `Quick
             test_rpc_server_end_to_end_requires_initialize;
           Alcotest.test_case "rpc server compile includes IR version" `Quick

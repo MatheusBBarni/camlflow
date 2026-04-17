@@ -1,10 +1,11 @@
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 
 const {
-  CAMLFLOW_ERROR_CODES,
   JsonRpcRequestCancelledError,
   effectOutput,
   spawnCamlFlowClient,
@@ -93,6 +94,7 @@ test('sdk smoke test covers initialize, compile, run, and progress', { timeout: 
     assert.equal(initialize.capabilities.trace, true);
     assert.equal(initialize.capabilities.diagnostic, true);
     assert.equal(initialize.capabilities.progress, true);
+    assert.equal(initialize.capabilities.streaming, false);
 
     const compile = await client.compile({
       program: {
@@ -144,6 +146,48 @@ test('json-rpc problem-coach host example still runs end-to-end', { timeout: 300
   assert.equal(result.code, 0, result.stderr);
   assert.match(result.stdout, /"stepsRun":\s*4/);
   assert.match(result.stdout, /"title":\s*"two sum solution pack"/);
+});
+
+test('sdk initialize can disable progress while keeping trace', { timeout: 30000 }, async () => {
+  const traces = [];
+  const progress = [];
+  const client = spawnCamlFlowClient({
+    command: 'dune',
+    args: ['exec', './bin/main.exe', '--', 'serve', '--stdio'],
+    cwd: repoRoot,
+    effectHandler: makeEffectHandler(),
+    onTrace: async (trace) => {
+      traces.push(trace);
+    },
+    onProgress: async (notification) => {
+      progress.push(notification);
+    },
+  });
+
+  try {
+    await client.initialize({
+      notifications: {
+        trace: true,
+        progress: false,
+      },
+    });
+
+    const result = await client.run({
+      program: {
+        path: 'examples/provider-hooks/workflow.cml',
+        includePaths: [],
+        skillsDir: 'examples/provider-hooks/skills',
+      },
+      entry: 'main',
+      input: 'Ada',
+    });
+
+    assert.equal(result.output, 'inline-review');
+    assert.ok(traces.some((entry) => entry.event === 'run-start'));
+    assert.equal(progress.length, 0);
+  } finally {
+    await client.shutdownAndExit();
+  }
 });
 
 test('sdk can cancel a run with AbortSignal', { timeout: 30000 }, async () => {
@@ -228,5 +272,77 @@ test('sdk can cancel a run with AbortSignal', { timeout: 30000 }, async () => {
     );
   } finally {
     await client.shutdownAndExit();
+  }
+});
+
+test('sdk can cancel a pure-compute run after run-start', { timeout: 30000 }, async () => {
+  const progress = [];
+  let runStartedResolve;
+  const runStarted = new Promise((resolve) => {
+    runStartedResolve = resolve;
+  });
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'camlflow-pure-cancel-'));
+  const workflowPath = path.join(tempDir, 'main.cml');
+  fs.writeFileSync(
+    workflowPath,
+    [
+      'let rec fib (n : int) : int =',
+      '  if n <= 1 then n else fib (n - 1) + fib (n - 2)',
+      '',
+      'let main (n : int) : int =',
+      '  fib n',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const client = spawnCamlFlowClient({
+    command: 'dune',
+    args: ['exec', './bin/main.exe', '--', 'serve', '--stdio'],
+    cwd: repoRoot,
+    onProgress: async (notification) => {
+      progress.push(notification);
+      if (notification.stage === 'run-start') {
+        runStartedResolve();
+      }
+    },
+  });
+
+  try {
+    await client.initialize();
+
+    const controller = new AbortController();
+    const runPromise = client.run(
+      {
+        program: {
+          path: workflowPath,
+          includePaths: [],
+          skillsDir: null,
+        },
+        entry: 'main',
+        input: 36,
+      },
+      { signal: controller.signal },
+    );
+
+    await runStarted;
+    controller.abort();
+
+    await assert.rejects(runPromise, (error) => {
+      assert.ok(error instanceof JsonRpcRequestCancelledError);
+      assert.equal(error.method, 'camlflow/run');
+      return true;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    assert.ok(
+      progress.some((entry) => entry.stage === 'run-cancelled'),
+      `expected run-cancelled progress, got ${JSON.stringify(progress)}`,
+    );
+  } finally {
+    await client.shutdownAndExit();
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });

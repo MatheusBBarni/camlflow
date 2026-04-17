@@ -14,7 +14,9 @@ import {
   type CamlFlowDiagnosticNotification,
   type CamlFlowExecuteEffectParams,
   type CamlFlowExecuteEffectResult,
+  type CamlFlowInitializeParams,
   type CamlFlowInitializeResult,
+  type CamlFlowOutputChunkNotification,
   type CamlFlowProgressNotification,
   type CamlFlowRunParams,
   type CamlFlowRunResult,
@@ -65,6 +67,10 @@ export interface CamlFlowJsonRpcClientOptions {
     progress: CamlFlowProgressNotification,
     notification: JsonRpcNotification<CamlFlowProgressNotification>,
   ) => MaybePromise<void>;
+  onOutputChunk?: (
+    chunk: CamlFlowOutputChunkNotification,
+    notification: JsonRpcNotification<CamlFlowOutputChunkNotification>,
+  ) => MaybePromise<void>;
   onNotification?: (
     notification: JsonRpcNotification,
   ) => MaybePromise<void>;
@@ -81,6 +87,7 @@ export interface SpawnCamlFlowClientOptions {
   onTrace?: CamlFlowJsonRpcClientOptions["onTrace"];
   onDiagnostic?: CamlFlowJsonRpcClientOptions["onDiagnostic"];
   onProgress?: CamlFlowJsonRpcClientOptions["onProgress"];
+  onOutputChunk?: CamlFlowJsonRpcClientOptions["onOutputChunk"];
   onNotification?: CamlFlowJsonRpcClientOptions["onNotification"];
   onTransportError?: CamlFlowJsonRpcClientOptions["onTransportError"];
 }
@@ -263,6 +270,7 @@ export class CamlFlowJsonRpcClient {
   onTrace?: CamlFlowJsonRpcClientOptions["onTrace"];
   onDiagnostic?: CamlFlowJsonRpcClientOptions["onDiagnostic"];
   onProgress?: CamlFlowJsonRpcClientOptions["onProgress"];
+  onOutputChunk?: CamlFlowJsonRpcClientOptions["onOutputChunk"];
   onNotification?: CamlFlowJsonRpcClientOptions["onNotification"];
   onTransportError?: CamlFlowJsonRpcClientOptions["onTransportError"];
 
@@ -286,6 +294,7 @@ export class CamlFlowJsonRpcClient {
     this.onTrace = options.onTrace;
     this.onDiagnostic = options.onDiagnostic;
     this.onProgress = options.onProgress;
+    this.onOutputChunk = options.onOutputChunk;
     this.onNotification = options.onNotification;
     this.onTransportError = options.onTransportError;
 
@@ -310,7 +319,7 @@ export class CamlFlowJsonRpcClient {
   }
 
   async initialize(
-    params: JsonObject = {},
+    params: CamlFlowInitializeParams = {},
     options: JsonRpcRequestOptions = {},
   ): Promise<CamlFlowInitializeResult> {
     return this.request(CAMLFLOW_METHODS.initialize, params, options);
@@ -655,6 +664,13 @@ export class CamlFlowJsonRpcClient {
         );
       }
 
+      if (notification.method === CAMLFLOW_METHODS.outputChunk && this.onOutputChunk) {
+        await this.onOutputChunk(
+          notification.params as CamlFlowOutputChunkNotification,
+          notification as JsonRpcNotification<CamlFlowOutputChunkNotification>,
+        );
+      }
+
       if (this.onNotification) {
         await this.onNotification(notification);
       }
@@ -772,6 +788,7 @@ export function spawnCamlFlowClient(
       onTrace: options.onTrace,
       onDiagnostic: options.onDiagnostic,
       onProgress: options.onProgress,
+      onOutputChunk: options.onOutputChunk,
       onNotification: options.onNotification,
       onTransportError: options.onTransportError,
     },

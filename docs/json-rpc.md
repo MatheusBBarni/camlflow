@@ -163,8 +163,21 @@ The current implementation also accepts the optional host notification:
 Host request params:
 
 ```json
-{}
+{
+  "notifications": {
+    "trace": true,
+    "progress": true
+  }
+}
 ```
+
+Current behavior:
+
+- `notifications` is optional
+- `notifications.trace` defaults to `true`
+- `notifications.progress` defaults to `true`
+- hosts may disable either stream independently for the current session
+- diagnostics remain enabled regardless of these toggles
 
 Server result fields:
 
@@ -394,7 +407,7 @@ The first protocol version is expected to include:
 
 - `camlflow/executeEffect`
 
-The current implementation also emits the optional notifications:
+The current implementation may emit these optional notifications, depending on host initialize preferences:
 
 - `camlflow/trace`
 - `camlflow/diagnostic`
@@ -415,6 +428,7 @@ Current meaning:
 - `check`, `compile`, `run` — the server implements these host → server methods
 - `executeEffect` — the server may issue `camlflow/executeEffect` requests during effectful runs
 - `trace`, `diagnostic`, `progress` — the server may emit these optional notifications
+- `streaming` — reserved capability for future output-chunk notifications; the current server advertises `false`
 - `cancelRequest` — the server supports host cancellation via `$/cancelRequest`
 - `renderedPrompt`, `outputSchema` — effect requests include these convenience fields
 
@@ -429,6 +443,7 @@ Host requirements for `0.1.0`:
 - hosts must send `initialize` before calling methods that require initialization
 - hosts that want to run effectful workflows must handle `camlflow/executeEffect`
 - hosts may ignore `camlflow/trace`, `camlflow/diagnostic`, and `camlflow/progress`
+- hosts may disable `camlflow/trace` and/or `camlflow/progress` for the current session through `initialize.params.notifications`
 - hosts may send `$/cancelRequest` when `capabilities.cancelRequest = true`
 - hosts should ignore unknown future capability keys
 
@@ -482,6 +497,18 @@ A progress payload includes:
 - `cancellable`
 
 Progress is best-effort and safe to ignore. It does not replace final typed results or request error responses.
+
+### Reserved streaming scaffold
+
+The current bridge now reserves a future streaming surface through capability signaling.
+
+Current behavior:
+
+- `capabilities.streaming = false`
+- the server does not currently emit `camlflow/outputChunk`
+- hosts should treat streaming as unavailable unless a future server version advertises otherwise
+
+This keeps room for a future streaming notification without implying that typed workflow state can advance from partial output.
 
 ### `camlflow/diagnostic` notifications
 
@@ -711,10 +738,9 @@ Phase 0 locks this direction so later implementation work can target one explici
 
 The first JSON-RPC version should not attempt to solve:
 
-- token streaming
+- token streaming execution semantics beyond the reserved capability scaffold
 - concurrent multi-run multiplexing on one connection
 - durable checkpoints
-- host-driven cancellation
 - protocol-level retries
 - forcing the host to understand CamlFlow AST internals
 

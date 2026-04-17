@@ -21,10 +21,11 @@ The SDK targets the bridge as it exists today:
 - server-to-host traffic:
   - request: `camlflow/executeEffect`
   - notifications: `camlflow/trace`, `camlflow/diagnostic`, `camlflow/progress`
+  - reserved scaffold: `camlflow/outputChunk` (not emitted by the current server)
 
 ## What it includes
 
-- protocol and payload types for initialize, run/check/compile, effect requests, trace, diagnostics, and progress
+- protocol and payload types for initialize, run/check/compile, effect requests, trace, diagnostics, progress, and the reserved output-chunk scaffold
 - a `Content-Length` parser/encoder for raw stream integrations
 - a high-level Node client that can:
   - attach to existing streams
@@ -79,7 +80,12 @@ const client = spawnCamlFlowClient({
 });
 
 async function main(): Promise<void> {
-  await client.initialize();
+  await client.initialize({
+    notifications: {
+      trace: true,
+      progress: true,
+    },
+  });
 
   const result = await client.run<string>({
     program: {
@@ -135,6 +141,21 @@ They now cover:
 - host-side cancellation with `AbortSignal`
 - optional progress callbacks through `camlflow/progress`
 
+## Session notification preferences
+
+`initialize(...)` accepts optional notification preferences:
+
+```ts
+await client.initialize({
+  notifications: {
+    trace: false,
+    progress: true,
+  },
+});
+```
+
+These toggles apply to the current JSON-RPC session.
+
 ## Cancellation
 
 The SDK now supports host-driven cancellation in two ways:
@@ -154,11 +175,22 @@ The SDK can receive optional `camlflow/progress` notifications through `onProgre
 
 These notifications are advisory UI metadata. They do not replace the final typed result contract.
 
+## Reserved streaming scaffold
+
+The SDK now includes a reserved `onOutputChunk` callback surface plus protocol types for future streaming work.
+
+Current behavior:
+
+- `initialize().capabilities.streaming` is `false`
+- the current server does not emit `camlflow/outputChunk`
+- hosts should treat streaming as unavailable unless a future server version advertises otherwise
+
 ## Notes
 
 - `initialize()` returns both `protocolVersion` and `irVersion` so hosts can separately reason about transport compatibility and compiled-artifact compatibility.
 - `initialize().capabilities.cancelRequest` tells hosts whether `$/cancelRequest` is supported.
 - `initialize().capabilities.progress` tells hosts whether `camlflow/progress` may be emitted.
+- `initialize().capabilities.streaming` tells hosts whether `camlflow/outputChunk` is available; it is currently `false`.
 - `compile()` returns `irVersion` plus the IR artifact as generic JSON by default. The bridge does not expose a smaller dedicated compile-artifact schema.
 - `effect.inlineDefinition` is typed from CamlFlow's current IR serialization, including inline agent metadata and source locations.
 - `exit` is modeled as a notification because that is how the current host examples shut the server down.

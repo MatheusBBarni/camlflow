@@ -220,6 +220,7 @@ Current cancellation scope is intentionally narrow:
 - targeted at top-level `camlflow/run` request ids, with support for the current in-flight effect request id while blocked
 - observed at safe boundaries, especially while waiting for `camlflow/executeEffect`
 - improved to drain pending cancellation control messages before the next effect request when possible
+- now also polled during pure compute through runtime cancellation checks
 - not yet a full preemptive or resumable cancellation model
 
 ### 16. An initial progress-notification slice now exists
@@ -249,14 +250,35 @@ Current progress scope is intentionally lightweight:
 - safe to ignore
 - step-oriented rather than percent-oriented
 
+### 17. Hosts can now opt in or out of trace and progress per session
+
+Completed:
+
+- optional `initialize.params.notifications.trace`
+- optional `initialize.params.notifications.progress`
+- server-side session toggles for those streams
+- SDK typing for initialize notification preferences
+- tests covering progress-disabled sessions
+
+### 18. A streaming scaffold now exists without enabling streaming semantics
+
+Completed:
+
+- `initialize.capabilities.streaming = false`
+- reserved SDK protocol type for `camlflow/outputChunk`
+- reserved SDK callback surface `onOutputChunk`
+- docs clarifying that streaming is still unavailable unless a future server advertises otherwise
+
+This starts the streaming slice conservatively without pretending partial output is authoritative.
+
 ---
 
 ## Last validated state
 
 Last verified test run for the JSON-RPC bridge slice:
 
-- `dune test` passed with 76 tests after progress and cancellation follow-up work
-- `cd packages/camlflow-ts-json-rpc-sdk && npm test` passed with 8 Node tests, including SDK example, progress, and cancellation coverage
+- `dune test` passed with 77 tests after pure-compute cancellation and notification-preference follow-up work
+- `cd packages/camlflow-ts-json-rpc-sdk && npm test` passed with 10 Node tests, including SDK example, progress, cancellation, and notification-preference coverage
 - an OpenCode-backed provider run completed successfully against the real OpenCode CLI
 
 Recent follow-up documentation additions include:
@@ -267,7 +289,7 @@ Recent follow-up documentation additions include:
 - capability semantics and host-ignore rules in `docs/json-rpc.md`
 - expanded protocol fixtures for invalid requests, unknown methods, run failures, host effect errors, cancellation, progress, and shutdown/exit in `docs/json-rpc-fixtures.md`
 - deferred design notes for streaming, plus narrowed follow-up notes for cancellation and progress, in `docs/json-rpc-roadmap.md`
-- a formal deferred-extensions doc that now treats cancellation and progress as partially implemented and streaming as design-only in `docs/json-rpc-deferred-extensions.md`
+- a formal deferred-extensions doc that now treats cancellation and progress as partially implemented, with streaming reserved but still non-authoritative in `docs/json-rpc-deferred-extensions.md`
 - provider execution docs for both `codex` and `opencode` in `docs/provider-execution.md`
 - external CI coverage for OCaml tests, SDK smoke tests, and Node host examples in `.github/workflows/ci.yml`
 - runnable SDK-backed host examples in `packages/camlflow-ts-json-rpc-sdk/examples/`
@@ -282,14 +304,12 @@ The current JSON-RPC checklist is complete.
 
 Future follow-up beyond the checklist could still include:
 
-- deepening cancellation beyond the first safe-boundary slice:
+- deepening cancellation beyond the current slice:
   - better race handling between cancellation and late effect responses
-  - clearer guarantees for cancellation during pure compute segments
   - deciding whether cancellation diagnostics should remain default or become optional
 - deepening progress semantics:
-  - decide whether hosts should be able to opt out separately from trace
   - decide whether pure-step milestones should expand further
   - decide whether known-step estimates should ever become non-null
-- optional streaming after cancellation/progress feel stable
+- deciding whether the reserved streaming scaffold should grow into real `outputChunk` emission
 - more direct CLI/provider backends such as additional tool-specific adapters after more host feedback
 - publishing or packaging the SDK more formally once the example-driven integration surface feels stable

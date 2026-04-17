@@ -6,7 +6,7 @@ Partially implemented.
 
 The current `0.1.0` bridge now includes an initial cancellation slice using `$/cancelRequest`.
 It also includes an initial progress slice using `camlflow/progress`.
-Streaming remains design-only.
+Streaming now has a reserved scaffold through capability signaling and SDK notification plumbing, but no server-side emission yet.
 These notes exist to make future work more deliberate and more compatible with the current bridge.
 
 Current stable references:
@@ -88,8 +88,9 @@ Current implemented behavior:
 1. the host may send `$/cancelRequest` targeting the top-level `camlflow/run` request id
 2. CamlFlow marks the active run as cancellation-requested
 3. if CamlFlow is blocked on `camlflow/executeEffect`, it cancels at that safe boundary
-4. the original `camlflow/run` request completes with `-32800`
-5. CamlFlow emits `run-cancelled`
+4. pure-compute evaluation now also polls for cancellation at runtime checkpoints
+5. the original `camlflow/run` request completes with `-32800`
+6. CamlFlow emits `run-cancelled`
 
 Possible future extension, only if that proves insufficient:
 
@@ -197,6 +198,8 @@ Current implemented coverage includes:
 - `run-error`
 - `run-cancelled`
 
+Hosts may also disable trace and progress independently through initialize notification preferences.
+
 This remains advisory and UI-oriented.
 
 ## Proposed payload shape
@@ -285,9 +288,15 @@ Some hosts may want to display:
 
 That can improve UX, but it is dangerous if it becomes entangled with typed workflow state.
 
-## Preferred direction
+## Current direction
 
-If streaming is added, it should remain explicitly non-authoritative.
+A first scaffold now exists, but streaming is still not emitted by the server:
+
+- `capabilities.streaming = false`
+- the SDK reserves an `onOutputChunk` callback surface
+- no `camlflow/outputChunk` notifications are sent yet
+
+If streaming is expanded later, it should remain explicitly non-authoritative.
 
 Possible notification names:
 

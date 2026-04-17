@@ -43,6 +43,8 @@ type default_provider = invocation -> (Yojson.Safe.t, string) result
 
 type effect_observer = invocation -> output:Yojson.Safe.t -> unit
 
+type cancellation_check = unit -> (unit, string) result
+
 type t = {
   working_directory : string option;
   skills_directory : string option;
@@ -52,6 +54,7 @@ type t = {
   prompt_skill_provider : prompt_skill_provider;
   default_provider : default_provider;
   effect_observer : effect_observer;
+  cancellation_check : cancellation_check;
 }
 
 let default_named_handler ~name:_ ~input:_ ~return_type ~types =
@@ -67,6 +70,7 @@ let default_provider invocation =
   Value.default_json invocation.invocation_types invocation.invocation_return_type
 
 let ignore_effect _invocation ~output:_ = ()
+let default_cancellation_check () = Ok ()
 
 let empty =
   {
@@ -78,6 +82,7 @@ let empty =
     prompt_skill_provider = default_prompt_skill_provider;
     default_provider;
     effect_observer = ignore_effect;
+    cancellation_check = default_cancellation_check;
   }
 
 let with_working_directory context working_directory =
@@ -103,6 +108,9 @@ let with_default_provider context default_provider =
 
 let with_effect_observer context effect_observer =
   { context with effect_observer }
+
+let with_cancellation_check context cancellation_check =
+  { context with cancellation_check }
 
 let find_agent_handler context name = List.assoc_opt name context.agent_handlers
 let find_skill_handler context name = List.assoc_opt name context.skill_handlers
