@@ -131,17 +131,37 @@ let last_error_message events =
            | _ -> None)
        | _ -> None)
 
-let last_text_response events =
-  List.rev events
-  |> List.find_map (function
-       | `Assoc fields -> (
-           match assoc_string_field "type" fields with
-           | Some "text" -> (
-               match List.assoc_opt "part" fields with
-               | Some (`Assoc part_fields) -> assoc_string_field "text" part_fields
-               | _ -> None)
-           | _ -> None)
-       | _ -> None)
+let text_chunks events =
+  List.filter_map
+    (function
+      | `Assoc fields -> (
+          match assoc_string_field "type" fields with
+          | Some "text" -> (
+              match List.assoc_opt "part" fields with
+              | Some (`Assoc part_fields) -> assoc_string_field "text" part_fields
+              | _ -> None)
+          | _ -> None)
+      | _ -> None)
+    events
+
+let combined_text_response events =
+  match text_chunks events with
+  | [] -> None
+  | chunks -> Some (String.concat "" chunks)
+
+let response_text_or_error ~trace_kind ~trace_name events =
+  match last_error_message events with
+  | Some message ->
+      Error
+        (Printf.sprintf "opencode returned error for %s %s: %s" trace_kind
+           trace_name message)
+  | None -> (
+      match combined_text_response events with
+      | Some text -> Ok text
+      | None ->
+          Error
+            (Printf.sprintf "opencode returned no final text response for %s %s"
+               trace_kind trace_name))
 
 let parse_wrapped_response ~trace_kind ~trace_name text =
   let* wrapped_json =
@@ -271,14 +291,7 @@ let execute_request ~working_directory ~settings ~step (request : Effect_request
         ~prompt:wrapped_prompt ~schema:wrapped_schema ~model
     in
     let* events = json_line_events stdout in
-    let* text =
-      match last_text_response events with
-      | Some text -> Ok text
-      | None ->
-          Error
-            (Printf.sprintf "opencode returned no final text response for %s %s"
-               trace_kind trace_name)
-    in
+    let* text = response_text_or_error ~trace_kind ~trace_name events in
     parse_wrapped_response ~trace_kind ~trace_name text
   in
   let elapsed = Unix.gettimeofday () -. started_at in

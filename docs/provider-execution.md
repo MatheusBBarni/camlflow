@@ -97,7 +97,9 @@ When `--provider opencode` is set:
 
 - each effect becomes a fresh `opencode run --format json` call
 - CamlFlow appends a strict wrapped JSON response contract to the prompt
-- CamlFlow parses the final text event from Opencode's JSON event stream
+- CamlFlow parses OpenCode's newline-delimited JSON event stream
+- CamlFlow concatenates all `text` event chunks before decoding the final wrapped JSON payload
+- if OpenCode emits an `error` event, CamlFlow surfaces that message as the step failure
 
 Both adapters use a wrapped `{"result": ...}` response shape so non-object CamlFlow values remain safe to transport.
 
@@ -157,6 +159,34 @@ provider[1] ok elapsed=4.95s
 
 `stdout` remains reserved for the normal run result.
 
+## Capability summary
+
+### `codex`
+
+Current adapter capabilities:
+
+- supports model override
+- supports reasoning mapping
+- supports provider profiles and raw provider config overrides
+- supports sandbox selection and extra writable directories
+- supports wrapped JSON output-schema enforcement
+
+### `opencode`
+
+Current adapter capabilities:
+
+- supports model override
+- supports reasoning mapping through `--variant`
+- supports wrapped JSON response parsing from JSON event output
+- supports provider tracing
+
+Current adapter limitations:
+
+- no mapping for non-default sandbox selection yet
+- no mapping for extra writable directories yet
+- no mapping for provider profiles yet
+- no mapping for arbitrary provider config overrides yet
+
 ## Writable scope
 
 Default provider execution uses:
@@ -181,6 +211,18 @@ That means the adapter currently does **not** support:
 - `--provider-config`
 
 In other words, the first Opencode slice is a convenience adapter, not a full sandbox-policy mapping.
+
+## OpenCode error handling notes
+
+The adapter currently fails a step when any of the following happens:
+
+- OpenCode exits non-zero
+- OpenCode emits an `error` event in its JSON event stream
+- OpenCode emits no final `text` payload
+- the final text payload is not valid wrapped JSON
+- the wrapped JSON does not contain `result`
+
+This keeps failure modes explicit and easier to debug when integrating a new host environment.
 
 ## Examples
 

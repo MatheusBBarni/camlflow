@@ -1398,7 +1398,8 @@ let test_opencode_parse_wrapped_response () =
         (String.concat "\n"
            [
              "{\"type\":\"step_start\"}";
-             "{\"type\":\"text\",\"part\":{\"text\":\"{\\\"result\\\":\\\"hello\\\"}\"}}";
+             "{\"type\":\"text\",\"part\":{\"text\":\"{\\\"result\\\":\\\"he\"}}";
+             "{\"type\":\"text\",\"part\":{\"text\":\"llo\\\"}\"}}";
              "{\"type\":\"step_finish\"}";
            ])
     with
@@ -1406,7 +1407,7 @@ let test_opencode_parse_wrapped_response () =
     | Error error -> Alcotest.failf "opencode event parse failed: %s" error
   in
   let text =
-    match Camlflow.Providers_opencode.last_text_response events with
+    match Camlflow.Providers_opencode.combined_text_response events with
     | Some text -> text
     | None -> Alcotest.fail "missing opencode text response"
   in
@@ -1419,6 +1420,24 @@ let test_opencode_parse_wrapped_response () =
       Alcotest.failf "unexpected opencode parsed JSON: %s"
         (Yojson.Safe.to_string json)
   | Error error -> Alcotest.failf "opencode parse failed: %s" error
+
+let test_opencode_error_event_message () =
+  let events =
+    match
+      Camlflow.Providers_opencode.json_line_events
+        "{\"type\":\"error\",\"error\":{\"name\":\"UnknownError\",\"data\":{\"message\":\"Model not found\"}}}"
+    with
+    | Ok events -> events
+    | Error error -> Alcotest.failf "opencode event parse failed: %s" error
+  in
+  match
+    Camlflow.Providers_opencode.response_text_or_error ~trace_kind:"bound-agent"
+      ~trace_name:"greeter" events
+  with
+  | Ok text -> Alcotest.failf "expected opencode error, got text %s" text
+  | Error error ->
+      Alcotest.(check bool) "opencode error message extracted" true
+        (contains_substring error "Model not found")
 
 let test_opencode_inline_temperature_fails_fast () =
   with_temp_dir "camlflow-opencode-temp-" @@ fun dir ->
@@ -1936,6 +1955,8 @@ let () =
             test_opencode_preflight_validation;
           Alcotest.test_case "opencode parse wrapped response" `Quick
             test_opencode_parse_wrapped_response;
+          Alcotest.test_case "opencode error event message" `Quick
+            test_opencode_error_event_message;
           Alcotest.test_case "opencode inline temperature fails fast" `Quick
             test_opencode_inline_temperature_fails_fast;
           Alcotest.test_case "wrong argument labels fail" `Quick
