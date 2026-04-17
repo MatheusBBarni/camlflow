@@ -11,7 +11,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
-    "test": "npm run build && node --test test/*.test.js"
+    "test": "npm run build && node --test test/*.test.js",
+    "example:provider-hooks": "npm run build && node examples/provider-hooks.js",
+    "example:attach-streams": "npm run build && node examples/attach-streams.js",
+    "example:problem-coach": "npm run build && node examples/problem-coach.js"
   },
   "keywords": [
     "camlflow",

@@ -375,8 +375,9 @@ runtime hooks.
 - `examples/variants-match/` — records, variants, and pattern matching with a zero-arg `main`
 - `examples/inline-agent/` — executable `Agent.define`
 - `examples/provider-hooks/` — embedded OCaml host using runtime provider hooks
-- `examples/json-rpc-host/` — Node host speaking CamlFlow JSON-RPC over stdio
-- `examples/json-rpc-problem-coach/` — Node host running the structured problem-coach workflow over JSON-RPC
+- `examples/json-rpc-host/` — dependency-free Node host speaking CamlFlow JSON-RPC over stdio
+- `examples/json-rpc-problem-coach/` — dependency-free Node host running the structured problem-coach workflow over JSON-RPC
+- `packages/camlflow-ts-json-rpc-sdk/examples/` — SDK-backed JSON-RPC host examples for spawned and attached clients
 - `examples/codex/` — CLI Codex provider run using a bound agent, local skill, and inline agent
 - `examples/swe-leetcode/` — inline LeetCode solver agent using the caveman skill and a fixed model
 - `examples/problem-coach/` — multi-step solver that returns a directly useful final answer pack
@@ -392,8 +393,10 @@ runtime hooks.
 - `docs/json-rpc-status.md` — current JSON-RPC progress summary and remaining work
 - `docs/json-rpc-checklist.md` — concise JSON-RPC remaining-tasks checklist
 - `examples/provider-hooks/README.md` — runnable provider-hooks example
-- `examples/json-rpc-host/README.md` — runnable JSON-RPC host example
-- `examples/json-rpc-problem-coach/README.md` — runnable structured JSON-RPC host example
+- `examples/json-rpc-host/README.md` — runnable dependency-free JSON-RPC host example
+- `examples/json-rpc-problem-coach/README.md` — runnable dependency-free structured JSON-RPC host example
+- `packages/camlflow-ts-json-rpc-sdk/README.md` — TypeScript SDK guide
+- `packages/camlflow-ts-json-rpc-sdk/examples/README.md` — runnable SDK-backed JSON-RPC host examples
 - `examples/codex/README.md` — runnable Codex provider example
 - `examples/swe-leetcode/README.md` — runnable swe-leetcode example
 - `examples/problem-coach/README.md` — runnable problem-coach example

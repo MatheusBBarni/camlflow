@@ -98,10 +98,34 @@ main().catch((error) => {
 });
 ```
 
+## Runnable repository examples
+
+The repository also includes maintained SDK-backed example scripts in:
+
+- `examples/provider-hooks.js`
+- `examples/attach-streams.js`
+- `examples/problem-coach.js`
+- `examples/README.md`
+
+From `packages/camlflow-ts-json-rpc-sdk/` you can run:
+
+```sh
+npm run example:provider-hooks
+npm run example:attach-streams
+npm run example:problem-coach
+```
+
+These examples demonstrate the two main SDK integration styles:
+
+- high-level `spawnCamlFlowClient(...)`
+- low-level `new CamlFlowJsonRpcClient({ readable, writable, ... })`
+
+They also cover both a small string-returning workflow and a larger structured-output workflow.
+
 ## Notes
 
 - `initialize()` returns both `protocolVersion` and `irVersion` so hosts can separately reason about transport compatibility and compiled-artifact compatibility.
 - `compile()` returns `irVersion` plus the IR artifact as generic JSON by default. The bridge does not expose a smaller dedicated compile-artifact schema.
 - `effect.inlineDefinition` is typed from CamlFlow's current IR serialization, including inline agent metadata and source locations.
 - `exit` is modeled as a notification because that is how the current host examples shut the server down.
-- `npm test` runs smoke tests against the real CamlFlow stdio server plus the repository's Node host examples.
+- `npm test` runs smoke tests against the real CamlFlow stdio server, the repository's Node host examples, and the SDK-backed example scripts in this package.

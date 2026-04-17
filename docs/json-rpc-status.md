@@ -188,14 +188,29 @@ Completed:
   - `examples/json-rpc-host/host.js`
   - `examples/json-rpc-problem-coach/host.js`
 
+### 14. SDK-backed runnable examples now complement the raw host examples
+
+Completed in `packages/camlflow-ts-json-rpc-sdk`:
+
+- `examples/provider-hooks.js`
+- `examples/attach-streams.js`
+- `examples/problem-coach.js`
+- `examples/README.md`
+- smoke coverage that executes those example scripts
+
+This now gives CamlFlow two maintained onboarding paths for host authors:
+
+- dependency-free raw JSON-RPC examples in `examples/json-rpc-host/`
+- higher-level SDK examples in `packages/camlflow-ts-json-rpc-sdk/examples/`
+
 ---
 
 ## Last validated state
 
 Last verified test run for the JSON-RPC bridge slice:
 
-- `dune test` passed with 71 tests after the `opencode` adapter slice
-- `cd packages/camlflow-ts-json-rpc-sdk && npm test` passed with 3 smoke tests
+- `dune test` passed with 72 tests after the `opencode` follow-up fixes
+- `cd packages/camlflow-ts-json-rpc-sdk && npm test` passed with 6 Node tests, including SDK example coverage
 - an OpenCode-backed provider run completed successfully against the real OpenCode CLI
 
 Recent follow-up documentation additions include:
@@ -209,6 +224,7 @@ Recent follow-up documentation additions include:
 - a formal design-only extensions doc in `docs/json-rpc-deferred-extensions.md`
 - provider execution docs for both `codex` and `opencode` in `docs/provider-execution.md`
 - external CI coverage for OCaml tests, SDK smoke tests, and Node host examples in `.github/workflows/ci.yml`
+- runnable SDK-backed host examples in `packages/camlflow-ts-json-rpc-sdk/examples/`
 - this status snapshot in `docs/json-rpc-status.md`
 - the short checklist in `docs/json-rpc-checklist.md`
 
@@ -220,5 +236,9 @@ The current JSON-RPC checklist is complete.
 
 Future follow-up beyond the checklist could still include:
 
-- more direct CLI/provider backends such as additional tool-specific adapters
-- eventual implementation of the deferred cancellation, progress, and streaming designs
+- implementing the deferred protocol work in the documented order:
+  - cancellation first
+  - progress notifications second
+  - optional streaming last
+- more direct CLI/provider backends such as additional tool-specific adapters after more host feedback
+- publishing or packaging the SDK more formally once the example-driven integration surface feels stable

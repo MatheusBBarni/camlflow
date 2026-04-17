@@ -13,6 +13,7 @@ The goal of this phase is not to finalize every request payload, but to lock the
 - `docs/json-rpc-deferred-extensions.md` — formalized design-only notes for later protocol work
 - `docs/json-rpc-status.md` — current progress snapshot and fuller summary
 - `docs/json-rpc-checklist.md` — concise remaining-task checklist
+- `packages/camlflow-ts-json-rpc-sdk/README.md` — SDK guide and runnable client examples
 
 ---
 

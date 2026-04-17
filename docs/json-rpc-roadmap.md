@@ -73,7 +73,7 @@ This keeps CamlFlow language semantics stable while letting each tool remain opi
 
 1. **Extract a generic effect-request model**
 2. **Add JSON-RPC stdio server mode**
-3. **Ship a reference TypeScript host example**
+3. **Ship reference host examples and SDK usage examples**
 4. **Stabilize the JSON-RPC protocol and JSON IR**
 5. **Add tool-specific convenience adapters later**
 
@@ -330,7 +330,7 @@ Reuse the current synchronous runtime and install a context handler that:
 
 ---
 
-# Phase 3 — Ship a reference host example
+# Phase 3 — Ship reference host examples
 
 ## Goal
 
@@ -338,13 +338,19 @@ Prove the model end to end for non-OCaml tool authors.
 
 ## Deliverable
 
-A tiny TypeScript host example.
+Runnable host examples that cover both:
+
+- raw JSON-RPC framing for tool authors who want zero dependencies
+- SDK-backed clients for tool authors who want a higher-level integration path
 
 ## Suggested files
 
 - `examples/json-rpc-host/README.md`
-- `examples/json-rpc-host/package.json`
-- `examples/json-rpc-host/host.ts`
+- `examples/json-rpc-host/host.js`
+- `examples/json-rpc-problem-coach/README.md`
+- `examples/json-rpc-problem-coach/host.js`
+- `packages/camlflow-ts-json-rpc-sdk/examples/provider-hooks.js`
+- `packages/camlflow-ts-json-rpc-sdk/examples/problem-coach.js`
 
 ## What the example should do
 
@@ -567,17 +573,21 @@ Outcome:
 
 - `camlflow serve --stdio` works with a mock client
 
-### PR 3 — TypeScript host example
+### PR 3 — reference host examples
 
 Likely files:
 
-- `examples/json-rpc-host/host.ts`
-- `examples/json-rpc-host/package.json`
+- `examples/json-rpc-host/host.js`
 - `examples/json-rpc-host/README.md`
+- `examples/json-rpc-problem-coach/host.js`
+- `examples/json-rpc-problem-coach/README.md`
+- `packages/camlflow-ts-json-rpc-sdk/examples/provider-hooks.js`
+- `packages/camlflow-ts-json-rpc-sdk/examples/problem-coach.js`
 
 Outcome:
 
 - non-OCaml developers can immediately understand the integration model
+- SDK users can start from maintained example code instead of rebuilding the protocol loop by hand
 
 ### PR 4 — protocol and IR stabilization
 
