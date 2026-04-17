@@ -203,14 +203,31 @@ This now gives CamlFlow two maintained onboarding paths for host authors:
 - dependency-free raw JSON-RPC examples in `examples/json-rpc-host/`
 - higher-level SDK examples in `packages/camlflow-ts-json-rpc-sdk/examples/`
 
+### 15. An initial cancellation slice now exists for active runs
+
+Completed:
+
+- server support for host → server `$/cancelRequest`
+- `initialize.capabilities.cancelRequest = true`
+- `-32800` request-cancelled responses for cancelled `camlflow/run`
+- `run-cancelled` trace emission
+- SDK support for `run(..., { signal })` and `cancelRequest(id)`
+- tests covering server cancellation and SDK `AbortSignal` cancellation
+
+Current cancellation scope is intentionally narrow:
+
+- targeted at top-level `camlflow/run` request ids
+- observed at safe boundaries, especially while waiting for `camlflow/executeEffect`
+- not yet a full preemptive or resumable cancellation model
+
 ---
 
 ## Last validated state
 
 Last verified test run for the JSON-RPC bridge slice:
 
-- `dune test` passed with 72 tests after the `opencode` follow-up fixes
-- `cd packages/camlflow-ts-json-rpc-sdk && npm test` passed with 6 Node tests, including SDK example coverage
+- `dune test` passed with 73 tests after the first cancellation slice
+- `cd packages/camlflow-ts-json-rpc-sdk && npm test` passed with 7 Node tests, including SDK example and cancellation coverage
 - an OpenCode-backed provider run completed successfully against the real OpenCode CLI
 
 Recent follow-up documentation additions include:
@@ -219,9 +236,9 @@ Recent follow-up documentation additions include:
 - compatibility policy notes for `protocolVersion` and `irVersion` in `docs/json-rpc.md`
 - clearer host error response guidance for `camlflow/executeEffect` in `docs/json-rpc.md`
 - capability semantics and host-ignore rules in `docs/json-rpc.md`
-- expanded protocol fixtures for invalid requests, unknown methods, run failures, host effect errors, and shutdown/exit in `docs/json-rpc-fixtures.md`
-- deferred design notes for cancellation, progress, and streaming in `docs/json-rpc-roadmap.md`
-- a formal design-only extensions doc in `docs/json-rpc-deferred-extensions.md`
+- expanded protocol fixtures for invalid requests, unknown methods, run failures, host effect errors, cancellation, and shutdown/exit in `docs/json-rpc-fixtures.md`
+- deferred design notes for progress and streaming, plus narrowed follow-up notes for cancellation, in `docs/json-rpc-roadmap.md`
+- a formal deferred-extensions doc that now treats cancellation as partially implemented and progress/streaming as design-only in `docs/json-rpc-deferred-extensions.md`
 - provider execution docs for both `codex` and `opencode` in `docs/provider-execution.md`
 - external CI coverage for OCaml tests, SDK smoke tests, and Node host examples in `.github/workflows/ci.yml`
 - runnable SDK-backed host examples in `packages/camlflow-ts-json-rpc-sdk/examples/`
@@ -236,9 +253,11 @@ The current JSON-RPC checklist is complete.
 
 Future follow-up beyond the checklist could still include:
 
-- implementing the deferred protocol work in the documented order:
-  - cancellation first
-  - progress notifications second
-  - optional streaming last
+- deepening cancellation beyond the first safe-boundary slice:
+  - better race handling between cancellation and late effect responses
+  - clearer guarantees for cancellation during pure compute segments
+  - deciding whether cancellation diagnostics should remain default or become optional
+- progress notifications next
+- optional streaming after progress
 - more direct CLI/provider backends such as additional tool-specific adapters after more host feedback
 - publishing or packaging the SDK more formally once the example-driven integration surface feels stable

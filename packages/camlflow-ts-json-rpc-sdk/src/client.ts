@@ -18,6 +18,7 @@ import {
   type CamlFlowRunParams,
   type CamlFlowRunResult,
   type CamlFlowTraceNotification,
+  type JsonRpcCancelRequestParams,
   type JsonRpcErrorResponse,
   type JsonObject,
   type JsonRpcErrorObject,
@@ -34,6 +35,7 @@ type PendingRequest = {
   method: string;
   resolve: (value: JsonValue) => void;
   reject: (error: Error) => void;
+  cleanup: () => void;
 };
 
 type MaybePromise<T> = T | Promise<T>;
@@ -83,6 +85,10 @@ export interface ShutdownAndExitOptions {
   killSignal?: NodeJS.Signals | number;
 }
 
+export interface JsonRpcRequestOptions {
+  signal?: AbortSignal;
+}
+
 export class JsonRpcMethodError<
   TData extends JsonValue = JsonValue,
 > extends Error {
@@ -123,6 +129,18 @@ export class CamlFlowConnectionClosedError extends Error {
   constructor(message = "CamlFlow JSON-RPC connection closed") {
     super(message);
     this.name = "CamlFlowConnectionClosedError";
+  }
+}
+
+export class JsonRpcRequestCancelledError extends Error {
+  readonly method: string;
+  readonly id: JsonRpcId;
+
+  constructor(method: string, id: JsonRpcId) {
+    super(`JSON-RPC request cancelled: ${method}`);
+    this.name = "JsonRpcRequestCancelledError";
+    this.method = method;
+    this.id = id;
   }
 }
 
@@ -283,49 +301,71 @@ export class CamlFlowJsonRpcClient {
     return spawnCamlFlowClient(options);
   }
 
-  async initialize(params: JsonObject = {}): Promise<CamlFlowInitializeResult> {
-    return this.request(CAMLFLOW_METHODS.initialize, params);
+  async initialize(
+    params: JsonObject = {},
+    options: JsonRpcRequestOptions = {},
+  ): Promise<CamlFlowInitializeResult> {
+    return this.request(CAMLFLOW_METHODS.initialize, params, options);
   }
 
-  async check(params: CamlFlowCheckParams): Promise<CamlFlowCheckResult> {
+  async check(
+    params: CamlFlowCheckParams,
+    options: JsonRpcRequestOptions = {},
+  ): Promise<CamlFlowCheckResult> {
     return this.request(
       CAMLFLOW_METHODS.check,
       normalizeCheckOrCompileParams(params),
+      options,
     );
   }
 
   async compile<TArtifact extends JsonValue = JsonValue>(
     params: CamlFlowCompileParams,
+    options: JsonRpcRequestOptions = {},
   ): Promise<CamlFlowCompileResult<TArtifact>> {
     return this.request(
       CAMLFLOW_METHODS.compile,
       normalizeCheckOrCompileParams(params),
+      options,
     );
   }
 
   async run<TOutput extends JsonValue = JsonValue, TInput extends JsonValue = JsonValue>(
     params: CamlFlowRunParams<TInput>,
+    options: JsonRpcRequestOptions = {},
   ): Promise<CamlFlowRunResult<TOutput>> {
-    return this.request(CAMLFLOW_METHODS.run, normalizeRunParams(params));
+    return this.request(CAMLFLOW_METHODS.run, normalizeRunParams(params), options);
   }
 
-  async shutdown(): Promise<null> {
-    return this.request(CAMLFLOW_METHODS.shutdown, {});
+  async shutdown(options: JsonRpcRequestOptions = {}): Promise<null> {
+    return this.request(CAMLFLOW_METHODS.shutdown, {}, options);
   }
 
   async exit(): Promise<void> {
     await this.notify(CAMLFLOW_METHODS.exit);
   }
 
+  async cancelRequest(id: JsonRpcId): Promise<void> {
+    await this.notify<JsonRpcCancelRequestParams>(CAMLFLOW_METHODS.cancelRequest, { id });
+  }
+
   async request<
     TResult extends JsonValue = JsonValue,
     TParams extends JsonValue = JsonValue,
-  >(method: string, params?: TParams): Promise<TResult> {
+  >(
+    method: string,
+    params?: TParams,
+    options: JsonRpcRequestOptions = {},
+  ): Promise<TResult> {
     if (this.closed) {
       throw new CamlFlowConnectionClosedError();
     }
 
     const id = ++this.nextId;
+    if (options.signal?.aborted) {
+      throw new JsonRpcRequestCancelledError(method, id);
+    }
+
     const key = idKey(id);
     const message: JsonRpcRequest<TParams> = {
       jsonrpc: "2.0",
@@ -337,18 +377,56 @@ export class CamlFlowJsonRpcClient {
       message.params = params;
     }
 
+    let abortHandler: (() => void) | undefined;
+    const cleanup = (): void => {
+      if (options.signal && abortHandler) {
+        options.signal.removeEventListener("abort", abortHandler);
+      }
+    };
+
     const responsePromise = new Promise<TResult>((resolve, reject) => {
-      this.pending.set(key, {
+      const pending: PendingRequest = {
         method,
-        resolve: (value) => resolve(value as TResult),
-        reject,
-      });
+        resolve: (value) => {
+          cleanup();
+          resolve(value as TResult);
+        },
+        reject: (error) => {
+          cleanup();
+          reject(error);
+        },
+        cleanup,
+      };
+
+      this.pending.set(key, pending);
+
+      if (options.signal) {
+        abortHandler = () => {
+          const current = this.pending.get(key);
+          if (!current) {
+            return;
+          }
+
+          this.pending.delete(key);
+          current.reject(new JsonRpcRequestCancelledError(method, id));
+          void this.cancelRequest(id).catch((error) => {
+            this.onTransportError?.(
+              normalizeError(error, `failed to send cancel request for ${method}`),
+            );
+          });
+        };
+        options.signal.addEventListener("abort", abortHandler, { once: true });
+      }
     });
 
     try {
       await this.sendMessage(message);
     } catch (error) {
-      this.pending.delete(key);
+      const current = this.pending.get(key);
+      if (current) {
+        this.pending.delete(key);
+        current.cleanup();
+      }
       throw error;
     }
 

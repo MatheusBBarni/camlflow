@@ -531,6 +531,13 @@ let test_rpc_server_initialize_advertises_trace () =
           Alcotest.failf "expected diagnostic capability, got %s"
             (match other with
             | Some json -> Yojson.Safe.to_string json
+            | None -> "null"));
+      (match List.assoc_opt "cancelRequest" fields with
+      | Some (`Bool true) -> ()
+      | other ->
+          Alcotest.failf "expected cancelRequest capability, got %s"
+            (match other with
+            | Some json -> Yojson.Safe.to_string json
             | None -> "null"))
   | other ->
       Alcotest.failf "expected capabilities object, got %s"
@@ -983,6 +990,81 @@ let main (name : string) : string =
         (contains_substring error.error_message
            "host returned JSON-RPC error -32000 for greeter: model timeout")
   | None -> Alcotest.fail "missing effect failure response"
+
+let test_rpc_server_cancellation_returns_request_cancelled () =
+  with_temp_dir "camlflow-rpc-cancel-" @@ fun dir ->
+  let workflow = Filename.concat dir "workflow.cml" in
+  write_file workflow
+    {|
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  greeting
+|};
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:(`Assoc []) "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+            [
+              ( "program",
+                `Assoc
+                  [
+                    ("path", `String workflow);
+                    ("includePaths", `List []);
+                    ("skillsDir", `Null);
+                  ] );
+              ("entry", `String "main");
+              ("input", `String "Ada");
+            ])
+        "camlflow/run";
+      Camlflow.Rpc_protocol.request
+        ~params:(`Assoc [ ("id", `Int 2) ]) "$/cancelRequest";
+      Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-1")
+        (`Assoc [ ("output", `String "hello Ada") ]);
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  let traces = find_rpc_requests "camlflow/trace" output in
+  let has_run_cancelled =
+    List.exists
+      (fun request ->
+        match request.Camlflow.Rpc_protocol.request_params with
+        | Some (`Assoc fields) -> (
+            match List.assoc_opt "event" fields with
+            | Some (`String event) -> String.equal event "run-cancelled"
+            | _ -> false)
+        | _ -> false)
+      traces
+  in
+  Alcotest.(check bool) "cancellation emits run-cancelled trace" true
+    has_run_cancelled;
+  let diagnostics = find_rpc_requests "camlflow/diagnostic" output in
+  let has_cancel_diagnostic =
+    List.exists
+      (fun request ->
+        match request.Camlflow.Rpc_protocol.request_params with
+        | Some (`Assoc fields) -> (
+            match List.assoc_opt "message" fields with
+            | Some (`String message) -> String.equal message "run cancelled by host"
+            | _ -> false)
+        | _ -> false)
+      diagnostics
+  in
+  Alcotest.(check bool) "cancellation emits diagnostic" true has_cancel_diagnostic;
+  let responses = List.filter_map rpc_response_message output in
+  Alcotest.(check int) "late effect response is ignored" 2 (List.length responses);
+  let response = find_rpc_response_by_id "2" output in
+  match response.Camlflow.Rpc_protocol.response_error with
+  | Some error ->
+      Alcotest.(check int) "cancellation error code" (-32800)
+        error.error_code;
+      Alcotest.(check string) "cancellation error message"
+        "run cancelled by host" error.error_message
+  | None -> Alcotest.fail "missing cancellation response"
 
 let test_provider_schema_for_tuple_and_option () =
   let schema =
@@ -1923,6 +2005,8 @@ let () =
             test_rpc_server_run_failure_error;
           Alcotest.test_case "rpc server effect error propagation" `Quick
             test_rpc_server_effect_error_propagation;
+          Alcotest.test_case "rpc server cancellation returns request cancelled" `Quick
+            test_rpc_server_cancellation_returns_request_cancelled;
           Alcotest.test_case "provider schema for tuple and option" `Quick
             test_provider_schema_for_tuple_and_option;
           Alcotest.test_case "provider schema for named types" `Quick

@@ -40,6 +40,7 @@ Notes:
       "executeEffect": true,
       "trace": true,
       "diagnostic": true,
+      "cancelRequest": true,
       "renderedPrompt": true,
       "outputSchema": true
     },
@@ -661,7 +662,81 @@ This fixture shows a host failing the first effect step.
 
 ---
 
-## 10. `shutdown` followed by `exit`
+## 10. Host cancels `camlflow/run` with `$/cancelRequest`
+
+Assume an earlier `initialize` succeeded and `camlflow/run` has already reached the first effect step.
+
+### Host → CamlFlow cancellation notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "$/cancelRequest",
+  "params": {
+    "id": 10
+  }
+}
+```
+
+### CamlFlow → Host trace notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/trace",
+  "params": {
+    "event": "run-cancelled",
+    "runId": "run-1",
+    "step": 1,
+    "effect": {
+      "kind": "bound-agent",
+      "name": "greeter"
+    },
+    "details": {
+      "reason": "host-cancelled"
+    }
+  }
+}
+```
+
+### CamlFlow → Host diagnostic notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/diagnostic",
+  "params": {
+    "severity": "error",
+    "message": "run cancelled by host",
+    "method": "camlflow/run",
+    "runId": "run-1",
+    "step": 1,
+    "effect": {
+      "kind": "bound-agent",
+      "name": "greeter"
+    }
+  }
+}
+```
+
+### CamlFlow → Host final error response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "error": {
+    "code": -32800,
+    "message": "run cancelled by host"
+  }
+}
+```
+
+A late host response for the cancelled in-flight `camlflow/executeEffect` request is currently ignored.
+
+---
+
+## 11. `shutdown` followed by `exit`
 
 Assume an earlier `initialize` request already succeeded on this connection.
 
@@ -670,7 +745,7 @@ Assume an earlier `initialize` request already succeeded on this connection.
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 10,
+  "id": 11,
   "method": "shutdown",
   "params": {}
 }
@@ -681,7 +756,7 @@ Assume an earlier `initialize` request already succeeded on this connection.
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 10,
+  "id": 11,
   "result": null
 }
 ```
@@ -699,7 +774,7 @@ After receiving `exit`, the current server loop stops without sending a reply.
 
 ---
 
-## 11. Framing example
+## 12. Framing example
 
 Every payload above is wrapped on the wire like this:
 
@@ -713,7 +788,7 @@ The body length must match the exact UTF-8 byte length of the JSON payload.
 
 ---
 
-## 12. Related files
+## 13. Related files
 
 - `docs/json-rpc.md`
 - `examples/json-rpc-host/host.js`

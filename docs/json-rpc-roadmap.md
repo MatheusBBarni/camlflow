@@ -415,7 +415,9 @@ Add:
 
 # Phase 4.5 — Deferred protocol extensions
 
-These are deliberately deferred design notes, not implementation requirements for the current slice.
+Most of this section remains deliberately deferred design work.
+
+One exception now exists: CamlFlow has an initial cancellation slice using `$/cancelRequest` for active `camlflow/run` requests. The notes below therefore describe the remaining design space beyond that first implementation.
 
 See also:
 
@@ -432,11 +434,14 @@ Hosts may need to stop a long-running workflow when:
 - the host tears down the current session
 - the host decides an effect result is no longer needed
 
-### Proposed direction
+### Current direction
 
-Add one of:
+The first implemented slice uses:
 
-- JSON-RPC request cancellation using `$/cancelRequest`
+- JSON-RPC request cancellation via `$/cancelRequest`
+
+Possible future follow-up, only if the current shape proves insufficient:
+
 - a CamlFlow-specific method such as `camlflow/cancelRun`
 
 ### Suggested semantics
@@ -447,7 +452,7 @@ Add one of:
   - `camlflow/trace` with an event like `run-cancelled`
   - `camlflow/diagnostic` when useful
 
-### Non-goal for now
+### Remaining non-goals for now
 
 Do not implement partial unwinding or durable resume tied to cancellation in this phase.
 

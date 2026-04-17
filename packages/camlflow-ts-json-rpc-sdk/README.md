@@ -125,9 +125,21 @@ These examples demonstrate the two main SDK integration styles:
 
 They also cover both a small string-returning workflow and a larger structured-output workflow.
 
+## Cancellation
+
+The SDK now supports host-driven cancellation in two ways:
+
+- pass `{ signal }` to `initialize`, `check`, `compile`, `run`, or `shutdown`
+- call `client.cancelRequest(id)` directly if you are managing ids yourself
+
+For `run(...)`, aborting the signal sends `$/cancelRequest` to CamlFlow and rejects the local promise with `JsonRpcRequestCancelledError`.
+
+The current bridge treats cancellation as a safe-boundary feature, especially while CamlFlow is waiting for `camlflow/executeEffect`.
+
 ## Notes
 
 - `initialize()` returns both `protocolVersion` and `irVersion` so hosts can separately reason about transport compatibility and compiled-artifact compatibility.
+- `initialize().capabilities.cancelRequest` tells hosts whether `$/cancelRequest` is supported.
 - `compile()` returns `irVersion` plus the IR artifact as generic JSON by default. The bridge does not expose a smaller dedicated compile-artifact schema.
 - `effect.inlineDefinition` is typed from CamlFlow's current IR serialization, including inline agent metadata and source locations.
 - `exit` is modeled as a notification because that is how the current host examples shut the server down.

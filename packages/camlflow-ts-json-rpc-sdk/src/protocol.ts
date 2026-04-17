@@ -21,6 +21,10 @@ export interface JsonRpcNotification<TParams extends JsonValue = JsonValue> {
   params?: TParams;
 }
 
+export interface JsonRpcCancelRequestParams extends JsonObject {
+  id: JsonRpcId;
+}
+
 export interface JsonRpcErrorObject<TData extends JsonValue = JsonValue> {
   code: number;
   message: string;
@@ -80,6 +84,7 @@ export const CAMLFLOW_METHODS = {
   run: "camlflow/run",
   shutdown: "shutdown",
   exit: "exit",
+  cancelRequest: "$/cancelRequest",
   executeEffect: "camlflow/executeEffect",
   trace: "camlflow/trace",
   diagnostic: "camlflow/diagnostic",
@@ -88,6 +93,7 @@ export const CAMLFLOW_METHODS = {
 export const CAMLFLOW_ERROR_CODES = {
   invalidRequest: -32600,
   methodNotFound: -32601,
+  requestCancelled: -32800,
   serverNotInitialized: -32002,
   checkFailed: -32010,
   compileFailed: -32011,
@@ -109,7 +115,8 @@ export type CamlFlowTraceEvent =
   | "effect-result"
   | "effect-error"
   | "run-finish"
-  | "run-error";
+  | "run-error"
+  | "run-cancelled";
 
 export interface CamlFlowCapabilities extends JsonObject {
   check: boolean;
@@ -118,6 +125,7 @@ export interface CamlFlowCapabilities extends JsonObject {
   executeEffect: boolean;
   trace: boolean;
   diagnostic: boolean;
+  cancelRequest: boolean;
   renderedPrompt: boolean;
   outputSchema: boolean;
 }

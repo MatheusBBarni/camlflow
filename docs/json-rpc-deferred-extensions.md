@@ -2,9 +2,10 @@
 
 ## Status
 
-Design notes only.
+Partially implemented.
 
-Nothing in this document is implemented by the current `0.1.0` protocol.
+The current `0.1.0` bridge now includes an initial cancellation slice using `$/cancelRequest`.
+Progress notifications and streaming remain design notes only.
 These notes exist to make future work more deliberate and more compatible with the current bridge.
 
 Current stable references:
@@ -17,13 +18,13 @@ Current stable references:
 
 ## Purpose
 
-This document formalizes the three deferred protocol areas that came up during the initial JSON-RPC bridge work:
+This document formalizes the three protocol areas that came up during the initial JSON-RPC bridge work:
 
-1. cancellation
+1. cancellation follow-up after the first implemented slice
 2. progress notifications
 3. streaming previews
 
-The goal is to define likely direction, invariants, and non-goals **before** implementation starts.
+The goal is to define likely direction, invariants, and non-goals **before** broader implementation continues.
 
 ---
 
@@ -77,14 +78,21 @@ Hosts may need to stop a run when:
 - the host has its own timeout budget
 - an in-flight effect step is no longer useful
 
-## Preferred direction
+## Current direction
 
-Start by designing around JSON-RPC request cancellation semantics, with a fallback CamlFlow-specific method only if needed.
+The first implemented slice now uses JSON-RPC request cancellation semantics through `$/cancelRequest`.
 
-Preferred order:
+Current implemented behavior:
 
-1. support `$/cancelRequest`
-2. if that proves insufficient, add `camlflow/cancelRun`
+1. the host may send `$/cancelRequest` targeting the top-level `camlflow/run` request id
+2. CamlFlow marks the active run as cancellation-requested
+3. if CamlFlow is blocked on `camlflow/executeEffect`, it cancels at that safe boundary
+4. the original `camlflow/run` request completes with `-32800`
+5. CamlFlow emits `run-cancelled`
+
+Possible future extension, only if that proves insufficient:
+
+- add `camlflow/cancelRun`
 
 ## Proposed cancellation target
 
@@ -95,14 +103,16 @@ Cancellation should target one of:
 
 The protocol should avoid cancellation targeted at arbitrary internal runtime state.
 
-## Proposed behavior
+## Remaining behavior questions
 
-If a run is cancelled:
+The current implementation already does the following:
 
-1. CamlFlow marks the run as cancellation-requested
-2. if CamlFlow is blocked on `camlflow/executeEffect`, the run should terminate cleanly at the next safe boundary
-3. the original `camlflow/run` request should complete as cancelled, not as a successful result
-4. CamlFlow should emit an observable run-level event
+1. marks the run as cancellation-requested
+2. cancels cleanly at an observed safe boundary
+3. completes the original `camlflow/run` request as cancelled
+4. emits an observable run-level event
+
+The remaining questions are about how much farther cancellation should go beyond that first slice.
 
 ## Proposed notifications
 
@@ -128,12 +138,10 @@ A diagnostic may also be emitted when useful, but cancellation should not requir
 
 ## Response semantics
 
-If cancellation is surfaced as a request failure, the protocol should use a distinct cancellation code rather than overloading generic run failure.
+The current implementation now uses a distinct cancellation code rather than overloading generic run failure:
 
-Recommended direction:
-
-- prefer a dedicated cancelled code
-- do not fold cancellation into `-32012`
+- `-32800` for cancelled runs
+- not `-32012`
 
 That keeps cancellation distinguishable from ordinary execution failure.
 
@@ -151,6 +159,7 @@ Cancellation does **not** imply:
 - should the first terminal event win if an effect result arrives while cancellation is racing?
 - should cancelled runs emit diagnostics by default or only trace events?
 - should a host be allowed to cancel only the top-level run, or also a nested effect request explicitly?
+- should pure-compute segments eventually become cancellable before the next effect boundary?
 
 ---
 

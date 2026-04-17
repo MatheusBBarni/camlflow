@@ -91,42 +91,49 @@ let request_of_yojson = function
 
 let response_of_yojson = function
   | `Assoc fields ->
-      let* version =
-        match List.assoc_opt "jsonrpc" fields with
-        | Some (`String version) -> Ok version
-        | _ -> Error "missing jsonrpc version"
-      in
-      let* () = if String.equal version "2.0" then Ok () else Error "unsupported jsonrpc version" in
-      let response_id =
-        match List.assoc_opt "id" fields with
-        | None | Some `Null -> Ok None
-        | Some value -> id_of_yojson value |> Result.map Option.some
-      in
-      let* response_id = response_id in
-      let response_result = List.assoc_opt "result" fields in
-      let response_error =
-        match List.assoc_opt "error" fields with
-        | None -> Ok None
-        | Some (`Assoc error_fields) ->
-            let* error_code =
-              match List.assoc_opt "code" error_fields with
-              | Some (`Int code) -> Ok code
-              | _ -> Error "JSON-RPC error missing code"
-            in
-            let* error_message =
-              match List.assoc_opt "message" error_fields with
-              | Some (`String message) -> Ok message
-              | _ -> Error "JSON-RPC error missing message"
-            in
-            Ok
-              (Some
-                 {
-                   error_code;
-                   error_message;
-                   error_data = List.assoc_opt "data" error_fields;
-                 })
-        | Some _ -> Error "JSON-RPC error field must be an object"
-      in
-      let* response_error = response_error in
-      Ok { response_id; response_result; response_error }
+      if List.mem_assoc "method" fields then Error "expected JSON-RPC response object"
+      else
+        let* version =
+          match List.assoc_opt "jsonrpc" fields with
+          | Some (`String version) -> Ok version
+          | _ -> Error "missing jsonrpc version"
+        in
+        let* () = if String.equal version "2.0" then Ok () else Error "unsupported jsonrpc version" in
+        let response_id =
+          match List.assoc_opt "id" fields with
+          | None | Some `Null -> Ok None
+          | Some value -> id_of_yojson value |> Result.map Option.some
+        in
+        let* response_id = response_id in
+        let response_result = List.assoc_opt "result" fields in
+        let response_error =
+          match List.assoc_opt "error" fields with
+          | None -> Ok None
+          | Some (`Assoc error_fields) ->
+              let* error_code =
+                match List.assoc_opt "code" error_fields with
+                | Some (`Int code) -> Ok code
+                | _ -> Error "JSON-RPC error missing code"
+              in
+              let* error_message =
+                match List.assoc_opt "message" error_fields with
+                | Some (`String message) -> Ok message
+                | _ -> Error "JSON-RPC error missing message"
+              in
+              Ok
+                (Some
+                   {
+                     error_code;
+                     error_message;
+                     error_data = List.assoc_opt "data" error_fields;
+                   })
+          | Some _ -> Error "JSON-RPC error field must be an object"
+        in
+        let* response_error = response_error in
+        let* () =
+          match (response_result, response_error) with
+          | None, None -> Error "JSON-RPC response must contain result or error"
+          | _ -> Ok ()
+        in
+        Ok { response_id; response_result; response_error }
   | _ -> Error "expected JSON-RPC response object"

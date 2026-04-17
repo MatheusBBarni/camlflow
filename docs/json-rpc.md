@@ -152,6 +152,10 @@ The first protocol version is expected to include:
 - `shutdown`
 - `exit`
 
+The current implementation also accepts the optional host notification:
+
+- `$/cancelRequest`
+
 ### Current method schemas
 
 #### `initialize`
@@ -245,6 +249,29 @@ Host sends a notification or request with method `exit`.
 
 The current implementation stops the server loop after receiving it.
 
+#### `$/cancelRequest`
+
+Host notification params:
+
+```json
+{
+  "id": 2
+}
+```
+
+Current behavior:
+
+- cancellation targets the original host → server request id for `camlflow/run`
+- CamlFlow marks the active run as cancellation-requested
+- if CamlFlow is currently blocked waiting for `camlflow/executeEffect`, it cancels at that safe boundary
+- the original `camlflow/run` request completes with error code `-32800`
+- CamlFlow emits `run-cancelled` through `camlflow/trace`
+- CamlFlow currently also emits a cancellation diagnostic for observability
+
+Current limitation:
+
+- this first slice is boundary-based, not preemptive; it is intended for cancellation while a run is blocked on effect execution or before the next effect boundary
+
 ### Current error code table
 
 The current implementation uses these JSON-RPC error codes.
@@ -253,6 +280,7 @@ The current implementation uses these JSON-RPC error codes.
 
 - `-32600` — invalid JSON-RPC request payload
 - `-32601` — method not found
+- `-32800` — request cancelled
 
 #### CamlFlow server lifecycle errors
 
@@ -280,6 +308,10 @@ Typical causes:
 #### `-32601` method not found
 
 Returned when the request method is well-formed but unsupported.
+
+#### `-32800` request cancelled
+
+Returned when the host cancels an active `camlflow/run` request through `$/cancelRequest` and CamlFlow observes that cancellation at a safe boundary.
 
 #### `-32002` server not initialized
 
@@ -367,6 +399,10 @@ The current implementation also emits the optional notification:
 
 - `camlflow/diagnostic`
 
+The host may also send the optional notification:
+
+- `$/cancelRequest`
+
 Hosts may ignore `camlflow/trace` and `camlflow/diagnostic` if they do not need them.
 
 ### Capability semantics
@@ -378,6 +414,7 @@ Current meaning:
 - `check`, `compile`, `run` — the server implements these host → server methods
 - `executeEffect` — the server may issue `camlflow/executeEffect` requests during effectful runs
 - `trace`, `diagnostic` — the server may emit these optional notifications
+- `cancelRequest` — the server supports host cancellation via `$/cancelRequest`
 - `renderedPrompt`, `outputSchema` — effect requests include these convenience fields
 
 Decision for `0.1.0`:
@@ -391,6 +428,7 @@ Host requirements for `0.1.0`:
 - hosts must send `initialize` before calling methods that require initialization
 - hosts that want to run effectful workflows must handle `camlflow/executeEffect`
 - hosts may ignore `camlflow/trace` and `camlflow/diagnostic`
+- hosts may send `$/cancelRequest` when `capabilities.cancelRequest = true`
 - hosts should ignore unknown future capability keys
 
 ### `camlflow/trace` notifications
@@ -405,6 +443,7 @@ Current events include:
 - `effect-error`
 - `run-finish`
 - `run-error`
+- `run-cancelled`
 
 A trace payload includes:
 

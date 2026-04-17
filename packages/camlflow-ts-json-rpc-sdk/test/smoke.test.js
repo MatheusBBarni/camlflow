@@ -4,6 +4,8 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  CAMLFLOW_ERROR_CODES,
+  JsonRpcRequestCancelledError,
   effectOutput,
   spawnCamlFlowClient,
 } = require('../dist');
@@ -133,4 +135,81 @@ test('json-rpc problem-coach host example still runs end-to-end', { timeout: 300
   assert.equal(result.code, 0, result.stderr);
   assert.match(result.stdout, /"stepsRun":\s*4/);
   assert.match(result.stdout, /"title":\s*"two sum solution pack"/);
+});
+
+test('sdk can cancel a run with AbortSignal', { timeout: 30000 }, async () => {
+  const traces = [];
+  let effectStartedResolve;
+  const effectStarted = new Promise((resolve) => {
+    effectStartedResolve = resolve;
+  });
+
+  const client = spawnCamlFlowClient({
+    command: 'dune',
+    args: ['exec', './bin/main.exe', '--', 'serve', '--stdio'],
+    cwd: repoRoot,
+    effectHandler: async ({ effect }) => {
+      if (`${effect.kind}:${effect.name}` === 'bound-agent:greeter') {
+        effectStartedResolve();
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        return effectOutput(`hello ${effect.input?.name ?? 'friend'}`);
+      }
+      return effectOutput('');
+    },
+    onTrace: async (trace) => {
+      traces.push(trace);
+    },
+  });
+
+  try {
+    const initialize = await client.initialize();
+    assert.equal(initialize.capabilities.cancelRequest, true);
+
+    const controller = new AbortController();
+    const runPromise = client.run(
+      {
+        program: {
+          path: 'examples/basic/main.cml',
+          includePaths: [],
+          skillsDir: null,
+        },
+        entry: 'main',
+        input: 'Ada',
+      },
+      { signal: controller.signal },
+    );
+
+    await effectStarted;
+    controller.abort();
+
+    await assert.rejects(runPromise, (error) => {
+      assert.ok(error instanceof JsonRpcRequestCancelledError);
+      assert.equal(error.method, 'camlflow/run');
+      return true;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.ok(
+      traces.some((trace) => trace.event === 'run-cancelled'),
+      `expected run-cancelled trace, got ${JSON.stringify(traces)}`,
+    );
+
+    await assert.rejects(
+      client.request('camlflow/run', {
+        program: {
+          path: 'examples/basic/main.cml',
+          includePaths: [],
+          skillsDir: null,
+        },
+        entry: 'main',
+        input: 'Ada',
+      }, { signal: AbortSignal.abort() }),
+      (error) => {
+        assert.ok(error instanceof JsonRpcRequestCancelledError);
+        return true;
+      },
+    );
+  } finally {
+    await client.shutdownAndExit();
+  }
 });
