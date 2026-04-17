@@ -192,9 +192,9 @@ Completed:
 
 Completed in `packages/camlflow-ts-json-rpc-sdk`:
 
-- `examples/provider-hooks.js`
-- `examples/attach-streams.js`
-- `examples/problem-coach.js`
+- `examples/provider-hooks.ts`
+- `examples/attach-streams.ts`
+- `examples/problem-coach.ts`
 - `examples/README.md`
 - smoke coverage that executes those example scripts
 

@@ -9,12 +9,14 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "clean": "rm -rf dist",
+    "build:sdk": "tsc -p tsconfig.json",
+    "build:examples": "tsc -p examples/tsconfig.json",
+    "build": "npm run build:sdk && npm run build:examples",
+    "clean": "rm -rf dist examples-dist",
     "test": "npm run build && node --test test/*.test.js",
-    "example:provider-hooks": "npm run build && node examples/provider-hooks.js",
-    "example:attach-streams": "npm run build && node examples/attach-streams.js",
-    "example:problem-coach": "npm run build && node examples/problem-coach.js"
+    "example:provider-hooks": "npm run build && node examples-dist/provider-hooks.js",
+    "example:attach-streams": "npm run build && node examples-dist/attach-streams.js",
+    "example:problem-coach": "npm run build && node examples-dist/problem-coach.js"
   },
   "keywords": [
     "camlflow",

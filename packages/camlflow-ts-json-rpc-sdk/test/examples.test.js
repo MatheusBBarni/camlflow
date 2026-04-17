@@ -50,7 +50,7 @@ function runProcess(command, args, options = {}) {
 }
 
 test('sdk provider-hooks example runs end-to-end', { timeout: 30000 }, async () => {
-  const result = await runProcess('node', ['examples/provider-hooks.js'], {
+  const result = await runProcess('node', ['examples-dist/provider-hooks.js'], {
     cwd: packageRoot,
   });
 
@@ -61,7 +61,7 @@ test('sdk provider-hooks example runs end-to-end', { timeout: 30000 }, async () 
 });
 
 test('sdk attach-streams example runs end-to-end', { timeout: 30000 }, async () => {
-  const result = await runProcess('node', ['examples/attach-streams.js'], {
+  const result = await runProcess('node', ['examples-dist/attach-streams.js'], {
     cwd: packageRoot,
   });
 
@@ -71,7 +71,7 @@ test('sdk attach-streams example runs end-to-end', { timeout: 30000 }, async () 
 });
 
 test('sdk problem-coach example runs end-to-end', { timeout: 30000 }, async () => {
-  const result = await runProcess('node', ['examples/problem-coach.js'], {
+  const result = await runProcess('node', ['examples-dist/problem-coach.js'], {
     cwd: packageRoot,
   });
 

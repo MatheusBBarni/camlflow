@@ -3,11 +3,12 @@
 These examples show how to drive CamlFlow's JSON-RPC stdio bridge with the
 repository's TypeScript SDK.
 
-They assume you are running from this repository checkout, because each script:
+They assume you are running from this repository checkout, because each example:
 
 - starts `dune exec ./bin/main.exe -- serve --stdio`
 - points at repository examples such as `examples/provider-hooks/workflow.cml`
 - imports the locally built SDK from `../dist`
+- is authored in TypeScript and compiled to `examples-dist/`
 
 ## Setup
 
@@ -26,6 +27,8 @@ npm run build
 npm run example:provider-hooks
 ```
 
+Source: `examples/provider-hooks.ts`
+
 Demonstrates:
 
 - `spawnCamlFlowClient(...)`
@@ -39,6 +42,8 @@ Demonstrates:
 npm run example:attach-streams
 ```
 
+Source: `examples/attach-streams.ts`
+
 Demonstrates:
 
 - manually spawning `camlflow serve --stdio`
@@ -51,6 +56,8 @@ Demonstrates:
 npm run example:problem-coach
 ```
 
+Source: `examples/problem-coach.ts`
+
 Demonstrates:
 
 - a multi-step workflow with structured JSON outputs
@@ -59,4 +66,4 @@ Demonstrates:
 
 ## Validation
 
-`npm test` also runs smoke coverage for these example scripts so they stay in sync with the current bridge.
+`npm test` also runs smoke coverage for the compiled example scripts so they stay in sync with the current bridge.

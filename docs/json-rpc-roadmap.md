@@ -349,8 +349,8 @@ Runnable host examples that cover both:
 - `examples/json-rpc-host/host.js`
 - `examples/json-rpc-problem-coach/README.md`
 - `examples/json-rpc-problem-coach/host.js`
-- `packages/camlflow-ts-json-rpc-sdk/examples/provider-hooks.js`
-- `packages/camlflow-ts-json-rpc-sdk/examples/problem-coach.js`
+- `packages/camlflow-ts-json-rpc-sdk/examples/provider-hooks.ts`
+- `packages/camlflow-ts-json-rpc-sdk/examples/problem-coach.ts`
 
 ## What the example should do
 
@@ -581,8 +581,8 @@ Likely files:
 - `examples/json-rpc-host/README.md`
 - `examples/json-rpc-problem-coach/host.js`
 - `examples/json-rpc-problem-coach/README.md`
-- `packages/camlflow-ts-json-rpc-sdk/examples/provider-hooks.js`
-- `packages/camlflow-ts-json-rpc-sdk/examples/problem-coach.js`
+- `packages/camlflow-ts-json-rpc-sdk/examples/provider-hooks.ts`
+- `packages/camlflow-ts-json-rpc-sdk/examples/problem-coach.ts`
 
 Outcome:
 
