@@ -222,10 +222,26 @@ let test_cli_completion_command () =
 
 let test_cli_completion_script_mentions_commands () =
   let script = Camlflow.Cli.completion_script Camlflow.Cli.Bash in
-  if not (contains_substring script "parse check compile run completion") then
+  if not (contains_substring script "parse check compile run serve completion") then
     Alcotest.failf "unexpected completion script: %s" script;
   if not (contains_substring script "--provider --model --reasoning") then
-    Alcotest.failf "provider flags missing from completion script: %s" script
+    Alcotest.failf "provider flags missing from completion script: %s" script;
+  if not (contains_substring script "--stdio") then
+    Alcotest.failf "serve flags missing from completion script: %s" script
+
+let test_cli_serve_stdio_parse () =
+  let parsed = parse_cli [ "serve"; "--stdio" ] in
+  Alcotest.(check string) "serve command" "serve"
+    (Camlflow.Cli.command_name parsed.command);
+  Alcotest.(check bool) "serve stdio flag" true parsed.options.rpc_stdio;
+  (match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "serve validate failed: %s" error)
+
+let test_cli_serve_requires_stdio () =
+  let parsed = parse_cli [ "serve" ] in
+  expect_error_contains "serve requires stdio" "serve requires flag --stdio"
+    (Camlflow.Cli.validate parsed)
 
 let test_cli_run_provider_flags_parse () =
   let parsed =
@@ -298,6 +314,58 @@ let test_cli_check_rejects_provider_flags () =
   let parsed = parse_cli [ "check"; "main.cml"; "--provider"; "codex" ] in
   expect_error_contains "check rejects provider flags" "flag --provider"
     (Camlflow.Cli.validate parsed)
+
+let test_rpc_protocol_request_roundtrip () =
+  let json =
+    Camlflow.Rpc_protocol.request
+      ~id:(Camlflow.Rpc_protocol.String "1") ~params:(`Assoc [ ("x", `Int 1) ])
+      "camlflow/check"
+  in
+  match Camlflow.Rpc_protocol.request_of_yojson json with
+  | Ok request ->
+      Alcotest.(check string) "rpc method" "camlflow/check"
+        request.Camlflow.Rpc_protocol.request_method;
+      Alcotest.(check string) "rpc id" "1"
+        (match request.request_id with
+        | Some id -> Camlflow.Rpc_protocol.string_of_id id
+        | None -> "none")
+  | Error error -> Alcotest.failf "rpc request parse failed: %s" error
+
+let test_rpc_stdio_parse_content_length () =
+  match
+    Camlflow.Rpc_stdio.parse_content_length
+      [ "Content-Type: application/vscode-jsonrpc; charset=utf-8"; "Content-Length: 17" ]
+  with
+  | Ok length -> Alcotest.(check int) "content length" 17 length
+  | Error error -> Alcotest.failf "content length parse failed: %s" error
+
+let test_rpc_server_run_request_parse () =
+  let json =
+    `Assoc
+      [
+        ( "program",
+          `Assoc
+            [
+              ("path", `String "examples/basic/main.cml");
+              ("includePaths", `List [ `String "lib" ]);
+              ("skillsDir", `String "skills");
+            ] );
+        ("entry", `String "main");
+        ("input", `String "Ada");
+      ]
+  in
+  match Camlflow.Rpc_server.run_request_of_yojson json with
+  | Ok request ->
+      Alcotest.(check string) "run path" "examples/basic/main.cml"
+        request.Camlflow.Rpc_server.run_program.program_path;
+      Alcotest.(check (list string)) "run include paths" [ "lib" ]
+        request.run_program.program_include_paths;
+      Alcotest.(check (option string)) "run skills dir" (Some "skills")
+        request.run_program.program_skills_dir;
+      Alcotest.(check string) "run entry" "main" request.run_entry;
+      Alcotest.(check bool) "run input present" true
+        (Option.is_some request.run_input)
+  | Error error -> Alcotest.failf "run request parse failed: %s" error
 
 let test_provider_schema_for_tuple_and_option () =
   let schema =
@@ -1062,6 +1130,10 @@ let () =
             test_cli_completion_command;
           Alcotest.test_case "cli completion script" `Quick
             test_cli_completion_script_mentions_commands;
+          Alcotest.test_case "cli serve stdio parse" `Quick
+            test_cli_serve_stdio_parse;
+          Alcotest.test_case "cli serve requires stdio" `Quick
+            test_cli_serve_requires_stdio;
           Alcotest.test_case "cli run provider flags parse" `Quick
             test_cli_run_provider_flags_parse;
           Alcotest.test_case "cli provider flags require provider" `Quick
@@ -1072,6 +1144,12 @@ let () =
             test_cli_invalid_provider_config_rejected;
           Alcotest.test_case "cli check rejects provider flags" `Quick
             test_cli_check_rejects_provider_flags;
+          Alcotest.test_case "rpc protocol request roundtrip" `Quick
+            test_rpc_protocol_request_roundtrip;
+          Alcotest.test_case "rpc stdio parse content length" `Quick
+            test_rpc_stdio_parse_content_length;
+          Alcotest.test_case "rpc server run request parse" `Quick
+            test_rpc_server_run_request_parse;
           Alcotest.test_case "provider schema for tuple and option" `Quick
             test_provider_schema_for_tuple_and_option;
           Alcotest.test_case "provider schema for named types" `Quick

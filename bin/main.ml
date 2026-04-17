@@ -178,6 +178,8 @@ let dispatch (parsed : Camlflow.Cli.parsed) =
         | None -> die "internal CLI dispatch error: missing completion shell"
       in
       print_endline (Camlflow.Cli.completion_script shell)
+  | Camlflow.Cli.Serve, [] ->
+      or_die (Camlflow.Rpc_server.run_stdio ())
   | Camlflow.Cli.Parse, [ path ] -> print_parse path
   | Camlflow.Cli.Check, [ path ] -> print_check parsed.options.include_paths path
   | Camlflow.Cli.Compile, [ path ] ->
