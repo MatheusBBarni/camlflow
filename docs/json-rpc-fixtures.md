@@ -182,7 +182,7 @@ This fixture uses a workflow like `examples/provider-hooks/workflow.cml`.
 
 ---
 
-## 3. `camlflow/compile`
+## 3. `camlflow/check`
 
 This fixture uses a minimal program equivalent to:
 
@@ -196,7 +196,7 @@ let main : string = "ok"
 {
   "jsonrpc": "2.0",
   "id": 3,
-  "method": "camlflow/compile",
+  "method": "camlflow/check",
   "params": {
     "program": {
       "path": "/tmp/main.cml",
@@ -213,6 +213,46 @@ let main : string = "ok"
 {
   "jsonrpc": "2.0",
   "id": 3,
+  "result": {
+    "modules": 1,
+    "rootModule": "Main"
+  }
+}
+```
+
+---
+
+## 4. `camlflow/compile`
+
+This fixture uses the same minimal program:
+
+```ocaml
+let main : string = "ok"
+```
+
+### Host → CamlFlow
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "method": "camlflow/compile",
+  "params": {
+    "program": {
+      "path": "/tmp/main.cml",
+      "includePaths": [],
+      "skillsDir": null
+    }
+  }
+}
+```
+
+### CamlFlow → Host
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 4,
   "result": {
     "irVersion": "0.1.0",
     "artifact": {
@@ -263,14 +303,14 @@ let main : string = "ok"
 
 ---
 
-## 4. `camlflow/check` before `initialize`
+## 5. `camlflow/check` before `initialize`
 
 ### Host → CamlFlow
 
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 4,
+  "id": 5,
   "method": "camlflow/check"
 }
 ```
@@ -297,7 +337,7 @@ let main : string = "ok"
 ```json
 {
   "jsonrpc": "2.0",
-  "id": 4,
+  "id": 5,
   "error": {
     "code": -32002,
     "message": "server not initialized"
@@ -307,7 +347,7 @@ let main : string = "ok"
 
 ---
 
-## 5. Framing example
+## 6. Framing example
 
 Every payload above is wrapped on the wire like this:
 
@@ -321,7 +361,7 @@ The body length must match the exact UTF-8 byte length of the JSON payload.
 
 ---
 
-## 6. Related files
+## 7. Related files
 
 - `docs/json-rpc.md`
 - `examples/json-rpc-host/host.js`

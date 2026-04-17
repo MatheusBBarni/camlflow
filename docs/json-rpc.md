@@ -143,6 +143,99 @@ The first protocol version is expected to include:
 - `shutdown`
 - `exit`
 
+### Current method schemas
+
+#### `initialize`
+
+Host request params:
+
+```json
+{}
+```
+
+Server result fields:
+
+- `protocolVersion: string`
+- `irVersion: string`
+- `capabilities: object`
+- `effectKinds: string[]`
+
+#### `camlflow/check`
+
+Host request params:
+
+```json
+{
+  "program": {
+    "path": "string",
+    "includePaths": ["string"],
+    "skillsDir": "string | null"
+  },
+  "entry": "string (optional, ignored by check)",
+  "input": "json (optional, ignored by check)"
+}
+```
+
+Server result fields:
+
+- `modules: int`
+- `rootModule: string`
+
+#### `camlflow/compile`
+
+Host request params use the same `program` object shape as `camlflow/check`.
+
+Server result fields:
+
+- `irVersion: string`
+- `artifact: program-json`
+
+`artifact.version` is currently the same as `irVersion`.
+
+#### `camlflow/run`
+
+Host request params:
+
+```json
+{
+  "program": {
+    "path": "string",
+    "includePaths": ["string"],
+    "skillsDir": "string | null"
+  },
+  "entry": "string",
+  "input": "any valid JSON value"
+}
+```
+
+Server result fields:
+
+- `runId: string`
+- `stepsRun: int`
+- `output: json | null`
+
+`input` is optional; if omitted, the workflow must not require an argument.
+
+#### `shutdown`
+
+Host request params:
+
+```json
+{}
+```
+
+Server result:
+
+```json
+null
+```
+
+#### `exit`
+
+Host sends a notification or request with method `exit`.
+
+The current implementation stops the server loop after receiving it.
+
 ### Server → Client requests
 
 During a run, CamlFlow may send requests back to the host.
@@ -195,6 +288,44 @@ A diagnostic payload includes:
 - `step`
 - `effect` summary when relevant
 
+Current notification shapes:
+
+#### `camlflow/trace`
+
+```json
+{
+  "event": "string",
+  "runId": "string | null",
+  "step": "int | null",
+  "effect": {
+    "kind": "string",
+    "name": "string"
+  },
+  "details": {}
+}
+```
+
+`effect` may be `null` when the event is run-scoped.
+`details` is optional and event-specific.
+
+#### `camlflow/diagnostic`
+
+```json
+{
+  "severity": "error",
+  "message": "string",
+  "method": "string | null",
+  "runId": "string | null",
+  "step": "int | null",
+  "effect": {
+    "kind": "string",
+    "name": "string"
+  }
+}
+```
+
+`effect` may be `null` when the diagnostic is not tied to a single effect step.
+
 For concrete transcripts, see `docs/json-rpc-fixtures.md`.
 
 ---
@@ -227,6 +358,42 @@ So effect requests should ultimately carry at least:
 - local skill markdown if present
 - inline agent metadata if present
 - rendered prompt for convenience
+
+#### `camlflow/executeEffect`
+
+Server → host request params:
+
+```json
+{
+  "runId": "string | null",
+  "step": 1,
+  "effect": {
+    "kind": "bound-agent | bound-skill | local-prompt-skill | inline-agent",
+    "role": "agent | skill",
+    "name": "string",
+    "input": {},
+    "declaredReturnType": "string",
+    "outputSchema": {},
+    "workingDirectory": "string | null",
+    "skillsDirectory": "string | null",
+    "skillMarkdown": "string | null",
+    "inlineDefinition": "object | null",
+    "renderedPrompt": "string",
+    "requestedModel": "string | null",
+    "unsupportedSettings": ["string"],
+    "step": 1,
+    "runId": "string | null"
+  }
+}
+```
+
+Host → server success result:
+
+```json
+{
+  "output": "json value matching the declared CamlFlow return type"
+}
+```
 
 ---
 
