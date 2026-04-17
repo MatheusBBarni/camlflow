@@ -17,7 +17,7 @@ jobs:
       - name: Set up OCaml
         uses: avsm/setup-ocaml@v3
         with:
-          ocaml-compiler: 5.1.1
+          ocaml-compiler: 5.4.0
           dune-cache: true
 
       - name: Install OCaml dependencies
@@ -42,7 +42,7 @@ jobs:
       - name: Set up OCaml
         uses: avsm/setup-ocaml@v3
         with:
-          ocaml-compiler: 5.1.1
+          ocaml-compiler: 5.4.0
           dune-cache: true
 
       - name: Install OCaml dependencies
