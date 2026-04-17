@@ -36,6 +36,7 @@ The SDK targets the bridge as it exists today:
 ```sh
 npm install
 npm run build
+npm test
 ```
 
 ## Example
@@ -99,6 +100,8 @@ main().catch((error) => {
 
 ## Notes
 
-- `compile()` returns the IR artifact as generic JSON by default. The bridge does not expose a smaller dedicated compile-artifact schema.
+- `initialize()` returns both `protocolVersion` and `irVersion` so hosts can separately reason about transport compatibility and compiled-artifact compatibility.
+- `compile()` returns `irVersion` plus the IR artifact as generic JSON by default. The bridge does not expose a smaller dedicated compile-artifact schema.
 - `effect.inlineDefinition` is typed from CamlFlow's current IR serialization, including inline agent metadata and source locations.
 - `exit` is modeled as a notification because that is how the current host examples shut the server down.
+- `npm test` runs smoke tests against the real CamlFlow stdio server plus the repository's Node host examples.

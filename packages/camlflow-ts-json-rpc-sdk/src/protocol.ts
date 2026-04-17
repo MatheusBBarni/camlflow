@@ -124,6 +124,7 @@ export interface CamlFlowCapabilities extends JsonObject {
 
 export interface CamlFlowInitializeResult extends JsonObject {
   protocolVersion: string;
+  irVersion: string;
   capabilities: CamlFlowCapabilities;
   effectKinds: CamlFlowEffectKind[];
 }
@@ -159,6 +160,7 @@ export interface CamlFlowCheckResult extends JsonObject {
 export interface CamlFlowCompileResult<
   TArtifact extends JsonValue = JsonValue,
 > extends JsonObject {
+  irVersion: string;
   artifact: TArtifact;
 }
 

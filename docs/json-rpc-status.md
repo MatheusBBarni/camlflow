@@ -148,7 +148,19 @@ Observed on this branch:
 
 - `feat: add TypeScript JSON-RPC SDK for CamlFlow`
 
-That is separate from the core host-protocol implementation summarized above.
+That work has now been followed by SDK alignment and smoke-test improvements on this branch.
+
+### 11. SDK types and smoke tests were aligned with the current protocol
+
+Completed in `packages/camlflow-ts-json-rpc-sdk`:
+
+- `CamlFlowInitializeResult` now includes `irVersion`
+- `CamlFlowCompileResult` now includes `irVersion`
+- `npm test` now runs Node smoke tests against:
+  - the SDK client itself
+  - `examples/json-rpc-host/host.js`
+  - `examples/json-rpc-problem-coach/host.js`
+- README instructions now mention `npm test` and the current version fields
 
 ---
 
@@ -157,6 +169,7 @@ That is separate from the core host-protocol implementation summarized above.
 Last verified test run for the JSON-RPC bridge slice:
 
 - `dune test` passed with 66 tests after protocol-error coverage was added
+- `cd packages/camlflow-ts-json-rpc-sdk && npm test` passed with 3 smoke tests
 
 Recent follow-up documentation additions include:
 
@@ -173,30 +186,9 @@ Recent follow-up documentation additions include:
 
 ## Remaining tasks
 
-## Host / SDK integration validation
-
-### 1. Re-validate examples against the current docs
-
-Useful checks:
-
-- `examples/json-rpc-host/host.js`
-- `examples/json-rpc-problem-coach/host.js`
-- any TypeScript SDK examples or smoke tests
-
-Goal:
-
-- ensure example hosts still match the documented request/response shapes
-
-### 2. Add stronger integration testing around host libraries
-
-Possible follow-up:
-
-- smoke tests for the JS/TS host path
-- CI checks that exercise the protocol from outside OCaml
-
 ## Deferred design work
 
-### 3. Formalize deferred protocol extensions before implementation
+### 1. Formalize deferred protocol extensions before implementation
 
 These should stay design-only until the core protocol is stable:
 
@@ -212,7 +204,7 @@ Recommended order:
 
 ## Later / lower priority
 
-### 4. Add direct provider convenience adapters only after host mode is stable
+### 2. Add direct provider convenience adapters only after host mode is stable
 
 Examples:
 
