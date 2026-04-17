@@ -351,6 +351,7 @@ Runnable host examples that cover both:
 - `examples/json-rpc-problem-coach/host.js`
 - `packages/camlflow-ts-json-rpc-sdk/examples/provider-hooks.ts`
 - `packages/camlflow-ts-json-rpc-sdk/examples/problem-coach.ts`
+- `packages/camlflow-ts-json-rpc-sdk/examples/cancellation.ts`
 
 ## What the example should do
 
@@ -417,7 +418,12 @@ Add:
 
 Most of this section remains deliberately deferred design work.
 
-One exception now exists: CamlFlow has an initial cancellation slice using `$/cancelRequest` for active `camlflow/run` requests. The notes below therefore describe the remaining design space beyond that first implementation.
+Two exceptions now exist:
+
+- CamlFlow has an initial cancellation slice using `$/cancelRequest` for active `camlflow/run` requests.
+- CamlFlow has an initial progress slice using `camlflow/progress` notifications.
+
+The notes below therefore describe the remaining design space beyond those first implementations.
 
 See also:
 
@@ -462,11 +468,24 @@ Do not implement partial unwinding or durable resume tied to cancellation in thi
 
 Hosts often want UI feedback before the workflow completes.
 
-### Proposed direction
+### Current direction
 
-Add a notification such as:
+The first implemented slice now uses:
 
 - `camlflow/progress`
+
+Current implemented coverage includes:
+
+- `check-start`
+- `check-finish`
+- `compile-start`
+- `compile-finish`
+- `run-start`
+- `effect-start`
+- `effect-finish`
+- `run-finish`
+- `run-error`
+- `run-cancelled`
 
 ### Suggested payload shape
 
@@ -482,7 +501,7 @@ Add a notification such as:
 - emit after an effect step completes
 - emit around pure compile/check/run milestones
 
-### Non-goal for now
+### Remaining non-goal for now
 
 Do not attempt percent-perfect progress. Step-oriented progress is enough.
 
@@ -516,11 +535,11 @@ Do not couple streaming to typed workflow state changes. Only finalized JSON out
 
 ## Recommended order for future extension work
 
-1. cancellation
-2. progress notifications
+1. deepen cancellation only where host feedback shows ambiguity
+2. deepen progress only where UI consumers need more structure
 3. optional streaming
 
-That order preserves correctness before UX enhancements.
+That order preserves correctness before richer UX enhancements.
 
 ---
 
@@ -588,6 +607,7 @@ Likely files:
 - `examples/json-rpc-problem-coach/README.md`
 - `packages/camlflow-ts-json-rpc-sdk/examples/provider-hooks.ts`
 - `packages/camlflow-ts-json-rpc-sdk/examples/problem-coach.ts`
+- `packages/camlflow-ts-json-rpc-sdk/examples/cancellation.ts`
 
 Outcome:
 

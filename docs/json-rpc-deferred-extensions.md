@@ -5,7 +5,8 @@
 Partially implemented.
 
 The current `0.1.0` bridge now includes an initial cancellation slice using `$/cancelRequest`.
-Progress notifications and streaming remain design notes only.
+It also includes an initial progress slice using `camlflow/progress`.
+Streaming remains design-only.
 These notes exist to make future work more deliberate and more compatible with the current bridge.
 
 Current stable references:
@@ -21,7 +22,7 @@ Current stable references:
 This document formalizes the three protocol areas that came up during the initial JSON-RPC bridge work:
 
 1. cancellation follow-up after the first implemented slice
-2. progress notifications
+2. progress follow-up after the first implemented slice
 3. streaming previews
 
 The goal is to define likely direction, invariants, and non-goals **before** broader implementation continues.
@@ -177,13 +178,26 @@ Without progress notifications, the host only sees:
 
 That is enough for correctness, but not ideal for UI.
 
-## Preferred direction
+## Current direction
 
-Add a dedicated optional notification:
+The first implemented slice now uses a dedicated optional notification:
 
 - `camlflow/progress`
 
-This should remain advisory and UI-oriented.
+Current implemented coverage includes:
+
+- `check-start`
+- `check-finish`
+- `compile-start`
+- `compile-finish`
+- `run-start`
+- `effect-start`
+- `effect-finish`
+- `run-finish`
+- `run-error`
+- `run-cancelled`
+
+This remains advisory and UI-oriented.
 
 ## Proposed payload shape
 
@@ -234,6 +248,12 @@ Progress should be treated as:
 
 Hosts must not treat progress notifications as authoritative proof that workflow state has committed.
 
+The current implementation stays deliberately conservative:
+
+- `knownSteps` is still `null`
+- progress is step-oriented rather than percent-oriented
+- progress does not imply any extra cancellation or resume guarantees
+
 ## Non-goals
 
 Progress does **not** need to provide:
@@ -249,6 +269,7 @@ Step-oriented progress is enough for the first iteration.
 - should `camlflow/progress` remain separate from `camlflow/trace`, or should trace be extended instead?
 - should hosts be able to opt out of progress separately from trace?
 - should pure-step milestones be emitted by default or only effect milestones?
+- should `knownSteps` remain `null` until static estimation is trustworthy, or should hosts receive rough estimates earlier?
 
 ---
 
@@ -335,17 +356,17 @@ Streaming does **not** imply:
 
 ## Recommended implementation order
 
-If these extensions are implemented later, the recommended order remains:
+If these extensions are extended further, the recommended order is now:
 
-1. cancellation
-2. progress notifications
+1. deepen cancellation only where host feedback shows ambiguity
+2. deepen progress only where UI consumers need more structure
 3. optional streaming previews
 
 Reasoning:
 
-- cancellation protects correctness and user control first
+- cancellation still protects correctness and user control first
 - progress improves UX without changing authority boundaries
-- streaming has the highest complexity-to-value ratio and the most room for accidental semantic drift
+- streaming still has the highest complexity-to-value ratio and the most room for accidental semantic drift
 
 ---
 

@@ -17,6 +17,9 @@ async function main(): Promise<void> {
     onDiagnostic: async (diagnostic) => {
       console.error("diagnostic:", JSON.stringify(diagnostic));
     },
+    onProgress: async (progress) => {
+      console.log("progress:", JSON.stringify(progress));
+    },
   });
 
   try {

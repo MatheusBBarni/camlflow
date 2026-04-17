@@ -195,6 +195,7 @@ Completed in `packages/camlflow-ts-json-rpc-sdk`:
 - `examples/provider-hooks.ts`
 - `examples/attach-streams.ts`
 - `examples/problem-coach.ts`
+- `examples/cancellation.ts`
 - `examples/README.md`
 - smoke coverage that executes those example scripts
 
@@ -216,9 +217,37 @@ Completed:
 
 Current cancellation scope is intentionally narrow:
 
-- targeted at top-level `camlflow/run` request ids
+- targeted at top-level `camlflow/run` request ids, with support for the current in-flight effect request id while blocked
 - observed at safe boundaries, especially while waiting for `camlflow/executeEffect`
+- improved to drain pending cancellation control messages before the next effect request when possible
 - not yet a full preemptive or resumable cancellation model
+
+### 16. An initial progress-notification slice now exists
+
+Completed:
+
+- server support for `camlflow/progress`
+- `initialize.capabilities.progress = true`
+- progress stages for:
+  - `check-start`
+  - `check-finish`
+  - `compile-start`
+  - `compile-finish`
+  - `run-start`
+  - `effect-start`
+  - `effect-finish`
+  - `run-finish`
+  - `run-error`
+  - `run-cancelled`
+- SDK support for `onProgress`
+- runnable SDK cancellation example showing progress + abort handling
+- tests covering server progress payloads, end-to-end progress notifications, and SDK progress callbacks
+
+Current progress scope is intentionally lightweight:
+
+- advisory only
+- safe to ignore
+- step-oriented rather than percent-oriented
 
 ---
 
@@ -226,8 +255,8 @@ Current cancellation scope is intentionally narrow:
 
 Last verified test run for the JSON-RPC bridge slice:
 
-- `dune test` passed with 73 tests after the first cancellation slice
-- `cd packages/camlflow-ts-json-rpc-sdk && npm test` passed with 7 Node tests, including SDK example and cancellation coverage
+- `dune test` passed with 76 tests after progress and cancellation follow-up work
+- `cd packages/camlflow-ts-json-rpc-sdk && npm test` passed with 8 Node tests, including SDK example, progress, and cancellation coverage
 - an OpenCode-backed provider run completed successfully against the real OpenCode CLI
 
 Recent follow-up documentation additions include:
@@ -236,9 +265,9 @@ Recent follow-up documentation additions include:
 - compatibility policy notes for `protocolVersion` and `irVersion` in `docs/json-rpc.md`
 - clearer host error response guidance for `camlflow/executeEffect` in `docs/json-rpc.md`
 - capability semantics and host-ignore rules in `docs/json-rpc.md`
-- expanded protocol fixtures for invalid requests, unknown methods, run failures, host effect errors, cancellation, and shutdown/exit in `docs/json-rpc-fixtures.md`
-- deferred design notes for progress and streaming, plus narrowed follow-up notes for cancellation, in `docs/json-rpc-roadmap.md`
-- a formal deferred-extensions doc that now treats cancellation as partially implemented and progress/streaming as design-only in `docs/json-rpc-deferred-extensions.md`
+- expanded protocol fixtures for invalid requests, unknown methods, run failures, host effect errors, cancellation, progress, and shutdown/exit in `docs/json-rpc-fixtures.md`
+- deferred design notes for streaming, plus narrowed follow-up notes for cancellation and progress, in `docs/json-rpc-roadmap.md`
+- a formal deferred-extensions doc that now treats cancellation and progress as partially implemented and streaming as design-only in `docs/json-rpc-deferred-extensions.md`
 - provider execution docs for both `codex` and `opencode` in `docs/provider-execution.md`
 - external CI coverage for OCaml tests, SDK smoke tests, and Node host examples in `.github/workflows/ci.yml`
 - runnable SDK-backed host examples in `packages/camlflow-ts-json-rpc-sdk/examples/`
@@ -257,7 +286,10 @@ Future follow-up beyond the checklist could still include:
   - better race handling between cancellation and late effect responses
   - clearer guarantees for cancellation during pure compute segments
   - deciding whether cancellation diagnostics should remain default or become optional
-- progress notifications next
-- optional streaming after progress
+- deepening progress semantics:
+  - decide whether hosts should be able to opt out separately from trace
+  - decide whether pure-step milestones should expand further
+  - decide whether known-step estimates should ever become non-null
+- optional streaming after cancellation/progress feel stable
 - more direct CLI/provider backends such as additional tool-specific adapters after more host feedback
 - publishing or packaging the SDK more formally once the example-driven integration surface feels stable

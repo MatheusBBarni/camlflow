@@ -9,6 +9,7 @@ They assume you are running from this repository checkout, because each example:
 - points at repository examples such as `examples/provider-hooks/workflow.cml`
 - imports the locally built SDK from `../dist`
 - is authored in TypeScript and compiled to `examples-dist/`
+- can consume optional trace, diagnostic, progress, and cancellation signals
 
 ## Setup
 
@@ -63,6 +64,21 @@ Demonstrates:
 - a multi-step workflow with structured JSON outputs
 - reading JSON input from `examples/problem-coach/input.json`
 - routing multiple effect kinds through one SDK effect handler
+
+### 4. Cancellation with progress callbacks
+
+```sh
+npm run example:cancellation
+```
+
+Source: `examples/cancellation.ts`
+
+Demonstrates:
+
+- `AbortController`-driven cancellation for `client.run(...)`
+- normalized `JsonRpcRequestCancelledError`
+- progress callbacks through `camlflow/progress`
+- observing the `run-cancelled` lifecycle
 
 ## Validation
 

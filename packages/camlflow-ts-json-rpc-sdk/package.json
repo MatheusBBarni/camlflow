@@ -16,7 +16,8 @@
     "test": "npm run build && node --test test/*.test.js",
     "example:provider-hooks": "npm run build && node examples-dist/provider-hooks.js",
     "example:attach-streams": "npm run build && node examples-dist/attach-streams.js",
-    "example:problem-coach": "npm run build && node examples-dist/problem-coach.js"
+    "example:problem-coach": "npm run build && node examples-dist/problem-coach.js",
+    "example:cancellation": "npm run build && node examples-dist/cancellation.js"
   },
   "keywords": [
     "camlflow",

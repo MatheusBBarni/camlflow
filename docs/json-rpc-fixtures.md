@@ -40,6 +40,7 @@ Notes:
       "executeEffect": true,
       "trace": true,
       "diagnostic": true,
+      "progress": true,
       "cancelRequest": true,
       "renderedPrompt": true,
       "outputSchema": true
@@ -98,6 +99,42 @@ This fixture uses a workflow like `examples/provider-hooks/workflow.cml`.
 }
 ```
 
+### CamlFlow → Host progress notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/progress",
+  "params": {
+    "runId": "run-1",
+    "stage": "run-start",
+    "step": null,
+    "message": "Running main",
+    "completedSteps": 0,
+    "knownSteps": null,
+    "cancellable": true
+  }
+}
+```
+
+### CamlFlow → Host progress notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/progress",
+  "params": {
+    "runId": "run-1",
+    "stage": "effect-start",
+    "step": 1,
+    "message": "Executing bound-agent greeter",
+    "completedSteps": 0,
+    "knownSteps": null,
+    "cancellable": true
+  }
+}
+```
+
 ### CamlFlow → Host effect request, step 1
 
 ```json
@@ -146,6 +183,24 @@ This fixture uses a workflow like `examples/provider-hooks/workflow.cml`.
 }
 ```
 
+### CamlFlow → Host progress notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/progress",
+  "params": {
+    "runId": "run-1",
+    "stage": "effect-finish",
+    "step": 1,
+    "message": "Finished bound-agent greeter",
+    "completedSteps": 1,
+    "knownSteps": null,
+    "cancellable": true
+  }
+}
+```
+
 ### CamlFlow → Host trace notification
 
 ```json
@@ -163,6 +218,24 @@ This fixture uses a workflow like `examples/provider-hooks/workflow.cml`.
     "details": {
       "status": "ok"
     }
+  }
+}
+```
+
+### CamlFlow → Host progress notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/progress",
+  "params": {
+    "runId": "run-1",
+    "stage": "run-finish",
+    "step": null,
+    "message": "Run finished",
+    "completedSteps": 3,
+    "knownSteps": null,
+    "cancellable": false
   }
 }
 ```
@@ -695,6 +768,24 @@ Assume an earlier `initialize` succeeded and `camlflow/run` has already reached 
     "details": {
       "reason": "host-cancelled"
     }
+  }
+}
+```
+
+### CamlFlow → Host progress notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/progress",
+  "params": {
+    "runId": "run-1",
+    "stage": "run-cancelled",
+    "step": 1,
+    "message": "run cancelled by host",
+    "completedSteps": 0,
+    "knownSteps": null,
+    "cancellable": false
   }
 }
 ```

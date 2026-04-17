@@ -20,11 +20,11 @@ The SDK targets the bridge as it exists today:
   - `exit`
 - server-to-host traffic:
   - request: `camlflow/executeEffect`
-  - notifications: `camlflow/trace`, `camlflow/diagnostic`
+  - notifications: `camlflow/trace`, `camlflow/diagnostic`, `camlflow/progress`
 
 ## What it includes
 
-- protocol and payload types for initialize, run/check/compile, effect requests, trace, and diagnostics
+- protocol and payload types for initialize, run/check/compile, effect requests, trace, diagnostics, and progress
 - a `Content-Length` parser/encoder for raw stream integrations
 - a high-level Node client that can:
   - attach to existing streams
@@ -73,6 +73,9 @@ const client = spawnCamlFlowClient({
   onDiagnostic: async (diagnostic) => {
     console.error("diagnostic", diagnostic);
   },
+  onProgress: async (progress) => {
+    console.log("progress", progress);
+  },
 });
 
 async function main(): Promise<void> {
@@ -105,6 +108,7 @@ The repository also includes maintained SDK-backed TypeScript example sources in
 - `examples/provider-hooks.ts`
 - `examples/attach-streams.ts`
 - `examples/problem-coach.ts`
+- `examples/cancellation.ts`
 - `examples/shared.ts`
 - `examples/README.md`
 
@@ -114,6 +118,7 @@ From `packages/camlflow-ts-json-rpc-sdk/` you can run:
 npm run example:provider-hooks
 npm run example:attach-streams
 npm run example:problem-coach
+npm run example:cancellation
 ```
 
 These examples demonstrate the two main SDK integration styles:
@@ -123,7 +128,12 @@ These examples demonstrate the two main SDK integration styles:
 
 `npm run build` compiles them to `examples-dist/` before the runnable scripts execute.
 
-They also cover both a small string-returning workflow and a larger structured-output workflow.
+They now cover:
+
+- a small string-returning workflow
+- a larger structured-output workflow
+- host-side cancellation with `AbortSignal`
+- optional progress callbacks through `camlflow/progress`
 
 ## Cancellation
 
@@ -134,12 +144,21 @@ The SDK now supports host-driven cancellation in two ways:
 
 For `run(...)`, aborting the signal sends `$/cancelRequest` to CamlFlow and rejects the local promise with `JsonRpcRequestCancelledError`.
 
-The current bridge treats cancellation as a safe-boundary feature, especially while CamlFlow is waiting for `camlflow/executeEffect`.
+If the server replies with `-32800`, the SDK also normalizes that into `JsonRpcRequestCancelledError`.
+
+The current bridge treats cancellation as a safe-boundary feature, especially while CamlFlow is waiting for `camlflow/executeEffect` or before the next observed effect boundary.
+
+## Progress notifications
+
+The SDK can receive optional `camlflow/progress` notifications through `onProgress`.
+
+These notifications are advisory UI metadata. They do not replace the final typed result contract.
 
 ## Notes
 
 - `initialize()` returns both `protocolVersion` and `irVersion` so hosts can separately reason about transport compatibility and compiled-artifact compatibility.
 - `initialize().capabilities.cancelRequest` tells hosts whether `$/cancelRequest` is supported.
+- `initialize().capabilities.progress` tells hosts whether `camlflow/progress` may be emitted.
 - `compile()` returns `irVersion` plus the IR artifact as generic JSON by default. The bridge does not expose a smaller dedicated compile-artifact schema.
 - `effect.inlineDefinition` is typed from CamlFlow's current IR serialization, including inline agent metadata and source locations.
 - `exit` is modeled as a notification because that is how the current host examples shut the server down.

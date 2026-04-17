@@ -261,16 +261,19 @@ Host notification params:
 
 Current behavior:
 
-- cancellation targets the original host → server request id for `camlflow/run`
+- cancellation primarily targets the original host → server request id for `camlflow/run`
+- while a run is blocked on `camlflow/executeEffect`, CamlFlow also recognizes the current in-flight effect request id
 - CamlFlow marks the active run as cancellation-requested
 - if CamlFlow is currently blocked waiting for `camlflow/executeEffect`, it cancels at that safe boundary
+- CamlFlow also drains pending cancellation control messages before the next effect request when possible
 - the original `camlflow/run` request completes with error code `-32800`
 - CamlFlow emits `run-cancelled` through `camlflow/trace`
+- CamlFlow emits `run-cancelled` through `camlflow/progress`
 - CamlFlow currently also emits a cancellation diagnostic for observability
 
 Current limitation:
 
-- this first slice is boundary-based, not preemptive; it is intended for cancellation while a run is blocked on effect execution or before the next effect boundary
+- this first slice is boundary-based, not preemptive; it is intended for cancellation while a run is blocked on effect execution or at the next observed effect boundary
 
 ### Current error code table
 
@@ -391,19 +394,17 @@ The first protocol version is expected to include:
 
 - `camlflow/executeEffect`
 
-The current implementation also emits the optional notification:
+The current implementation also emits the optional notifications:
 
 - `camlflow/trace`
-
-The current implementation also emits the optional notification:
-
 - `camlflow/diagnostic`
+- `camlflow/progress`
 
 The host may also send the optional notification:
 
 - `$/cancelRequest`
 
-Hosts may ignore `camlflow/trace` and `camlflow/diagnostic` if they do not need them.
+Hosts may ignore `camlflow/trace`, `camlflow/diagnostic`, and `camlflow/progress` if they do not need them.
 
 ### Capability semantics
 
@@ -413,21 +414,21 @@ Current meaning:
 
 - `check`, `compile`, `run` — the server implements these host → server methods
 - `executeEffect` — the server may issue `camlflow/executeEffect` requests during effectful runs
-- `trace`, `diagnostic` — the server may emit these optional notifications
+- `trace`, `diagnostic`, `progress` — the server may emit these optional notifications
 - `cancelRequest` — the server supports host cancellation via `$/cancelRequest`
 - `renderedPrompt`, `outputSchema` — effect requests include these convenience fields
 
 Decision for `0.1.0`:
 
 - keep the current flat capability map
-- treat `trace` and `diagnostic` as optional observability features
+- treat `trace`, `diagnostic`, and `progress` as optional observability features
 - defer finer-grained capability sub-objects until a real compatibility need appears
 
 Host requirements for `0.1.0`:
 
 - hosts must send `initialize` before calling methods that require initialization
 - hosts that want to run effectful workflows must handle `camlflow/executeEffect`
-- hosts may ignore `camlflow/trace` and `camlflow/diagnostic`
+- hosts may ignore `camlflow/trace`, `camlflow/diagnostic`, and `camlflow/progress`
 - hosts may send `$/cancelRequest` when `capabilities.cancelRequest = true`
 - hosts should ignore unknown future capability keys
 
@@ -452,6 +453,35 @@ A trace payload includes:
 - `step`
 - `effect` summary when relevant
 - optional `details`
+
+### `camlflow/progress` notifications
+
+The current progress stream is advisory UI metadata. It is intended for hosts that want lightweight lifecycle updates without interpreting trace details.
+
+Current stages include:
+
+- `check-start`
+- `check-finish`
+- `compile-start`
+- `compile-finish`
+- `run-start`
+- `effect-start`
+- `effect-finish`
+- `run-finish`
+- `run-error`
+- `run-cancelled`
+
+A progress payload includes:
+
+- `runId`
+- `stage`
+- `step`
+- `message`
+- `completedSteps`
+- `knownSteps`
+- `cancellable`
+
+Progress is best-effort and safe to ignore. It does not replace final typed results or request error responses.
 
 ### `camlflow/diagnostic` notifications
 
@@ -503,6 +533,22 @@ Current notification shapes:
 ```
 
 `effect` may be `null` when the diagnostic is not tied to a single effect step.
+
+#### `camlflow/progress`
+
+```json
+{
+  "runId": "string | null",
+  "stage": "string",
+  "step": "int | null",
+  "message": "string | null",
+  "completedSteps": "int | null",
+  "knownSteps": "int | null",
+  "cancellable": "bool | null"
+}
+```
+
+`runId` may be `null` for non-run notifications such as `check-start` and `compile-start`.
 
 ### Current host error propagation behavior
 

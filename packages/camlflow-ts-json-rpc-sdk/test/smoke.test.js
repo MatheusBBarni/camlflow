@@ -74,12 +74,16 @@ function runProcess(command, args, options = {}) {
   });
 }
 
-test('sdk smoke test covers initialize, compile, and run', { timeout: 30000 }, async () => {
+test('sdk smoke test covers initialize, compile, run, and progress', { timeout: 30000 }, async () => {
+  const progress = [];
   const client = spawnCamlFlowClient({
     command: 'dune',
     args: ['exec', './bin/main.exe', '--', 'serve', '--stdio'],
     cwd: repoRoot,
     effectHandler: makeEffectHandler(),
+    onProgress: async (notification) => {
+      progress.push(notification);
+    },
   });
 
   try {
@@ -88,6 +92,7 @@ test('sdk smoke test covers initialize, compile, and run', { timeout: 30000 }, a
     assert.equal(initialize.irVersion, '0.1.0');
     assert.equal(initialize.capabilities.trace, true);
     assert.equal(initialize.capabilities.diagnostic, true);
+    assert.equal(initialize.capabilities.progress, true);
 
     const compile = await client.compile({
       program: {
@@ -111,6 +116,10 @@ test('sdk smoke test covers initialize, compile, and run', { timeout: 30000 }, a
 
     assert.equal(run.stepsRun, 3);
     assert.equal(run.output, 'inline-review');
+    assert.ok(progress.some((entry) => entry.stage === 'run-start'));
+    assert.ok(progress.some((entry) => entry.stage === 'effect-start'));
+    assert.ok(progress.some((entry) => entry.stage === 'effect-finish'));
+    assert.ok(progress.some((entry) => entry.stage === 'run-finish'));
   } finally {
     await client.shutdownAndExit();
   }
@@ -139,6 +148,7 @@ test('json-rpc problem-coach host example still runs end-to-end', { timeout: 300
 
 test('sdk can cancel a run with AbortSignal', { timeout: 30000 }, async () => {
   const traces = [];
+  const progress = [];
   let effectStartedResolve;
   const effectStarted = new Promise((resolve) => {
     effectStartedResolve = resolve;
@@ -158,6 +168,9 @@ test('sdk can cancel a run with AbortSignal', { timeout: 30000 }, async () => {
     },
     onTrace: async (trace) => {
       traces.push(trace);
+    },
+    onProgress: async (notification) => {
+      progress.push(notification);
     },
   });
 
@@ -192,6 +205,10 @@ test('sdk can cancel a run with AbortSignal', { timeout: 30000 }, async () => {
     assert.ok(
       traces.some((trace) => trace.event === 'run-cancelled'),
       `expected run-cancelled trace, got ${JSON.stringify(traces)}`,
+    );
+    assert.ok(
+      progress.some((entry) => entry.stage === 'run-cancelled'),
+      `expected run-cancelled progress, got ${JSON.stringify(progress)}`,
     );
 
     await assert.rejects(

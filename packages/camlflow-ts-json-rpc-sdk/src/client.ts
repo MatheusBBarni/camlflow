@@ -15,6 +15,7 @@ import {
   type CamlFlowExecuteEffectParams,
   type CamlFlowExecuteEffectResult,
   type CamlFlowInitializeResult,
+  type CamlFlowProgressNotification,
   type CamlFlowRunParams,
   type CamlFlowRunResult,
   type CamlFlowTraceNotification,
@@ -60,6 +61,10 @@ export interface CamlFlowJsonRpcClientOptions {
     diagnostic: CamlFlowDiagnosticNotification,
     notification: JsonRpcNotification<CamlFlowDiagnosticNotification>,
   ) => MaybePromise<void>;
+  onProgress?: (
+    progress: CamlFlowProgressNotification,
+    notification: JsonRpcNotification<CamlFlowProgressNotification>,
+  ) => MaybePromise<void>;
   onNotification?: (
     notification: JsonRpcNotification,
   ) => MaybePromise<void>;
@@ -75,6 +80,7 @@ export interface SpawnCamlFlowClientOptions {
   effectHandler?: CamlFlowEffectHandler;
   onTrace?: CamlFlowJsonRpcClientOptions["onTrace"];
   onDiagnostic?: CamlFlowJsonRpcClientOptions["onDiagnostic"];
+  onProgress?: CamlFlowJsonRpcClientOptions["onProgress"];
   onNotification?: CamlFlowJsonRpcClientOptions["onNotification"];
   onTransportError?: CamlFlowJsonRpcClientOptions["onTransportError"];
 }
@@ -256,6 +262,7 @@ export class CamlFlowJsonRpcClient {
   effectHandler?: CamlFlowEffectHandler;
   onTrace?: CamlFlowJsonRpcClientOptions["onTrace"];
   onDiagnostic?: CamlFlowJsonRpcClientOptions["onDiagnostic"];
+  onProgress?: CamlFlowJsonRpcClientOptions["onProgress"];
   onNotification?: CamlFlowJsonRpcClientOptions["onNotification"];
   onTransportError?: CamlFlowJsonRpcClientOptions["onTransportError"];
 
@@ -278,6 +285,7 @@ export class CamlFlowJsonRpcClient {
     this.effectHandler = options.effectHandler;
     this.onTrace = options.onTrace;
     this.onDiagnostic = options.onDiagnostic;
+    this.onProgress = options.onProgress;
     this.onNotification = options.onNotification;
     this.onTransportError = options.onTransportError;
 
@@ -570,6 +578,11 @@ export class CamlFlowJsonRpcClient {
     this.pending.delete(key);
 
     if ("error" in response) {
+      if (response.error.code === CAMLFLOW_ERROR_CODES.requestCancelled && response.id !== null) {
+        pending.reject(new JsonRpcRequestCancelledError(pending.method, response.id));
+        return;
+      }
+
       pending.reject(
         new JsonRpcResponseError(pending.method, response.id, response.error),
       );
@@ -632,6 +645,13 @@ export class CamlFlowJsonRpcClient {
         await this.onDiagnostic(
           notification.params as CamlFlowDiagnosticNotification,
           notification as JsonRpcNotification<CamlFlowDiagnosticNotification>,
+        );
+      }
+
+      if (notification.method === CAMLFLOW_METHODS.progress && this.onProgress) {
+        await this.onProgress(
+          notification.params as CamlFlowProgressNotification,
+          notification as JsonRpcNotification<CamlFlowProgressNotification>,
         );
       }
 
@@ -751,6 +771,7 @@ export function spawnCamlFlowClient(
       effectHandler: options.effectHandler,
       onTrace: options.onTrace,
       onDiagnostic: options.onDiagnostic,
+      onProgress: options.onProgress,
       onNotification: options.onNotification,
       onTransportError: options.onTransportError,
     },

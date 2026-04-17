@@ -79,3 +79,15 @@ test('sdk problem-coach example runs end-to-end', { timeout: 30000 }, async () =
   assert.match(result.stdout, /"stepsRun":\s*4/);
   assert.match(result.stdout, /"title":\s*"two sum solution pack"/);
 });
+
+test('sdk cancellation example exits cleanly after aborting a run', { timeout: 30000 }, async () => {
+  const result = await runProcess('node', ['examples-dist/cancellation.js'], {
+    cwd: packageRoot,
+  });
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stdout, /"cancelRequest":\s*true/);
+  assert.match(result.stdout, /"progress":\s*true/);
+  assert.match(result.stdout, /run-cancelled/);
+  assert.match(result.stdout, /cancelled:/);
+});
