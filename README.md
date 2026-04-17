@@ -424,6 +424,9 @@ runtime hooks.
 - `docs/json-rpc-deferred-extensions.md` — follow-up design notes for deeper cancellation, progress, and streaming work
 - `docs/json-rpc-status.md` — current JSON-RPC progress summary and validated state
 - `docs/json-rpc-checklist.md` — concise JSON-RPC remaining-tasks checklist
+- `docs/host-adapter-architecture.md` — reusable sidecar adapter plan for real host integrations
+- `docs/pi-mono-host-integration-plan.md` — concrete first-host plan for a `pi-mono` fork
+- `docs/pi-mono-implementation-checklist.md` — concrete `pi-mono` implementation checklist with likely file touch points
 - `examples/provider-hooks/README.md` — runnable provider-hooks example
 - `examples/json-rpc-host/README.md` — runnable dependency-free JSON-RPC host example
 - `examples/json-rpc-problem-coach/README.md` — runnable dependency-free structured JSON-RPC host example
@@ -465,6 +468,9 @@ make run-provider-hooks
 - `docs/json-rpc-deferred-extensions.md` — follow-up design notes for deeper cancellation, progress, and streaming work
 - `docs/json-rpc-status.md` — current JSON-RPC progress summary and validated state
 - `docs/json-rpc-checklist.md` — concise JSON-RPC remaining-tasks checklist
+- `docs/host-adapter-architecture.md` — reusable sidecar adapter plan for real host integrations
+- `docs/pi-mono-host-integration-plan.md` — concrete first-host plan for a `pi-mono` fork
+- `docs/pi-mono-implementation-checklist.md` — concrete `pi-mono` implementation checklist with likely file touch points
 - `docs/alpha-tasks.md` — Alpha completion checklist and closeout notes
 - `docs/beta-1-tasks.md` — Beta 1 implementation checklist
 - `examples/` — runnable examples
@@ -491,7 +497,9 @@ Delivered focus: validate the core language shape and execution model.
 ### Beta 1 — provider and host integration slice delivered
 
 Goal: validate CamlFlow inside real AI coding environments through provider-backed
-execution and host integration.
+execution and host integration, closing the slice with a thin sidecar
+integration into at least one real host fork instead of embedding CamlFlow
+into host internals.
 
 Delivered:
 
@@ -514,8 +522,11 @@ Delivered:
 
 Remaining Beta 1 follow-up:
 
-- [ ] Continue validating CamlFlow inside real AI coding environments
-- [ ] Iterate on provider/runtime behavior based on real host and tool feedback
+- [ ] Validate CamlFlow end to end inside at least one real AI coding host through a thin sidecar integration
+- [ ] Keep CamlFlow as its own engine (`camlflow serve --stdio`) and reuse a host adapter instead of embedding runtime logic into the host fork
+- [ ] Confirm the host bridge handles `camlflow/executeEffect`, progress, cancellation, diagnostics, and output chunks in real usage
+- [ ] Run multiple real workflows through that host and capture the biggest friction points
+- [ ] Iterate on provider/runtime behavior, SDK ergonomics, payload shapes, and docs based on real host feedback
 
 ### Beta 2
 
