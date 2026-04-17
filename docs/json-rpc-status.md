@@ -161,7 +161,9 @@ Last verified test run for the JSON-RPC bridge slice:
 Recent follow-up documentation additions include:
 
 - explicit error code tables and semantics in `docs/json-rpc.md`
-- notes on host error propagation in `docs/json-rpc.md`
+- compatibility policy notes for `protocolVersion` and `irVersion` in `docs/json-rpc.md`
+- clearer host error response guidance for `camlflow/executeEffect` in `docs/json-rpc.md`
+- capability semantics and host-ignore rules in `docs/json-rpc.md`
 - deferred design notes for cancellation, progress, and streaming in `docs/json-rpc-roadmap.md`
 - this status snapshot in `docs/json-rpc-status.md`
 - the short checklist in `docs/json-rpc-checklist.md`
@@ -170,45 +172,9 @@ Recent follow-up documentation additions include:
 
 ## Remaining tasks
 
-## Immediate
-
-### 1. Keep docs and implementation aligned
-
-Before more protocol work lands, re-check that:
-
-- method/result docs match `lib/rpc_server.ml`
-- fixture transcripts match current outputs
-- version fields remain consistent between docs and code
-
-## Protocol stabilization
-
-### 2. Document compatibility policy explicitly
-
-Still needed:
-
-- what requires a protocol version bump
-- what requires an IR version bump
-- what changes are backward-compatible
-- what hosts may safely ignore
-
-### 3. Define host-side effect error conventions more precisely
-
-Still needed:
-
-- clearer expected shape for host JSON-RPC errors returned from `camlflow/executeEffect`
-- guidance on when hosts should return structured error data vs plain messages
-- guidance on how much of that data CamlFlow should surface in diagnostics
-
-### 4. Decide whether capability signaling needs finer granularity
-
-Possible follow-up:
-
-- separate capability flags for notifications vs required methods
-- explicit flags for rendered prompts, schemas, trace support, diagnostics support, and future extensions
-
 ## Tests and fixtures
 
-### 5. Expand automated coverage for protocol errors
+### 1. Expand automated coverage for protocol errors
 
 Useful additions:
 
@@ -219,7 +185,7 @@ Useful additions:
 - explicit `camlflow/run` failure (`-32012`)
 - host effect error propagation from `camlflow/executeEffect`
 
-### 6. Expand fixture coverage
+### 2. Expand fixture coverage
 
 Useful additions to `docs/json-rpc-fixtures.md`:
 
@@ -231,7 +197,7 @@ Useful additions to `docs/json-rpc-fixtures.md`:
 
 ## Host / SDK integration validation
 
-### 7. Re-validate examples against the current docs
+### 3. Re-validate examples against the current docs
 
 Useful checks:
 
@@ -243,7 +209,7 @@ Goal:
 
 - ensure example hosts still match the documented request/response shapes
 
-### 8. Add stronger integration testing around host libraries
+### 4. Add stronger integration testing around host libraries
 
 Possible follow-up:
 
@@ -252,7 +218,7 @@ Possible follow-up:
 
 ## Deferred design work
 
-### 9. Formalize deferred protocol extensions before implementation
+### 5. Formalize deferred protocol extensions before implementation
 
 These should stay design-only until the core protocol is stable:
 
@@ -268,7 +234,7 @@ Recommended order:
 
 ## Later / lower priority
 
-### 10. Add direct provider convenience adapters only after host mode is stable
+### 6. Add direct provider convenience adapters only after host mode is stable
 
 Examples:
 

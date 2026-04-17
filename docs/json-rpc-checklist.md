@@ -8,15 +8,15 @@ For the fuller narrative summary, see `docs/json-rpc-status.md`.
 
 ## Now
 
-- [ ] Re-check that docs still match the current implementation in `lib/rpc_server.ml`
-- [ ] Re-check that `docs/json-rpc-fixtures.md` matches current request/response shapes
-- [ ] Document compatibility policy for protocol and IR versioning
+- [x] Re-check that docs still match the current implementation in `lib/rpc_server.ml`
+- [x] Re-check that `docs/json-rpc-fixtures.md` matches current request/response shapes
+- [x] Document compatibility policy for protocol and IR versioning
 
 ## Protocol stabilization
 
-- [ ] Define clearer host error conventions for `camlflow/executeEffect`
-- [ ] Decide whether capabilities need finer-grained signaling
-- [ ] Clarify what hosts may safely ignore vs what is required
+- [x] Define clearer host error conventions for `camlflow/executeEffect`
+- [x] Decide whether capabilities need finer-grained signaling
+- [x] Clarify what hosts may safely ignore vs what is required
 
 ## Tests
 

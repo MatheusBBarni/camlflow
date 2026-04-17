@@ -302,6 +302,53 @@ Returned when `camlflow/run` fails due to:
 
 When possible, CamlFlow also emits a `camlflow/diagnostic` notification alongside the request error response.
 
+### Compatibility policy
+
+`protocolVersion` and `irVersion` are separate compatibility surfaces.
+
+#### Protocol compatibility
+
+The JSON-RPC protocol version must change when the wire contract changes in a host-visible way.
+
+Changes that require a protocol version bump include:
+
+- removing or renaming methods
+- removing or renaming response fields
+- changing the meaning of existing fields or error codes
+- making a previously optional field required
+- adding a new required server → host request during a run
+- changing the required handling contract for `camlflow/executeEffect`
+
+Changes that are intended to remain backward-compatible within the same protocol version include:
+
+- documentation clarifications
+- adding optional fields that hosts may ignore
+- adding optional keys under `details`
+- adding new capability flags that default to ignorable behavior
+- adding optional notifications that hosts may ignore
+
+Hosts should ignore unknown capability keys, unknown optional fields, and unknown event-specific `details` keys.
+
+#### IR compatibility
+
+`irVersion` applies to compiled artifact structure, not to the outer JSON-RPC transport.
+
+An IR version bump is required when compiled program JSON changes in a way that affects decoding or execution, for example:
+
+- changing required artifact fields
+- renaming artifact fields
+- changing the meaning of existing IR nodes
+- changing encoded type or expression forms incompatibly
+
+Pure documentation changes and additive optional metadata do not require an IR version bump.
+
+#### Relationship between the two versions
+
+- protocol changes do not automatically require an IR version bump
+- IR changes do not automatically require a protocol version bump
+- hosts that only call `camlflow/run` may care mainly about `protocolVersion`
+- hosts that persist or exchange compiled artifacts must also check `irVersion`
+
 ### Server → Client requests
 
 During a run, CamlFlow may send requests back to the host.
@@ -319,6 +366,30 @@ The current implementation also emits the optional notification:
 - `camlflow/diagnostic`
 
 Hosts may ignore `camlflow/trace` and `camlflow/diagnostic` if they do not need them.
+
+### Capability semantics
+
+The current `capabilities` object is intentionally coarse for `0.1.0`.
+
+Current meaning:
+
+- `check`, `compile`, `run` — the server implements these host → server methods
+- `executeEffect` — the server may issue `camlflow/executeEffect` requests during effectful runs
+- `trace`, `diagnostic` — the server may emit these optional notifications
+- `renderedPrompt`, `outputSchema` — effect requests include these convenience fields
+
+Decision for `0.1.0`:
+
+- keep the current flat capability map
+- treat `trace` and `diagnostic` as optional observability features
+- defer finer-grained capability sub-objects until a real compatibility need appears
+
+Host requirements for `0.1.0`:
+
+- hosts must send `initialize` before calling methods that require initialization
+- hosts that want to run effectful workflows must handle `camlflow/executeEffect`
+- hosts may ignore `camlflow/trace` and `camlflow/diagnostic`
+- hosts should ignore unknown future capability keys
 
 ### `camlflow/trace` notifications
 
@@ -470,6 +541,43 @@ Host → server success result:
   "output": "json value matching the declared CamlFlow return type"
 }
 ```
+
+Host → server failure result should use a JSON-RPC error response.
+
+Recommended shape:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "effect-1",
+  "error": {
+    "code": -32000,
+    "message": "model timeout",
+    "data": {
+      "retryable": true,
+      "category": "timeout",
+      "provider": "host-local"
+    }
+  }
+}
+```
+
+Host error response guidance:
+
+- `message` should be short and actionable
+- `code` may be host-defined if the host has its own error taxonomy
+- `data` is optional machine-readable context
+- useful optional `data` fields include:
+  - `retryable: boolean`
+  - `category: string`
+  - `provider: string`
+  - `details: object | string`
+
+Current CamlFlow behavior:
+
+- CamlFlow reliably uses the host error `message` when failing the enclosing run
+- CamlFlow does not currently preserve host `error.data` as a stable top-level contract
+- hosts should treat `error.data` as best-effort debugging context until a richer propagation contract is standardized
 
 ---
 
