@@ -170,11 +170,23 @@ Completed:
 - `lib/provider_schema.ml` now exposes a reusable wrapped response-schema helper
 - CLI/provider docs now cover `opencode`
 - README now shows `--provider opencode` usage
+- Opencode event parsing now concatenates streamed text chunks and surfaces explicit error events
 
 Current direct CLI providers are now:
 
 - `codex`
 - `opencode`
+
+### 13. External CI coverage now validates JSON-RPC integrations
+
+Completed:
+
+- `.github/workflows/ci.yml`
+- CI now runs:
+  - `dune test`
+  - SDK smoke tests in `packages/camlflow-ts-json-rpc-sdk`
+  - `examples/json-rpc-host/host.js`
+  - `examples/json-rpc-problem-coach/host.js`
 
 ---
 
@@ -196,6 +208,7 @@ Recent follow-up documentation additions include:
 - deferred design notes for cancellation, progress, and streaming in `docs/json-rpc-roadmap.md`
 - a formal design-only extensions doc in `docs/json-rpc-deferred-extensions.md`
 - provider execution docs for both `codex` and `opencode` in `docs/provider-execution.md`
+- external CI coverage for OCaml tests, SDK smoke tests, and Node host examples in `.github/workflows/ci.yml`
 - this status snapshot in `docs/json-rpc-status.md`
 - the short checklist in `docs/json-rpc-checklist.md`
 
@@ -208,5 +221,4 @@ The current JSON-RPC checklist is complete.
 Future follow-up beyond the checklist could still include:
 
 - more direct CLI/provider backends such as additional tool-specific adapters
-- deeper CI integration for JS/TS host and SDK validation
 - eventual implementation of the deferred cancellation, progress, and streaming designs

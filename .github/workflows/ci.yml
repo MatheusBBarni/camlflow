@@ -1,0 +1,63 @@
+name: camlflow-ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ocaml-tests:
+    name: OCaml build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up OCaml
+        uses: avsm/setup-ocaml@v3
+        with:
+          ocaml-compiler: 5.1.1
+          dune-cache: true
+
+      - name: Install OCaml dependencies
+        run: opam install . --deps-only --with-test --yes
+
+      - name: Run dune test
+        run: opam exec -- dune test
+
+  json-rpc-smoke:
+    name: JSON-RPC SDK and host smoke tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Set up OCaml
+        uses: avsm/setup-ocaml@v3
+        with:
+          ocaml-compiler: 5.1.1
+          dune-cache: true
+
+      - name: Install OCaml dependencies
+        run: opam install . --deps-only --with-test --yes
+
+      - name: Install SDK dependencies
+        working-directory: packages/camlflow-ts-json-rpc-sdk
+        run: npm install
+
+      - name: Run SDK smoke tests
+        working-directory: packages/camlflow-ts-json-rpc-sdk
+        run: npm test
+
+      - name: Run JSON-RPC host example
+        run: node examples/json-rpc-host/host.js
+
+      - name: Run JSON-RPC problem-coach example
+        run: node examples/json-rpc-problem-coach/host.js
