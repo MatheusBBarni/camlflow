@@ -70,6 +70,39 @@ let parse_cli argv =
   | Ok parsed -> parsed
   | Error error -> Alcotest.failf "cli parse failed: %s" error
 
+let write_rpc_messages path messages =
+  Out_channel.with_open_bin path (fun channel ->
+      List.iter
+        (fun message ->
+          match Camlflow.Rpc_stdio.write_message channel message with
+          | Ok () -> ()
+          | Error error -> Alcotest.failf "rpc write failed: %s" error)
+        messages)
+
+let read_rpc_messages path =
+  In_channel.with_open_bin path (fun channel ->
+      let rec loop acc =
+        match Camlflow.Rpc_stdio.read_message channel with
+        | Ok (Some message) -> loop (message :: acc)
+        | Ok None -> List.rev acc
+        | Error error -> Alcotest.failf "rpc read failed: %s" error
+      in
+      loop [])
+
+let run_rpc_server_with_messages messages =
+  with_temp_dir "camlflow-rpc-" @@ fun dir ->
+  let input_path = Filename.concat dir "input.rpc" in
+  let output_path = Filename.concat dir "output.rpc" in
+  write_rpc_messages input_path messages;
+  let input = In_channel.open_bin input_path in
+  let output = Out_channel.open_bin output_path in
+  Fun.protect
+    ~finally:(fun () -> In_channel.close input; Out_channel.close output)
+    (fun () ->
+      match Camlflow.Rpc_server.run ~input ~output with
+      | Ok () -> read_rpc_messages output_path
+      | Error error -> Alcotest.failf "rpc server run failed: %s" error)
+
 let schema_for_type ?(types = Camlflow.Value.StringMap.empty) typ =
   match Camlflow.Provider_schema.of_type ~types typ with
   | Ok schema -> schema
@@ -90,6 +123,49 @@ let expect_string_field name expected json =
   | other ->
       Alcotest.failf "expected field %s to be a string, got %s" name
         (Yojson.Safe.to_string other)
+
+let rpc_request_message = function
+  | `Assoc fields as json when List.mem_assoc "method" fields -> (
+      match Camlflow.Rpc_protocol.request_of_yojson json with
+      | Ok request -> Some request
+      | Error error -> Alcotest.failf "rpc request decode failed: %s" error)
+  | _ -> None
+
+let rpc_response_message = function
+  | `Assoc fields as json when not (List.mem_assoc "method" fields) -> (
+      match Camlflow.Rpc_protocol.response_of_yojson json with
+      | Ok response -> Some response
+      | Error error -> Alcotest.failf "rpc response decode failed: %s" error)
+  | _ -> None
+
+let find_rpc_request method_ messages =
+  match
+    List.find_opt
+      (fun json ->
+        match rpc_request_message json with
+        | Some request -> String.equal request.Camlflow.Rpc_protocol.request_method method_
+        | None -> false)
+      messages
+  with
+  | Some json ->
+      (match rpc_request_message json with Some request -> request | None -> assert false)
+  | None -> Alcotest.failf "rpc request %s not found" method_
+
+let find_rpc_response_by_id expected_id messages =
+  match
+    List.find_opt
+      (fun json ->
+        match rpc_response_message json with
+        | Some response ->
+            (match response.Camlflow.Rpc_protocol.response_id with
+            | Some id -> String.equal (Camlflow.Rpc_protocol.string_of_id id) expected_id
+            | None -> false)
+        | None -> false)
+      messages
+  with
+  | Some json ->
+      (match rpc_response_message json with Some response -> response | None -> assert false)
+  | None -> Alcotest.failf "rpc response %s not found" expected_id
 
 let find_type_decl program local_name =
   let rec find_in_decls = function
@@ -442,6 +518,105 @@ let test_rpc_server_trace_payload () =
   | other ->
       Alcotest.failf "expected effect object, got %s"
         (Yojson.Safe.to_string other))
+
+let test_rpc_server_end_to_end_run () =
+  with_temp_dir "camlflow-rpc-e2e-" @@ fun dir ->
+  let skills_dir = Filename.concat dir "skills" in
+  let caveman_dir = Filename.concat skills_dir "caveman" in
+  Unix.mkdir skills_dir 0o755;
+  Unix.mkdir caveman_dir 0o755;
+  write_file (Filename.concat caveman_dir "SKILL.md") "# Caveman\n\nReply tersely.\n";
+  let workflow_path = Filename.concat dir "workflow.cml" in
+  write_file workflow_path
+    {|
+skill caveman : prompt:string -> string = Skill.bind "caveman"
+agent greeter : name:string -> string = Agent.bind "greeter"
+agent reviewer : code:string -> string =
+  Agent.define ~system_prompt:"Review tersely"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  let* short = caveman ~prompt:greeting in
+  let* review = reviewer ~code:short in
+  review
+|};
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:(`Assoc []) "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+            [
+              ( "program",
+                `Assoc
+                  [
+                    ("path", `String workflow_path);
+                    ("includePaths", `List []);
+                    ("skillsDir", `String skills_dir);
+                  ] );
+              ("entry", `String "main");
+              ("input", `String "Ada");
+            ])
+        "camlflow/run";
+      Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-1")
+        (`Assoc [ ("output", `String "hello Ada") ]);
+      Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-2")
+        (`Assoc [ ("output", `String "small") ]);
+      Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-3")
+        (`Assoc [ ("output", `String "done") ]);
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  let initialize_response = find_rpc_response_by_id "1" output in
+  (match initialize_response.Camlflow.Rpc_protocol.response_result with
+  | Some json -> expect_string_field "protocolVersion" "0.1.0" json
+  | None -> Alcotest.fail "missing initialize result");
+  let run_response = find_rpc_response_by_id "2" output in
+  (match run_response.Camlflow.Rpc_protocol.response_result with
+  | Some json ->
+      (match expect_assoc_field "stepsRun" json with
+      | `Int steps -> Alcotest.(check int) "steps run" 3 steps
+      | other ->
+          Alcotest.failf "expected int stepsRun, got %s"
+            (Yojson.Safe.to_string other));
+      expect_string_field "output" "done" json
+  | None -> Alcotest.fail "missing run result");
+  let effect_requests =
+    List.filter_map
+      (fun json ->
+        match rpc_request_message json with
+        | Some request
+          when String.equal request.Camlflow.Rpc_protocol.request_method
+                 "camlflow/executeEffect" ->
+            Some request
+        | _ -> None)
+      output
+  in
+  Alcotest.(check int) "effect request count" 3 (List.length effect_requests);
+  let trace_request = find_rpc_request "camlflow/trace" output in
+  Alcotest.(check bool) "trace params present" true
+    (Option.is_some trace_request.Camlflow.Rpc_protocol.request_params)
+
+let test_rpc_server_end_to_end_requires_initialize () =
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        "camlflow/check";
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  let diagnostic = find_rpc_request "camlflow/diagnostic" output in
+  (match diagnostic.Camlflow.Rpc_protocol.request_params with
+  | Some json -> expect_string_field "message" "server not initialized" json
+  | None -> Alcotest.fail "missing diagnostic params");
+  let response = find_rpc_response_by_id "1" output in
+  match response.Camlflow.Rpc_protocol.response_error with
+  | Some error ->
+      Alcotest.(check int) "pre-init error code" (-32002) error.error_code;
+      Alcotest.(check string) "pre-init error message" "server not initialized"
+        error.error_message
+  | None -> Alcotest.fail "missing error response"
 
 let test_provider_schema_for_tuple_and_option () =
   let schema =
@@ -1234,6 +1409,10 @@ let () =
             test_rpc_server_diagnostic_payload;
           Alcotest.test_case "rpc server trace payload" `Quick
             test_rpc_server_trace_payload;
+          Alcotest.test_case "rpc server end-to-end run" `Quick
+            test_rpc_server_end_to_end_run;
+          Alcotest.test_case "rpc server end-to-end requires initialize" `Quick
+            test_rpc_server_end_to_end_requires_initialize;
           Alcotest.test_case "provider schema for tuple and option" `Quick
             test_provider_schema_for_tuple_and_option;
           Alcotest.test_case "provider schema for named types" `Quick

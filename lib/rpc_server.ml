@@ -475,11 +475,11 @@ let handle_request server (request : Rpc_protocol.request_message) =
         let* () = reply_error ~code:(-32601) "method not found" in
         Ok Continue
 
-let run_stdio () =
+let run ~input ~output =
   let server =
     {
-      input = stdin;
-      output = stdout;
+      input;
+      output;
       initialized = false;
       shutdown_requested = false;
       next_run = 0;
@@ -505,3 +505,5 @@ let run_stdio () =
         match control with Continue -> loop () | Stop -> Ok ()
   in
   loop ()
+
+let run_stdio () = run ~input:stdin ~output:stdout
