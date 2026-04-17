@@ -5,7 +5,7 @@ maintainer: ["camlflow contributors"]
 authors: ["camlflow contributors"]
 license: "MIT"
 depends: [
-  "ocaml" {>= "5.1"}
+  "ocaml" {>= "5.4.0"}
   "dune" {>= "3.22"}
   "menhir"
   "yojson"

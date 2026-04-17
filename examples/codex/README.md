@@ -36,6 +36,17 @@ dune exec camlflow -- run examples/codex/main.cml \
   --trace-provider
 ```
 
+OpenCode variant:
+
+```sh
+dune exec camlflow -- run examples/codex/main.cml \
+  --skills examples/codex/skills \
+  --input-json '"Ada"' \
+  --provider opencode \
+  --model openai/gpt-5.4-mini \
+  --reasoning low
+```
+
 Notes:
 
 - the inline agent does not declare `~model`, so CLI `--model` applies

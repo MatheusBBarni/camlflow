@@ -1,0 +1,36 @@
+{
+  "name": "camlflow-ts-json-rpc-sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for the CamlFlow JSON-RPC stdio bridge",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build:sdk": "tsc -p tsconfig.json",
+    "build:examples": "tsc -p examples/tsconfig.json",
+    "build": "npm run build:sdk && npm run build:examples",
+    "clean": "rm -rf dist examples-dist",
+    "test": "npm run build && node --test test/*.test.js",
+    "example:provider-hooks": "npm run build && node examples-dist/provider-hooks.js",
+    "example:attach-streams": "npm run build && node examples-dist/attach-streams.js",
+    "example:problem-coach": "npm run build && node examples-dist/problem-coach.js",
+    "example:cancellation": "npm run build && node examples-dist/cancellation.js"
+  },
+  "keywords": [
+    "camlflow",
+    "json-rpc",
+    "sdk",
+    "typescript"
+  ],
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "typescript": "^5.9.3"
+  }
+}

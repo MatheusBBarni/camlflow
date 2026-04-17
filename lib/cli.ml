@@ -4,6 +4,7 @@ type command =
   | Check
   | Compile
   | Run
+  | Serve
   | Completion
 
 type shell = Bash | Zsh | Fish
@@ -15,6 +16,7 @@ type options = {
   input_file : string option;
   input_json : string option;
   skills_dir : string option;
+  rpc_stdio : bool;
   provider_options : Provider.settings;
 }
 
@@ -42,6 +44,7 @@ let default_options =
     input_file = None;
     input_json = None;
     skills_dir = None;
+    rpc_stdio = false;
     provider_options = Provider.default_settings;
   }
 
@@ -51,14 +54,17 @@ let command_name = function
   | Check -> "check"
   | Compile -> "compile"
   | Run -> "run"
+  | Serve -> "serve"
   | Completion -> "completion"
 
 let shell_name = function Bash -> "bash" | Zsh -> "zsh" | Fish -> "fish"
 
-let all_commands = [ Help; Parse; Check; Compile; Run; Completion ]
-let public_commands = [ Parse; Check; Compile; Run; Completion ]
+let all_commands = [ Help; Parse; Check; Compile; Run; Serve; Completion ]
+let public_commands = [ Parse; Check; Compile; Run; Serve; Completion ]
 let public_command_names = List.map command_name public_commands
 let shell_names = [ "bash"; "zsh"; "fish" ]
+let provider_names_text = String.concat ", " Provider.available_provider_names
+let provider_completion_text = String.concat " " Provider.available_provider_names
 
 let usage_text =
   String.concat "\n"
@@ -72,9 +78,12 @@ let usage_text =
       "  camlflow compile <file.cml> [-I dir]... [-o artifact.json]";
       "  camlflow run <file.cml|artifact.json> [-I dir]... [--entry name]";
       "               [--input file.json | --input-json json] [--skills dir]";
-      "               [--provider codex] [--model name] [--reasoning level]";
+      (Printf.sprintf
+         "               [--provider <%s>] [--model name] [--reasoning level]"
+         provider_names_text);
       "               [--provider-profile name] [--provider-config key=value]...";
       "               [--sandbox mode] [--allow-write-dir dir]... [--trace-provider]";
+      "  camlflow serve --stdio";
       "  camlflow completion <bash|zsh|fish>";
       "";
       "Commands:";
@@ -82,6 +91,7 @@ let usage_text =
       "  check        Load, resolve, and type-check a CamlFlow program";
       "  compile      Type-check and emit JSON IR";
       "  run          Execute from source or compiled JSON IR";
+      "  serve        Start the JSON-RPC stdio server";
       "  completion   Emit a shell completion script";
       "";
       "Common options:";
@@ -93,7 +103,9 @@ let usage_text =
       "  --input <path>          Read entrypoint JSON input from a file";
       "  --input-json <j>        Read entrypoint JSON input from an inline JSON string";
       "  --skills <dir>          Resolve local skills from <dir>/<name>/SKILL.md";
-      "  --provider <name>       Provider to use for unresolved effects (codex)";
+      (Printf.sprintf
+         "  --provider <name>       Provider to use for unresolved effects (%s)"
+         provider_names_text);
       "  --model <name>          Override provider model when the workflow does not set one";
       "  --reasoning <level>     Provider-agnostic reasoning level: low, medium, high, max";
       "  --provider-profile <n>  Provider profile name";
@@ -101,6 +113,7 @@ let usage_text =
       "  --sandbox <mode>        Sandbox mode: read-only, workspace-write, danger-full-access";
       "  --allow-write-dir <d>   Extra writable directory for provider execution (repeatable)";
       "  --trace-provider        Print provider step trace metadata to stderr";
+      "  --stdio                 Use stdio transport for serve";
       "";
       "Examples:";
       "  camlflow help run";
@@ -109,6 +122,8 @@ let usage_text =
       "  camlflow compile examples/basic/main.cml -o /tmp/basic.ir.json";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"'";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider codex --model gpt-5.4-mini";
+      "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider opencode --model openai/gpt-5.4-mini";
+      "  camlflow serve --stdio";
       "  camlflow completion bash > /tmp/camlflow.bash";
     ]
 
@@ -179,7 +194,9 @@ let run_help_text =
       "Usage:";
       "  camlflow run <file.cml|artifact.json> [-I dir]... [--entry name]";
       "               [--input file.json | --input-json json] [--skills dir]";
-      "               [--provider codex] [--model name] [--reasoning level]";
+      (Printf.sprintf
+         "               [--provider <%s>] [--model name] [--reasoning level]"
+         provider_names_text);
       "               [--provider-profile name] [--provider-config key=value]...";
       "               [--sandbox mode] [--allow-write-dir dir]... [--trace-provider]";
       "";
@@ -207,6 +224,26 @@ let run_help_text =
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"'";
       "  camlflow run /tmp/basic.ir.json --input-json '\"Ada\"'";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider codex --model gpt-5.4-mini";
+      "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider opencode --model openai/gpt-5.4-mini";
+    ]
+
+let serve_help_text =
+  String.concat "\n"
+    [
+      "Command: serve";
+      "";
+      "Usage:";
+      "  camlflow serve --stdio";
+      "";
+      "Description:";
+      "  Start CamlFlow as a JSON-RPC 2.0 server over stdio.";
+      "";
+      "Accepted flags:";
+      "  -h, --help";
+      "  --stdio";
+      "";
+      "Example:";
+      "  camlflow serve --stdio";
     ]
 
 let completion_help_text =
@@ -232,6 +269,7 @@ let help_text = function
   | Some Check -> check_help_text
   | Some Compile -> compile_help_text
   | Some Run -> run_help_text
+  | Some Serve -> serve_help_text
   | Some Completion -> completion_help_text
 
 let command_of_string = function
@@ -240,6 +278,7 @@ let command_of_string = function
   | "check" -> Ok Check
   | "compile" -> Ok Compile
   | "run" -> Ok Run
+  | "serve" -> Ok Serve
   | "completion" -> Ok Completion
   | other -> Error (Printf.sprintf "unknown command: %s" other)
 
@@ -318,6 +357,7 @@ let parse_flags args =
           { options.provider_options with trace_provider = true }
         in
         loop { options with provider_options } positionals rest
+    | "--stdio" :: rest -> loop { options with rpc_stdio = true } positionals rest
     | ( "-I" | "-o" | "--entry" | "--input" | "--input-json" | "--skills"
       | "--provider" | "--model" | "--reasoning" | "--provider-profile"
       | "--provider-config" | "--sandbox" | "--allow-write-dir" )
@@ -478,6 +518,7 @@ let validate (parsed : parsed) =
           Option.map (Fun.const "--input") options.input_file;
           Option.map (Fun.const "--input-json") options.input_json;
           Option.map (Fun.const "--skills") options.skills_dir;
+          (if options.rpc_stdio then Some "--stdio" else None);
         ]
         @ provider_disallowed_flags options.provider_options
       in
@@ -533,9 +574,32 @@ let validate (parsed : parsed) =
         | Some _ -> Ok ()
         | None -> ensure_provider_selected options.provider_options
       in
-      match options.output with
-      | Some _ -> Error "run does not accept flag -o"
-      | None -> Ok ()
+      let* () = if options.rpc_stdio then Error "run does not accept flag --stdio" else Ok () in
+      let* () =
+        match options.output with
+        | Some _ -> Error "run does not accept flag -o"
+        | None -> Ok ()
+      in
+      Ok ()
+  | Serve ->
+      let* () =
+        match parsed.positionals with
+        | [] -> Ok ()
+        | _ -> Error "serve does not accept positional arguments"
+      in
+      let* () = if options.rpc_stdio then Ok () else Error "serve requires flag --stdio" in
+      let disallowed =
+        [
+          (match options.include_paths with [] -> None | _ -> Some "-I");
+          Option.map (Fun.const "-o") options.output;
+          (if options.entry = "main" then None else Some "--entry");
+          Option.map (Fun.const "--input") options.input_file;
+          Option.map (Fun.const "--input-json") options.input_json;
+          Option.map (Fun.const "--skills") options.skills_dir;
+        ]
+        @ provider_disallowed_flags options.provider_options
+      in
+      ensure_no_flags "serve" disallowed
 
 let bash_completion_script =
   String.concat "\n"
@@ -549,20 +613,24 @@ let bash_completion_script =
       "  case \"$prev\" in";
       "    -I|--skills|--allow-write-dir) COMPREPLY=( $(compgen -d -- \"$cur\") ); return 0 ;;";
       "    -o|--input) COMPREPLY=( $(compgen -f -- \"$cur\") ); return 0 ;;";
-      "    --provider) COMPREPLY=( $(compgen -W \"codex\" -- \"$cur\") ); return 0 ;;";
+      (Printf.sprintf
+         "    --provider) COMPREPLY=( $(compgen -W \"%s\" -- \"$cur\") ); return 0 ;;"
+         provider_completion_text);
       "    --reasoning) COMPREPLY=( $(compgen -W \"low medium high max\" -- \"$cur\") ); return 0 ;;";
       "    --sandbox) COMPREPLY=( $(compgen -W \"read-only workspace-write danger-full-access\" -- \"$cur\") ); return 0 ;;";
       "    --entry|--model|--provider-profile|--provider-config) return 0 ;;";
       "  esac";
       "";
       "  if [[ ${COMP_CWORD} -eq 1 ]]; then";
-      "    COMPREPLY=( $(compgen -W \"help parse check compile run completion\" -- \"$cur\") )";
+      "    COMPREPLY=( $(compgen -W \"help parse check compile run serve completion\" -- \"$cur\") )";
       "    return 0";
       "  fi";
       "";
       "  case \"$cmd\" in";
       "    help)";
-      "      COMPREPLY=( $(compgen -W \"parse check compile run completion\" -- \"$cur\") ) ;;";
+      "      COMPREPLY=( $(compgen -W \"parse check compile run serve completion\" -- \"$cur\") ) ;;";
+      "    serve)";
+      "      COMPREPLY=( $(compgen -W \"-h --help --stdio\" -- \"$cur\") ) ;;";
       "    completion)";
       "      COMPREPLY=( $(compgen -W \"bash zsh fish\" -- \"$cur\") ) ;;";
       "    parse)";
@@ -591,6 +659,7 @@ let zsh_completion_script =
       "  'check:type-check a source file'";
       "  'compile:compile to JSON IR'";
       "  'run:run a source file or artifact'";
+      "  'serve:start the JSON-RPC stdio server'";
       "  'completion:emit shell completion script'";
       ")";
       "";
@@ -600,12 +669,15 @@ let zsh_completion_script =
       "fi";
       "";
       "case $words[2] in";
-      "  help) _values 'command' parse check compile run completion ;;";
+      "  help) _values 'command' parse check compile run serve completion ;;";
+      "  serve) _arguments '-h[show help]' '--help[show help]' '--stdio[use stdio transport]' ;;";
       "  completion) _values 'shell' bash zsh fish ;;";
       "  parse) _arguments '-h[show help]' '--help[show help]' '*:file:_files' ;;";
       "  check) _arguments '-h[show help]' '--help[show help]' '-I+[include path]:dir:_files -/' '*:file:_files' ;;";
       "  compile) _arguments '-h[show help]' '--help[show help]' '-I+[include path]:dir:_files -/' '-o+[output file]:file:_files' '*:file:_files' ;;";
-      "  run) _arguments '-h[show help]' '--help[show help]' '-I+[include path]:dir:_files -/' '--entry+[entrypoint name]:entry' '--input+[json file]:file:_files' '--input-json+[inline json]:json' '--skills+[skills directory]:dir:_files -/' '--provider+[provider name]:provider:(codex)' '--model+[provider model]:model' '--reasoning+[reasoning level]:reasoning:(low medium high max)' '--provider-profile+[provider profile]:profile' '--provider-config+[provider config override]:config' '--sandbox+[sandbox mode]:sandbox:(read-only workspace-write danger-full-access)' '--allow-write-dir+[extra writable directory]:dir:_files -/' '--trace-provider[print provider step trace metadata]' '*:file:_files' ;;";
+      (Printf.sprintf
+         "  run) _arguments '-h[show help]' '--help[show help]' '-I+[include path]:dir:_files -/' '--entry+[entrypoint name]:entry' '--input+[json file]:file:_files' '--input-json+[inline json]:json' '--skills+[skills directory]:dir:_files -/' '--provider+[provider name]:provider:(%s)' '--model+[provider model]:model' '--reasoning+[reasoning level]:reasoning:(low medium high max)' '--provider-profile+[provider profile]:profile' '--provider-config+[provider config override]:config' '--sandbox+[sandbox mode]:sandbox:(read-only workspace-write danger-full-access)' '--allow-write-dir+[extra writable directory]:dir:_files -/' '--trace-provider[print provider step trace metadata]' '*:file:_files' ;;"
+         provider_completion_text);
       "esac";
     ]
 
@@ -618,19 +690,22 @@ let fish_completion_script =
       "complete -c camlflow -n '__fish_use_subcommand' -a check -d 'Type-check a source file'";
       "complete -c camlflow -n '__fish_use_subcommand' -a compile -d 'Compile to JSON IR'";
       "complete -c camlflow -n '__fish_use_subcommand' -a run -d 'Run a source file or artifact'";
+      "complete -c camlflow -n '__fish_use_subcommand' -a serve -d 'Start the JSON-RPC stdio server'";
       "complete -c camlflow -n '__fish_use_subcommand' -a completion -d 'Emit shell completion script'";
       "";
-      "complete -c camlflow -n '__fish_seen_subcommand_from help' -a parse check compile run completion";
+      "complete -c camlflow -n '__fish_seen_subcommand_from help' -a parse check compile run serve completion";
       "complete -c camlflow -n '__fish_seen_subcommand_from completion' -a bash zsh fish";
       "";
-      "complete -c camlflow -n '__fish_seen_subcommand_from parse check compile run' -s h -l help -d 'Show help'";
+      "complete -c camlflow -n '__fish_seen_subcommand_from parse check compile run serve' -s h -l help -d 'Show help'";
       "complete -c camlflow -n '__fish_seen_subcommand_from check compile run' -s I -d 'Add include path' -r -a '(__fish_complete_directories)'";
       "complete -c camlflow -n '__fish_seen_subcommand_from compile' -s o -d 'Write artifact to file' -r";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l entry -d 'Entrypoint name' -r";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l input -d 'JSON input file' -r";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l input-json -d 'Inline JSON input' -r";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l skills -d 'Skills directory' -r -a '(__fish_complete_directories)'";
-      "complete -c camlflow -n '__fish_seen_subcommand_from run' -l provider -d 'Provider name' -r -a 'codex'";
+      (Printf.sprintf
+         "complete -c camlflow -n '__fish_seen_subcommand_from run' -l provider -d 'Provider name' -r -a '%s'"
+         provider_completion_text);
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l model -d 'Provider model' -r";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l reasoning -d 'Reasoning level' -r -a 'low medium high max'";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l provider-profile -d 'Provider profile' -r";
@@ -638,6 +713,7 @@ let fish_completion_script =
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l sandbox -d 'Sandbox mode' -r -a 'read-only workspace-write danger-full-access'";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l allow-write-dir -d 'Extra writable directory' -r -a '(__fish_complete_directories)'";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l trace-provider -d 'Print provider step trace metadata'";
+      "complete -c camlflow -n '__fish_seen_subcommand_from serve' -l stdio -d 'Use stdio transport'";
     ]
 
 let completion_script = function

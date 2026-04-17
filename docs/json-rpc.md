@@ -6,6 +6,15 @@ Draft. This document locks the **Phase 0** contract for exposing CamlFlow as a h
 
 The goal of this phase is not to finalize every request payload, but to lock the core execution model before implementation.
 
+## Companion docs
+
+- `docs/json-rpc-fixtures.md` — concrete request/response transcripts
+- `docs/json-rpc-roadmap.md` — roadmap and deferred extension notes
+- `docs/json-rpc-deferred-extensions.md` — formalized design-only notes for later protocol work
+- `docs/json-rpc-status.md` — current progress snapshot and fuller summary
+- `docs/json-rpc-checklist.md` — concise remaining-task checklist
+- `packages/camlflow-ts-json-rpc-sdk/README.md` — SDK guide and runnable client examples
+
 ---
 
 ## Purpose
@@ -127,6 +136,13 @@ A host-integrated run looks like this:
 
 The host is the JSON-RPC client and CamlFlow is the JSON-RPC server.
 
+During `initialize`, CamlFlow returns:
+
+- `protocolVersion`
+- `irVersion`
+- `capabilities`
+- `effectKinds`
+
 The first protocol version is expected to include:
 
 - `initialize`
@@ -136,6 +152,254 @@ The first protocol version is expected to include:
 - `shutdown`
 - `exit`
 
+The current implementation also accepts the optional host notification:
+
+- `$/cancelRequest`
+
+### Current method schemas
+
+#### `initialize`
+
+Host request params:
+
+```json
+{
+  "notifications": {
+    "trace": true,
+    "diagnostic": true,
+    "progress": true
+  }
+}
+```
+
+Current behavior:
+
+- `notifications` is optional
+- `notifications.trace` defaults to `true`
+- `notifications.diagnostic` defaults to `true`
+- `notifications.progress` defaults to `true`
+- hosts may disable these streams independently for the current session
+
+Server result fields:
+
+- `protocolVersion: string`
+- `irVersion: string`
+- `capabilities: object`
+- `effectKinds: string[]`
+
+#### `camlflow/check`
+
+Host request params:
+
+```json
+{
+  "program": {
+    "path": "string",
+    "includePaths": ["string"],
+    "skillsDir": "string | null"
+  },
+  "entry": "string (optional, ignored by check)",
+  "input": "json (optional, ignored by check)"
+}
+```
+
+Server result fields:
+
+- `modules: int`
+- `rootModule: string`
+
+#### `camlflow/compile`
+
+Host request params use the same `program` object shape as `camlflow/check`.
+
+Server result fields:
+
+- `irVersion: string`
+- `artifact: program-json`
+
+`artifact.version` is currently the same as `irVersion`.
+
+#### `camlflow/run`
+
+Host request params:
+
+```json
+{
+  "program": {
+    "path": "string",
+    "includePaths": ["string"],
+    "skillsDir": "string | null"
+  },
+  "entry": "string",
+  "input": "any valid JSON value"
+}
+```
+
+Server result fields:
+
+- `runId: string`
+- `stepsRun: int`
+- `output: json | null`
+
+`input` is optional; if omitted, the workflow must not require an argument.
+
+#### `shutdown`
+
+Host request params:
+
+```json
+{}
+```
+
+Server result:
+
+```json
+null
+```
+
+#### `exit`
+
+Host sends a notification or request with method `exit`.
+
+The current implementation stops the server loop after receiving it.
+
+#### `$/cancelRequest`
+
+Host notification params:
+
+```json
+{
+  "id": 2
+}
+```
+
+Current behavior:
+
+- cancellation primarily targets the original host → server request id for `camlflow/run`
+- while a run is blocked on `camlflow/executeEffect`, CamlFlow also recognizes the current in-flight effect request id
+- CamlFlow marks the active run as cancellation-requested
+- if CamlFlow is currently blocked waiting for `camlflow/executeEffect`, it cancels at that safe boundary
+- CamlFlow also drains pending cancellation control messages before the next effect request when possible
+- the original `camlflow/run` request completes with error code `-32800`
+- CamlFlow emits `run-cancelled` through `camlflow/trace`
+- CamlFlow emits `run-cancelled` through `camlflow/progress`
+- CamlFlow emits a cancellation diagnostic when diagnostic notifications are enabled for the session
+
+Current limitation:
+
+- this slice remains boundary-based rather than fully preemptive, but it now also drains pending cancellation control messages after effect completion and before final run success is committed
+
+### Current error code table
+
+The current implementation uses these JSON-RPC error codes.
+
+#### Standard JSON-RPC shaped errors
+
+- `-32600` — invalid JSON-RPC request payload
+- `-32601` — method not found
+- `-32800` — request cancelled
+
+#### CamlFlow server lifecycle errors
+
+- `-32002` — server not initialized
+
+#### CamlFlow operation errors
+
+- `-32010` — `camlflow/check` failed
+- `-32011` — `camlflow/compile` failed
+- `-32012` — `camlflow/run` failed
+
+### Error code semantics
+
+#### `-32600` invalid request
+
+Returned when the incoming payload is not a valid JSON-RPC request object for the current server.
+
+Typical causes:
+
+- missing `jsonrpc`
+- unsupported `jsonrpc` version
+- missing `method`
+- malformed request envelope
+
+#### `-32601` method not found
+
+Returned when the request method is well-formed but unsupported.
+
+#### `-32800` request cancelled
+
+Returned when the host cancels an active `camlflow/run` request through `$/cancelRequest` and CamlFlow observes that cancellation at a safe boundary.
+
+#### `-32002` server not initialized
+
+Returned when the host calls a method that requires prior `initialize` before the server has been initialized.
+
+#### `-32010` check failed
+
+Returned when `camlflow/check` fails due to program loading, parse, module-resolution, or typing errors.
+
+#### `-32011` compile failed
+
+Returned when `camlflow/compile` fails due to program loading, parse, module-resolution, or typing errors.
+
+#### `-32012` run failed
+
+Returned when `camlflow/run` fails due to:
+
+- program load/check failures
+- invalid host effect responses
+- host-side effect execution failures
+- runtime evaluation errors
+
+When possible, CamlFlow also emits a `camlflow/diagnostic` notification alongside the request error response.
+
+### Compatibility policy
+
+`protocolVersion` and `irVersion` are separate compatibility surfaces.
+
+#### Protocol compatibility
+
+The JSON-RPC protocol version must change when the wire contract changes in a host-visible way.
+
+Changes that require a protocol version bump include:
+
+- removing or renaming methods
+- removing or renaming response fields
+- changing the meaning of existing fields or error codes
+- making a previously optional field required
+- adding a new required server → host request during a run
+- changing the required handling contract for `camlflow/executeEffect`
+
+Changes that are intended to remain backward-compatible within the same protocol version include:
+
+- documentation clarifications
+- adding optional fields that hosts may ignore
+- adding optional keys under `details`
+- adding new capability flags that default to ignorable behavior
+- adding optional notifications that hosts may ignore
+
+Hosts should ignore unknown capability keys, unknown optional fields, and unknown event-specific `details` keys.
+
+#### IR compatibility
+
+`irVersion` applies to compiled artifact structure, not to the outer JSON-RPC transport.
+
+An IR version bump is required when compiled program JSON changes in a way that affects decoding or execution, for example:
+
+- changing required artifact fields
+- renaming artifact fields
+- changing the meaning of existing IR nodes
+- changing encoded type or expression forms incompatibly
+
+Pure documentation changes and additive optional metadata do not require an IR version bump.
+
+#### Relationship between the two versions
+
+- protocol changes do not automatically require an IR version bump
+- IR changes do not automatically require a protocol version bump
+- hosts that only call `camlflow/run` may care mainly about `protocolVersion`
+- hosts that persist or exchange compiled artifacts must also check `irVersion`
+
 ### Server → Client requests
 
 During a run, CamlFlow may send requests back to the host.
@@ -144,12 +408,205 @@ The first protocol version is expected to include:
 
 - `camlflow/executeEffect`
 
-Optional later notifications may include:
+The current implementation may emit these optional notifications, depending on host initialize preferences and effect-handler behavior:
 
 - `camlflow/trace`
 - `camlflow/diagnostic`
+- `camlflow/progress`
+- `camlflow/outputChunk`
 
-These notifications are not required for the Phase 0 contract.
+The host may also send optional notifications:
+
+- `$/cancelRequest`
+- `camlflow/outputChunk` during an active `camlflow/executeEffect`
+
+Hosts may ignore `camlflow/trace`, `camlflow/diagnostic`, `camlflow/progress`, and `camlflow/outputChunk` if they do not need them.
+
+### Capability semantics
+
+The current `capabilities` object is intentionally coarse for `0.1.0`.
+
+Current meaning:
+
+- `check`, `compile`, `run` — the server implements these host → server methods
+- `executeEffect` — the server may issue `camlflow/executeEffect` requests during effectful runs
+- `trace`, `diagnostic`, `progress` — the server may emit these optional notifications
+- `streaming` — the server may relay advisory `camlflow/outputChunk` notifications during effect execution
+- `cancelRequest` — the server supports host cancellation via `$/cancelRequest`
+- `renderedPrompt`, `outputSchema` — effect requests include these convenience fields
+
+Decision for `0.1.0`:
+
+- keep the current flat capability map
+- treat `trace`, `diagnostic`, `progress`, and `outputChunk` as optional observability features
+- defer finer-grained capability sub-objects until a real compatibility need appears
+
+Host requirements for `0.1.0`:
+
+- hosts must send `initialize` before calling methods that require initialization
+- hosts that want to run effectful workflows must handle `camlflow/executeEffect`
+- hosts may ignore `camlflow/trace`, `camlflow/diagnostic`, `camlflow/progress`, and `camlflow/outputChunk`
+- hosts may disable `camlflow/trace`, `camlflow/diagnostic`, and/or `camlflow/progress` for the current session through `initialize.params.notifications`
+- hosts may send `$/cancelRequest` when `capabilities.cancelRequest = true`
+- hosts should ignore unknown future capability keys
+
+### `camlflow/trace` notifications
+
+The current trace stream is safe metadata only. It is intended for logging, debugging, and protocol inspection.
+
+Current events include:
+
+- `run-start`
+- `effect-request`
+- `effect-result`
+- `effect-error`
+- `run-finish`
+- `run-error`
+- `run-cancelled`
+
+A trace payload includes:
+
+- `event`
+- `runId`
+- `step`
+- `effect` summary when relevant
+- optional `details`
+
+### `camlflow/progress` notifications
+
+The current progress stream is advisory UI metadata. It is intended for hosts that want lightweight lifecycle updates without interpreting trace details.
+
+Current stages include:
+
+- `check-start`
+- `check-finish`
+- `compile-start`
+- `compile-finish`
+- `run-start`
+- `effect-start`
+- `effect-finish`
+- `run-finish`
+- `run-error`
+- `run-cancelled`
+
+A progress payload includes:
+
+- `runId`
+- `stage`
+- `step`
+- `message`
+- `completedSteps`
+- `knownSteps`
+- `cancellable`
+
+Progress is best-effort and safe to ignore. It does not replace final typed results or request error responses.
+
+### `camlflow/outputChunk` notifications
+
+The current bridge now includes an initial advisory streaming relay.
+
+Current behavior:
+
+- `capabilities.streaming = true`
+- a host effect handler may emit `camlflow/outputChunk` during an active `camlflow/executeEffect`
+- CamlFlow relays those chunks back to the session as advisory notifications
+- the authoritative contract remains the final typed `camlflow/executeEffect` response and final `camlflow/run` result
+
+This keeps room for richer future streaming without implying that typed workflow state can advance from partial output.
+
+### `camlflow/diagnostic` notifications
+
+The current diagnostic stream is for machine-readable error reporting outside normal request failures.
+
+A diagnostic payload includes:
+
+- `severity`
+- `message`
+- `method`
+- `runId`
+- `step`
+- `effect` summary when relevant
+
+Current notification shapes:
+
+#### `camlflow/trace`
+
+```json
+{
+  "event": "string",
+  "runId": "string | null",
+  "step": "int | null",
+  "effect": {
+    "kind": "string",
+    "name": "string"
+  },
+  "details": {}
+}
+```
+
+`effect` may be `null` when the event is run-scoped.
+`details` is optional and event-specific.
+
+#### `camlflow/diagnostic`
+
+```json
+{
+  "severity": "error",
+  "message": "string",
+  "method": "string | null",
+  "runId": "string | null",
+  "step": "int | null",
+  "effect": {
+    "kind": "string",
+    "name": "string"
+  }
+}
+```
+
+`effect` may be `null` when the diagnostic is not tied to a single effect step.
+
+#### `camlflow/progress`
+
+```json
+{
+  "runId": "string | null",
+  "stage": "string",
+  "step": "int | null",
+  "message": "string | null",
+  "completedSteps": "int | null",
+  "knownSteps": "int | null",
+  "cancellable": "bool | null"
+}
+```
+
+`runId` may be `null` for non-run notifications such as `check-start` and `compile-start`.
+
+#### `camlflow/outputChunk`
+
+```json
+{
+  "runId": "string | null",
+  "step": "int | null",
+  "streamId": "string",
+  "format": "string",
+  "delta": "json",
+  "done": "bool"
+}
+```
+
+These notifications are advisory effect-output previews. Hosts may buffer or ignore them.
+
+### Current host error propagation behavior
+
+If the host returns a JSON-RPC error in response to `camlflow/executeEffect`, CamlFlow currently:
+
+1. treats the effect step as failed
+2. emits `camlflow/trace` / `camlflow/diagnostic` notifications when applicable
+3. fails the enclosing `camlflow/run` request with `-32012`
+
+This keeps the top-level run contract simple while preserving machine-readable detail in notifications.
+
+For concrete transcripts, see `docs/json-rpc-fixtures.md`.
 
 ---
 
@@ -181,6 +638,79 @@ So effect requests should ultimately carry at least:
 - local skill markdown if present
 - inline agent metadata if present
 - rendered prompt for convenience
+
+#### `camlflow/executeEffect`
+
+Server → host request params:
+
+```json
+{
+  "runId": "string | null",
+  "step": 1,
+  "effect": {
+    "kind": "bound-agent | bound-skill | local-prompt-skill | inline-agent",
+    "role": "agent | skill",
+    "name": "string",
+    "input": {},
+    "declaredReturnType": "string",
+    "outputSchema": {},
+    "workingDirectory": "string | null",
+    "skillsDirectory": "string | null",
+    "skillMarkdown": "string | null",
+    "inlineDefinition": "object | null",
+    "renderedPrompt": "string",
+    "requestedModel": "string | null",
+    "unsupportedSettings": ["string"],
+    "step": 1,
+    "runId": "string | null"
+  }
+}
+```
+
+Host → server success result:
+
+```json
+{
+  "output": "json value matching the declared CamlFlow return type"
+}
+```
+
+Host → server failure result should use a JSON-RPC error response.
+
+Recommended shape:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "effect-1",
+  "error": {
+    "code": -32000,
+    "message": "model timeout",
+    "data": {
+      "retryable": true,
+      "category": "timeout",
+      "provider": "host-local"
+    }
+  }
+}
+```
+
+Host error response guidance:
+
+- `message` should be short and actionable
+- `code` may be host-defined if the host has its own error taxonomy
+- `data` is optional machine-readable context
+- useful optional `data` fields include:
+  - `retryable: boolean`
+  - `category: string`
+  - `provider: string`
+  - `details: object | string`
+
+Current CamlFlow behavior:
+
+- CamlFlow reliably uses the host error `message` when failing the enclosing run
+- CamlFlow does not currently preserve host `error.data` as a stable top-level contract
+- hosts should treat `error.data` as best-effort debugging context until a richer propagation contract is standardized
 
 ---
 
@@ -227,10 +757,9 @@ Phase 0 locks this direction so later implementation work can target one explici
 
 The first JSON-RPC version should not attempt to solve:
 
-- token streaming
+- token streaming execution semantics beyond the current advisory output-chunk relay
 - concurrent multi-run multiplexing on one connection
 - durable checkpoints
-- host-driven cancellation
 - protocol-level retries
 - forcing the host to understand CamlFlow AST internals
 

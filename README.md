@@ -3,27 +3,32 @@
 CamlFlow is a typed agent-orchestration language and runtime built around an
 OCaml-style DSL.
 
-The goal is to let you develop AI workflows programmatically:
-you describe the workflow in code, type-check it, compile it, and run it.
-That means you can:
+The goal is to let you develop AI workflows programmatically: you describe the
+workflow in code, type-check it, compile it, and run it.
 
-- use skills
-- use agents
-- create skills
-- create agents
-- reuse agents you already created
+CamlFlow's current direction is to act as a typed harness/orchestration engine:
+
+- author workflows in `.cml`
+- run them directly through the CLI
+- or host them over JSON-RPC 2.0 stdio from tools, UIs, and automation hosts
+- let external providers or host processes execute effect steps
+- keep final typed outputs authoritative even when trace, progress, or advisory
+  output chunks are streamed
 
 Instead of stitching the workflow together with ad-hoc prompts, you write
 typed source code with explicit inputs, outputs, and sequencing.
 Project-local skills live under `skills/<name>/SKILL.md`, and inline agents
 can be declared directly in `.cml` code.
 
-This repository contains the completed Alpha/MVP vertical slice:
+This repository contains the completed Alpha/MVP vertical slice plus the host
+integration slice:
 - parser
 - type checker
 - compiled JSON IR
 - deterministic local runtime
-- CLI
+- CLI and provider-backed execution
+- JSON-RPC stdio server
+- TypeScript SDK and host examples
 - tests
 - runnable examples
 
@@ -45,11 +50,22 @@ This repository contains the completed Alpha/MVP vertical slice:
   - default bound-agent / bound-skill provider fallback
   - effect observer hook with invocation metadata
   - prompt-backed local skill metadata
+- provider-backed CLI execution for Codex and OpenCode
+- JSON-RPC host integration over stdio:
+  - `serve --stdio`
+  - host → server methods for `initialize`, `camlflow/check`, `camlflow/compile`, `camlflow/run`, `shutdown`, and `exit`
+  - server → host effect execution through `camlflow/executeEffect`
+  - trace, diagnostic, and progress notifications
+  - host cancellation through `$/cancelRequest`, including pure-compute cancellation polling
+  - per-session notification preferences for trace, diagnostic, and progress
+  - advisory output streaming through `camlflow/outputChunk`
+- TypeScript SDK for spawned or attached JSON-RPC stdio clients
 - CLI commands:
   - `parse`
   - `check`
   - `compile`
   - `run`
+  - `serve`
 - improved CLI diagnostics for:
   - unknown commands and flags
   - missing flag values
@@ -62,6 +78,8 @@ This repository contains the completed Alpha/MVP vertical slice:
 ## Still out of scope for this MVP
 
 - durable suspend/resume
+- authoritative incremental workflow state from streamed output
+- concurrent multi-run multiplexing on one server connection
 - real LLM/provider schema generation
 - remote registries/packages
 - full OCaml stdlib compatibility
@@ -202,6 +220,14 @@ make run-basic
 make run-variants-match
 ```
 
+JSON-RPC host integration quickstart:
+
+```sh
+dune exec camlflow -- serve --stdio
+# or, for the maintained Node SDK examples:
+cd packages/camlflow-ts-json-rpc-sdk && npm install && npm test
+```
+
 Use `dune exec camlflow -- --help` to see the full CLI.
 
 ## Build
@@ -219,6 +245,12 @@ dune test
 ## CLI
 
 All commands below run through `dune exec camlflow -- ...`.
+
+### Serve over stdio for JSON-RPC hosts
+
+```sh
+dune exec camlflow -- serve --stdio
+```
 
 Show help:
 
@@ -288,6 +320,16 @@ dune exec camlflow -- run examples/basic/main.cml \
   --model gpt-5.4-mini \
   --reasoning low \
   --sandbox read-only
+```
+
+### Run with OpenCode provider
+
+```sh
+dune exec camlflow -- run examples/basic/main.cml \
+  --input-json '"Ada"' \
+  --provider opencode \
+  --model openai/gpt-5.4-mini \
+  --reasoning low
 ```
 
 ### Run Codex provider example with a local skill + inline agent
@@ -365,6 +407,9 @@ runtime hooks.
 - `examples/variants-match/` — records, variants, and pattern matching with a zero-arg `main`
 - `examples/inline-agent/` — executable `Agent.define`
 - `examples/provider-hooks/` — embedded OCaml host using runtime provider hooks
+- `examples/json-rpc-host/` — dependency-free Node host speaking CamlFlow JSON-RPC over stdio
+- `examples/json-rpc-problem-coach/` — dependency-free Node host running the structured problem-coach workflow over JSON-RPC
+- `packages/camlflow-ts-json-rpc-sdk/examples/` — SDK-backed JSON-RPC host examples for spawned and attached clients, including progress, cancellation, and output chunks
 - `examples/codex/` — CLI Codex provider run using a bound agent, local skill, and inline agent
 - `examples/swe-leetcode/` — inline LeetCode solver agent using the caveman skill and a fixed model
 - `examples/problem-coach/` — multi-step solver that returns a directly useful final answer pack
@@ -374,8 +419,19 @@ runtime hooks.
 - `docs/provider-execution.md` — CLI provider-backed execution and Codex usage
 - `docs/provider-hooks.md` — hook model, invocation metadata, and embedding guide
 - `docs/json-rpc.md` — Phase 0 JSON-RPC host-integration contract
+- `docs/json-rpc-fixtures.md` — concrete JSON-RPC request/response transcripts
 - `docs/json-rpc-roadmap.md` — roadmap for CamlFlow as a host-integrated harness runtime
+- `docs/json-rpc-deferred-extensions.md` — follow-up design notes for deeper cancellation, progress, and streaming work
+- `docs/json-rpc-status.md` — current JSON-RPC progress summary and validated state
+- `docs/json-rpc-checklist.md` — concise JSON-RPC remaining-tasks checklist
+- `docs/host-adapter-architecture.md` — reusable sidecar adapter plan for real host integrations
+- `docs/pi-mono-host-integration-plan.md` — concrete first-host plan for a `pi-mono` fork
+- `docs/pi-mono-implementation-checklist.md` — concrete `pi-mono` implementation checklist with likely file touch points
 - `examples/provider-hooks/README.md` — runnable provider-hooks example
+- `examples/json-rpc-host/README.md` — runnable dependency-free JSON-RPC host example
+- `examples/json-rpc-problem-coach/README.md` — runnable dependency-free structured JSON-RPC host example
+- `packages/camlflow-ts-json-rpc-sdk/README.md` — TypeScript SDK guide
+- `packages/camlflow-ts-json-rpc-sdk/examples/README.md` — runnable SDK-backed JSON-RPC host examples
 - `examples/codex/README.md` — runnable Codex provider example
 - `examples/swe-leetcode/README.md` — runnable swe-leetcode example
 - `examples/problem-coach/README.md` — runnable problem-coach example
@@ -407,12 +463,20 @@ make run-provider-hooks
 - `docs/provider-execution.md` — CLI provider-backed execution guide
 - `docs/provider-hooks.md` — runtime provider hook reference
 - `docs/json-rpc.md` — Phase 0 JSON-RPC host-integration contract
+- `docs/json-rpc-fixtures.md` — concrete JSON-RPC request/response transcripts
 - `docs/json-rpc-roadmap.md` — host-integration roadmap
+- `docs/json-rpc-deferred-extensions.md` — follow-up design notes for deeper cancellation, progress, and streaming work
+- `docs/json-rpc-status.md` — current JSON-RPC progress summary and validated state
+- `docs/json-rpc-checklist.md` — concise JSON-RPC remaining-tasks checklist
+- `docs/host-adapter-architecture.md` — reusable sidecar adapter plan for real host integrations
+- `docs/pi-mono-host-integration-plan.md` — concrete first-host plan for a `pi-mono` fork
+- `docs/pi-mono-implementation-checklist.md` — concrete `pi-mono` implementation checklist with likely file touch points
 - `docs/alpha-tasks.md` — Alpha completion checklist and closeout notes
 - `docs/beta-1-tasks.md` — Beta 1 implementation checklist
 - `examples/` — runnable examples
 - `Makefile` — common build, test, and run shortcuts
-- `lib/` — parser, typing, IR, runtime
+- `lib/` — parser, typing, IR, runtime, provider bridge, and JSON-RPC server
+- `packages/camlflow-ts-json-rpc-sdk/` — maintained TypeScript SDK and runnable host examples
 - `bin/main.ml` — CLI
 - `test/test_camlflow.ml` — end-to-end tests
 
@@ -430,14 +494,39 @@ Delivered focus: validate the core language shape and execution model.
 - [x] Continue improving MVP stability, diagnostics, and language ergonomics
 - [x] Expand examples and test coverage for more workflow patterns
 
-### Beta 1
+### Beta 1 — provider and host integration slice delivered
 
-Goal: validate CamlFlow inside real AI coding environments.
+Goal: validate CamlFlow inside real AI coding environments through provider-backed
+execution and host integration, closing the slice with a thin sidecar
+integration into at least one real host fork instead of embedding CamlFlow
+into host internals.
 
-- [ ] Integrate with Codex (Codex CLI, OAuth)
-- [ ] Test CamlFlow programs from within AI tools such as Codex
-- [ ] Validate that generated outputs and orchestration behavior work as intended in real usage
-- [ ] Iterate on language/runtime behavior based on AI-tool feedback
+Delivered:
+
+- [x] Integrate with Codex through opt-in CLI provider execution
+- [x] Integrate with OpenCode through opt-in CLI provider execution
+- [x] Add normalized provider CLI flags for model, reasoning, sandbox, profiles,
+  provider config, and tracing
+- [x] Generate JSON Schema from CamlFlow return types for provider-backed effect execution
+- [x] Support bound agents, bound skills, local prompt skills, and inline agents
+  through the provider bridge
+- [x] Add a JSON-RPC 2.0 stdio server through `serve --stdio`
+- [x] Add host-driven effect execution through `camlflow/executeEffect`
+- [x] Add trace, diagnostic, and progress notifications for host integrations
+- [x] Add host cancellation through `$/cancelRequest`, including pure-compute
+  cancellation polling
+- [x] Add per-session notification preferences for trace, diagnostic, and progress
+- [x] Add advisory output streaming through `camlflow/outputChunk`
+- [x] Add a maintained TypeScript JSON-RPC SDK plus runnable Node host examples
+- [x] Add offline tests and end-to-end examples for provider-backed and JSON-RPC execution
+
+Remaining Beta 1 follow-up:
+
+- [ ] Validate CamlFlow end to end inside at least one real AI coding host through a thin sidecar integration
+- [ ] Keep CamlFlow as its own engine (`camlflow serve --stdio`) and reuse a host adapter instead of embedding runtime logic into the host fork
+- [ ] Confirm the host bridge handles `camlflow/executeEffect`, progress, cancellation, diagnostics, and output chunks in real usage
+- [ ] Run multiple real workflows through that host and capture the biggest friction points
+- [ ] Iterate on provider/runtime behavior, SDK ergonomics, payload shapes, and docs based on real host feedback
 
 ### Beta 2
 

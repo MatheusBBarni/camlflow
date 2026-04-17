@@ -5,11 +5,12 @@ agent/skill effects through an external provider.
 
 Beta 1 introduces an opt-in provider-backed execution path in the CLI.
 
-## Current provider
+## Current providers
 
-Today the built-in CLI provider is:
+Today the built-in CLI providers are:
 
 - `codex`
+- `opencode`
 
 Usage stays provider-agnostic at the CLI level:
 
@@ -56,24 +57,51 @@ These flags are rejected on non-`run` commands.
 
 ## Preflight
 
-Before execution, CamlFlow checks that:
+Before execution, CamlFlow checks provider-specific basics.
+
+### `codex`
+
+CamlFlow checks that:
 
 - `codex` is installed and on `PATH`
 - Codex authentication is available through `codex login status`
+
+### `opencode`
+
+CamlFlow checks that:
+
+- `opencode` is installed and on `PATH`
 
 If preflight fails, the run fails before the workflow starts.
 
 ## Runtime behavior
 
-When `--provider codex` is set:
+When a provider is set:
 
 - CamlFlow still orchestrates the workflow
-- each `let*` effect becomes a fresh `codex exec` call
+- each `let*` effect becomes a fresh provider call
 - source and compiled IR runs both work
 - CamlFlow still validates the returned JSON against the declared CamlFlow type
 
-The Codex adapter uses generated JSON Schema and wraps each step response in a
-small object schema so Codex can return non-object CamlFlow values safely.
+### `codex`
+
+When `--provider codex` is set:
+
+- each effect becomes a fresh `codex exec` call
+- generated JSON Schema is passed through `--output-schema`
+- the final provider message is parsed from `--output-last-message`
+
+### `opencode`
+
+When `--provider opencode` is set:
+
+- each effect becomes a fresh `opencode run --format json` call
+- CamlFlow appends a strict wrapped JSON response contract to the prompt
+- CamlFlow parses OpenCode's newline-delimited JSON event stream
+- CamlFlow concatenates all `text` event chunks before decoding the final wrapped JSON payload
+- if OpenCode emits an `error` event, CamlFlow surfaces that message as the step failure
+
+Both adapters use a wrapped `{"result": ...}` response shape so non-object CamlFlow values remain safe to transport.
 
 ## Prompt sources by effect kind
 
@@ -91,10 +119,12 @@ For inline agents:
 - inline `Agent.define ~model:"..."` wins
 - CLI `--model` is used only when the workflow does not declare a model
 
+For `opencode`, `--reasoning` is mapped onto `--variant` values such as `minimal`, `medium`, `high`, and `max`.
+
 ## Unsupported inline settings
 
-Codex execution currently fails fast on inline settings that are not mapped
-faithfully by the CLI adapter.
+Current direct CLI adapters fail fast on inline settings that are not mapped
+faithfully by the adapter.
 
 Today that means:
 
@@ -105,6 +135,8 @@ Example failure shape:
 ```text
 provider codex does not support inline setting(s) temperature for agent reviewer
 ```
+
+The Opencode adapter behaves the same way for unsupported inline settings.
 
 ## Tracing
 
@@ -127,6 +159,34 @@ provider[1] ok elapsed=4.95s
 
 `stdout` remains reserved for the normal run result.
 
+## Capability summary
+
+### `codex`
+
+Current adapter capabilities:
+
+- supports model override
+- supports reasoning mapping
+- supports provider profiles and raw provider config overrides
+- supports sandbox selection and extra writable directories
+- supports wrapped JSON output-schema enforcement
+
+### `opencode`
+
+Current adapter capabilities:
+
+- supports model override
+- supports reasoning mapping through `--variant`
+- supports wrapped JSON response parsing from JSON event output
+- supports provider tracing
+
+Current adapter limitations:
+
+- no mapping for non-default sandbox selection yet
+- no mapping for extra writable directories yet
+- no mapping for provider profiles yet
+- no mapping for arbitrary provider config overrides yet
+
 ## Writable scope
 
 Default provider execution uses:
@@ -134,14 +194,54 @@ Default provider execution uses:
 - sandbox: `workspace-write`
 - writable scope: current working directory only
 
-You can tighten or expand that with:
+`codex` supports:
 
 - `--sandbox read-only`
+- `--sandbox workspace-write`
+- `--sandbox danger-full-access`
 - `--allow-write-dir <dir>`
 
-## Example
+`opencode` currently maps CamlFlow's default provider mode onto OpenCode's coarse auto-permission mode.
 
-See:
+That means the adapter currently does **not** support:
 
-- `examples/codex/main.cml`
-- `examples/codex/README.md`
+- non-default `--sandbox`
+- `--allow-write-dir`
+- `--provider-profile`
+- `--provider-config`
+
+In other words, the first Opencode slice is a convenience adapter, not a full sandbox-policy mapping.
+
+## OpenCode error handling notes
+
+The adapter currently fails a step when any of the following happens:
+
+- OpenCode exits non-zero
+- OpenCode emits an `error` event in its JSON event stream
+- OpenCode emits no final `text` payload
+- the final text payload is not valid wrapped JSON
+- the wrapped JSON does not contain `result`
+
+This keeps failure modes explicit and easier to debug when integrating a new host environment.
+
+## Examples
+
+Codex:
+
+```sh
+dune exec camlflow -- run examples/codex/main.cml \
+  --skills examples/codex/skills \
+  --input-json '"Ada"' \
+  --provider codex \
+  --model gpt-5.4-mini
+```
+
+Opencode:
+
+```sh
+dune exec camlflow -- run examples/codex/main.cml \
+  --skills examples/codex/skills \
+  --input-json '"Ada"' \
+  --provider opencode \
+  --model openai/gpt-5.4-mini
+```

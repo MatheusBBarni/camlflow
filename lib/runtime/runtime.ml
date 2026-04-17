@@ -167,7 +167,11 @@ let build_state ?(context = Context.empty) (program : Ir.program) : runtime_stat
     effect_steps = ref [];
   }
 
+let poll_cancellation_state state = state.context.Context.cancellation_check ()
+let poll_cancellation_env env = poll_cancellation_state env.state
+
 let rec eval_module state module_name =
+  let* () = poll_cancellation_state state in
   let key = module_key module_name in
   match StringMap.find_opt key state.module_envs with
   | Some env -> Ok env
@@ -183,6 +187,7 @@ let rec eval_module state module_name =
         Ok exports
 
 and eval_module_decls env decls exports =
+  let* () = poll_cancellation_env env in
   match decls with
   | [] -> Ok (List.rev exports, env)
   | decl :: rest -> (
@@ -228,6 +233,7 @@ and eval_module_decls env decls exports =
           eval_module_decls env rest ((binding.Ir.binding_name, value) :: exports))
 
 and eval_binding env binding =
+  let* () = poll_cancellation_env env in
   match (binding.Ir.binding_recursive, binding.Ir.binding_params) with
   | true, [] -> Error "recursive non-function bindings are unsupported at runtime"
   | true, _ :: _ ->
@@ -271,6 +277,7 @@ and lookup_value env name =
       | None -> Error (Printf.sprintf "unbound qualified value %s" (Syntax.Ast.string_of_qname name)))
 
 and eval_expr env expr =
+  let* () = poll_cancellation_env env in
   match expr.Ir.expr_desc with
   | Ir.ELiteral literal -> Ok (RData (value_of_literal literal))
   | Ir.EVar name -> lookup_value env name
@@ -425,6 +432,7 @@ and primitive_compare lhs rhs =
   | _ -> Error "ordering operands must have the same ordered primitive type"
 
 and apply_value env loc fn args =
+  let* () = poll_cancellation_env env in
   match fn with
   | RBuiltin name -> apply_builtin loc name args
   | RClosure closure -> apply_closure loc closure args

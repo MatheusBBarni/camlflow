@@ -73,7 +73,7 @@ This keeps CamlFlow language semantics stable while letting each tool remain opi
 
 1. **Extract a generic effect-request model**
 2. **Add JSON-RPC stdio server mode**
-3. **Ship a reference TypeScript host example**
+3. **Ship reference host examples and SDK usage examples**
 4. **Stabilize the JSON-RPC protocol and JSON IR**
 5. **Add tool-specific convenience adapters later**
 
@@ -113,7 +113,7 @@ CamlFlow is not responsible for owning:
 - framing: **Content-Length** headers
 - concurrency: **single active run** per server instance
 - execution style: **blocking nested effect requests**
-- no streaming in v1
+- no authoritative streaming in v1
 - no durable suspend/resume in v1
 
 ## Why Phase 0 matters
@@ -330,7 +330,7 @@ Reuse the current synchronous runtime and install a context handler that:
 
 ---
 
-# Phase 3 — Ship a reference host example
+# Phase 3 — Ship reference host examples
 
 ## Goal
 
@@ -338,13 +338,20 @@ Prove the model end to end for non-OCaml tool authors.
 
 ## Deliverable
 
-A tiny TypeScript host example.
+Runnable host examples that cover both:
+
+- raw JSON-RPC framing for tool authors who want zero dependencies
+- SDK-backed clients for tool authors who want a higher-level integration path
 
 ## Suggested files
 
 - `examples/json-rpc-host/README.md`
-- `examples/json-rpc-host/package.json`
-- `examples/json-rpc-host/host.ts`
+- `examples/json-rpc-host/host.js`
+- `examples/json-rpc-problem-coach/README.md`
+- `examples/json-rpc-problem-coach/host.js`
+- `packages/camlflow-ts-json-rpc-sdk/examples/provider-hooks.ts`
+- `packages/camlflow-ts-json-rpc-sdk/examples/problem-coach.ts`
+- `packages/camlflow-ts-json-rpc-sdk/examples/cancellation.ts`
 
 ## What the example should do
 
@@ -407,6 +414,145 @@ Add:
 
 ---
 
+# Phase 4.5 — Deferred protocol extensions
+
+Most of this section remains deliberately deferred design work.
+
+Three exceptions now exist:
+
+- CamlFlow has an initial cancellation slice using `$/cancelRequest` for active `camlflow/run` requests.
+- CamlFlow has an initial progress slice using `camlflow/progress` notifications.
+- CamlFlow now exposes an initial advisory streaming relay through `capabilities.streaming = true`, `camlflow/outputChunk`, and SDK notification plumbing.
+
+The notes below therefore describe the remaining design space beyond those first implementations.
+
+See also:
+
+- `docs/json-rpc-deferred-extensions.md`
+
+## Cancellation design notes
+
+### Why it matters
+
+Hosts may need to stop a long-running workflow when:
+
+- the user cancels from UI
+- the host times out
+- the host tears down the current session
+- the host decides an effect result is no longer needed
+
+### Current direction
+
+The first implemented slice uses:
+
+- JSON-RPC request cancellation via `$/cancelRequest`
+
+Possible future follow-up, only if the current shape proves insufficient:
+
+- a CamlFlow-specific method such as `camlflow/cancelRun`
+
+### Suggested semantics
+
+- cancellation should target a **run** or a specific in-flight **request id**
+- if CamlFlow is currently blocked on `camlflow/executeEffect`, cancellation should fail the run cleanly
+- pure compute should poll for cancellation at reasonable runtime checkpoints
+- cancellation should be observable through notifications, likely:
+  - `camlflow/trace` with an event like `run-cancelled`
+  - `camlflow/progress` with stage `run-cancelled`
+  - `camlflow/diagnostic` when useful
+
+### Remaining non-goals for now
+
+Do not implement partial unwinding or durable resume tied to cancellation in this phase.
+
+## Progress design notes
+
+### Why it matters
+
+Hosts often want UI feedback before the workflow completes.
+
+### Current direction
+
+The first implemented slice now uses:
+
+- `camlflow/progress`
+
+Current implemented coverage includes:
+
+- `check-start`
+- `check-finish`
+- `compile-start`
+- `compile-finish`
+- `run-start`
+- `effect-start`
+- `effect-finish`
+- `run-finish`
+- `run-error`
+- `run-cancelled`
+
+### Suggested payload shape
+
+- `runId`
+- `stage` or `event`
+- `step`
+- `message`
+- optional counters such as `completedSteps` / `knownSteps`
+
+### Suggested usage
+
+- emit before an effect request starts
+- emit after an effect step completes
+- emit around pure compile/check/run milestones
+- allow hosts to opt out of trace and progress independently through initialize preferences when they do not need a stream
+
+### Remaining non-goal for now
+
+Do not attempt percent-perfect progress. Step-oriented progress is enough.
+
+## Streaming design notes
+
+### Why it matters
+
+Some hosts may want token-by-token or chunked previews during effect execution.
+
+### Current direction
+
+Keep streaming out of the core run contract for now, while allowing advisory notifications like:
+
+- `camlflow/outputChunk`
+- `camlflow/effectStream`
+
+Current implemented slice:
+
+- `capabilities.streaming = true`
+- effect handlers may emit advisory `camlflow/outputChunk`
+- CamlFlow relays those notifications without changing the typed final-result contract
+
+### Suggested semantics
+
+- streaming should be advisory only
+- the authoritative contract remains the final typed `output`
+- streamed chunks should never replace final type validation
+
+### Suggested host model
+
+- host may stream its own preview UI locally
+- CamlFlow should only relay stream events if there is a stable protocol need
+
+### Non-goal for now
+
+Do not couple streaming to typed workflow state changes. Only finalized JSON outputs should advance the workflow.
+
+## Recommended order for future extension work
+
+1. deepen cancellation only where host feedback shows ambiguity
+2. deepen progress only where UI consumers need more structure
+3. optional streaming
+
+That order preserves correctness before richer UX enhancements.
+
+---
+
 # Phase 5 — Add tool-specific convenience adapters
 
 ## Goal
@@ -461,17 +607,22 @@ Outcome:
 
 - `camlflow serve --stdio` works with a mock client
 
-### PR 3 — TypeScript host example
+### PR 3 — reference host examples
 
 Likely files:
 
-- `examples/json-rpc-host/host.ts`
-- `examples/json-rpc-host/package.json`
+- `examples/json-rpc-host/host.js`
 - `examples/json-rpc-host/README.md`
+- `examples/json-rpc-problem-coach/host.js`
+- `examples/json-rpc-problem-coach/README.md`
+- `packages/camlflow-ts-json-rpc-sdk/examples/provider-hooks.ts`
+- `packages/camlflow-ts-json-rpc-sdk/examples/problem-coach.ts`
+- `packages/camlflow-ts-json-rpc-sdk/examples/cancellation.ts`
 
 Outcome:
 
 - non-OCaml developers can immediately understand the integration model
+- SDK users can start from maintained example code instead of rebuilding the protocol loop by hand
 
 ### PR 4 — protocol and IR stabilization
 
