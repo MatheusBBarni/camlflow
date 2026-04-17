@@ -29,11 +29,11 @@ For the fuller narrative summary, see `docs/json-rpc-status.md`.
 
 ## Fixtures and docs
 
-- [ ] Add invalid request transcript to `docs/json-rpc-fixtures.md`
-- [ ] Add unknown method transcript to `docs/json-rpc-fixtures.md`
-- [ ] Add host effect error transcript to `docs/json-rpc-fixtures.md`
-- [ ] Add run failure transcript with diagnostic + trace events
-- [ ] Add optional `shutdown` / `exit` transcript
+- [x] Add invalid request transcript to `docs/json-rpc-fixtures.md`
+- [x] Add unknown method transcript to `docs/json-rpc-fixtures.md`
+- [x] Add host effect error transcript to `docs/json-rpc-fixtures.md`
+- [x] Add run failure transcript with diagnostic + trace events
+- [x] Add optional `shutdown` / `exit` transcript
 
 ## Host / SDK validation
 

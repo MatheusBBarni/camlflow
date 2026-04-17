@@ -164,6 +164,7 @@ Recent follow-up documentation additions include:
 - compatibility policy notes for `protocolVersion` and `irVersion` in `docs/json-rpc.md`
 - clearer host error response guidance for `camlflow/executeEffect` in `docs/json-rpc.md`
 - capability semantics and host-ignore rules in `docs/json-rpc.md`
+- expanded protocol fixtures for invalid requests, unknown methods, run failures, host effect errors, and shutdown/exit in `docs/json-rpc-fixtures.md`
 - deferred design notes for cancellation, progress, and streaming in `docs/json-rpc-roadmap.md`
 - this status snapshot in `docs/json-rpc-status.md`
 - the short checklist in `docs/json-rpc-checklist.md`
@@ -172,21 +173,9 @@ Recent follow-up documentation additions include:
 
 ## Remaining tasks
 
-## Tests and fixtures
-
-### 1. Expand fixture coverage
-
-Useful additions to `docs/json-rpc-fixtures.md`:
-
-- invalid request example
-- unknown method example
-- host returns JSON-RPC error for `camlflow/executeEffect`
-- run failure transcript with diagnostic + trace events
-- optional `shutdown` / `exit` transcript
-
 ## Host / SDK integration validation
 
-### 2. Re-validate examples against the current docs
+### 1. Re-validate examples against the current docs
 
 Useful checks:
 
@@ -198,7 +187,7 @@ Goal:
 
 - ensure example hosts still match the documented request/response shapes
 
-### 3. Add stronger integration testing around host libraries
+### 2. Add stronger integration testing around host libraries
 
 Possible follow-up:
 
@@ -207,7 +196,7 @@ Possible follow-up:
 
 ## Deferred design work
 
-### 4. Formalize deferred protocol extensions before implementation
+### 3. Formalize deferred protocol extensions before implementation
 
 These should stay design-only until the core protocol is stable:
 
@@ -223,7 +212,7 @@ Recommended order:
 
 ## Later / lower priority
 
-### 5. Add direct provider convenience adapters only after host mode is stable
+### 4. Add direct provider convenience adapters only after host mode is stable
 
 Examples:
 

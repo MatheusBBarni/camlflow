@@ -347,7 +347,359 @@ let main : string = "ok"
 
 ---
 
-## 6. Framing example
+## 6. Invalid request (`-32600`)
+
+This fixture shows a well-formed JSON payload that is **not** a valid JSON-RPC request object because it omits `jsonrpc`.
+
+### Host → CamlFlow
+
+```json
+{
+  "id": 6,
+  "method": "initialize"
+}
+```
+
+### CamlFlow → Host diagnostic notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/diagnostic",
+  "params": {
+    "severity": "error",
+    "message": "missing jsonrpc version",
+    "method": "(invalid-request)",
+    "runId": null,
+    "step": null,
+    "effect": null
+  }
+}
+```
+
+### CamlFlow → Host error response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": null,
+  "error": {
+    "code": -32600,
+    "message": "missing jsonrpc version"
+  }
+}
+```
+
+---
+
+## 7. Unknown method after `initialize` (`-32601`)
+
+Assume an earlier `initialize` request already succeeded on this connection.
+
+### Host → CamlFlow
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "method": "camlflow/unknown",
+  "params": {}
+}
+```
+
+### CamlFlow → Host diagnostic notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/diagnostic",
+  "params": {
+    "severity": "error",
+    "message": "method not found",
+    "method": "camlflow/unknown",
+    "runId": null,
+    "step": null,
+    "effect": null
+  }
+}
+```
+
+### CamlFlow → Host error response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "error": {
+    "code": -32601,
+    "message": "method not found"
+  }
+}
+```
+
+---
+
+## 8. `camlflow/run` failure before any effect step (`-32012`)
+
+Assume an earlier `initialize` request already succeeded on this connection.
+
+This fixture uses a program whose `main` requires input, but the host omits `input`.
+
+### Host → CamlFlow
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 8,
+  "method": "camlflow/run",
+  "params": {
+    "program": {
+      "path": "/tmp/main.cml",
+      "includePaths": [],
+      "skillsDir": null
+    },
+    "entry": "main"
+  }
+}
+```
+
+### CamlFlow → Host trace notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/trace",
+  "params": {
+    "event": "run-start",
+    "runId": "run-1",
+    "step": null,
+    "effect": null,
+    "details": {
+      "programPath": "/tmp/main.cml",
+      "entry": "main"
+    }
+  }
+}
+```
+
+### CamlFlow → Host trace notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/trace",
+  "params": {
+    "event": "run-error",
+    "runId": "run-1",
+    "step": null,
+    "effect": null,
+    "details": {
+      "message": "run failed for /tmp/main.cml: entrypoint requires input"
+    }
+  }
+}
+```
+
+### CamlFlow → Host diagnostic notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/diagnostic",
+  "params": {
+    "severity": "error",
+    "message": "run failed for /tmp/main.cml: entrypoint requires input",
+    "method": "camlflow/run",
+    "runId": "run-1",
+    "step": null,
+    "effect": null
+  }
+}
+```
+
+### CamlFlow → Host error response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 8,
+  "error": {
+    "code": -32012,
+    "message": "run failed for /tmp/main.cml: entrypoint requires input"
+  }
+}
+```
+
+---
+
+## 9. Host returns JSON-RPC error for `camlflow/executeEffect`
+
+Assume an earlier `initialize` succeeded and `camlflow/run` has already reached the first effect step.
+
+This fixture shows a host failing the first effect step.
+
+### CamlFlow → Host effect request
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "effect-1",
+  "method": "camlflow/executeEffect",
+  "params": {
+    "runId": "run-1",
+    "step": 1,
+    "effect": {
+      "kind": "bound-agent",
+      "role": "agent",
+      "name": "greeter",
+      "input": {
+        "name": "Ada"
+      },
+      "declaredReturnType": "string",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "string"
+      },
+      "workingDirectory": "/repo/camlflow",
+      "skillsDirectory": null,
+      "skillMarkdown": null,
+      "inlineDefinition": null,
+      "renderedPrompt": "...",
+      "requestedModel": null,
+      "unsupportedSettings": [],
+      "step": 1,
+      "runId": "run-1"
+    }
+  }
+}
+```
+
+### Host → CamlFlow error response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "effect-1",
+  "error": {
+    "code": -32000,
+    "message": "model timeout"
+  }
+}
+```
+
+### CamlFlow → Host trace notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/trace",
+  "params": {
+    "event": "effect-error",
+    "runId": "run-1",
+    "step": 1,
+    "effect": {
+      "kind": "bound-agent",
+      "name": "greeter"
+    },
+    "details": {
+      "message": "host returned JSON-RPC error -32000 for greeter: model timeout"
+    }
+  }
+}
+```
+
+### CamlFlow → Host diagnostic notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/diagnostic",
+  "params": {
+    "severity": "error",
+    "message": "host returned JSON-RPC error -32000 for greeter: model timeout",
+    "method": null,
+    "runId": "run-1",
+    "step": 1,
+    "effect": {
+      "kind": "bound-agent",
+      "name": "greeter"
+    }
+  }
+}
+```
+
+### CamlFlow → Host trace notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "camlflow/trace",
+  "params": {
+    "event": "run-error",
+    "runId": "run-1",
+    "step": null,
+    "effect": null,
+    "details": {
+      "message": "run failed for /tmp/workflow.cml: host returned JSON-RPC error -32000 for greeter: model timeout"
+    }
+  }
+}
+```
+
+### CamlFlow → Host final error response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 9,
+  "error": {
+    "code": -32012,
+    "message": "run failed for /tmp/workflow.cml: host returned JSON-RPC error -32000 for greeter: model timeout"
+  }
+}
+```
+
+---
+
+## 10. `shutdown` followed by `exit`
+
+Assume an earlier `initialize` request already succeeded on this connection.
+
+### Host → CamlFlow
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "method": "shutdown",
+  "params": {}
+}
+```
+
+### CamlFlow → Host
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 10,
+  "result": null
+}
+```
+
+### Host → CamlFlow notification
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "exit"
+}
+```
+
+After receiving `exit`, the current server loop stops without sending a reply.
+
+---
+
+## 11. Framing example
 
 Every payload above is wrapped on the wire like this:
 
@@ -361,7 +713,7 @@ The body length must match the exact UTF-8 byte length of the JSON payload.
 
 ---
 
-## 7. Related files
+## 12. Related files
 
 - `docs/json-rpc.md`
 - `examples/json-rpc-host/host.js`
