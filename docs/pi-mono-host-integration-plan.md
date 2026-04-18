@@ -15,6 +15,7 @@ Related docs:
 
 - `docs/host-adapter-architecture.md`
 - `docs/pi-mono-implementation-checklist.md`
+- `docs/pi-mono-integration-testing.md`
 - `docs/json-rpc.md`
 - `packages/camlflow-ts-json-rpc-sdk/README.md`
 

@@ -211,6 +211,21 @@ the basic example returns `"!"` and the local-skill example returns `""`.
 The provider-hooks example shows how to replace those defaults with host-
 defined behavior.
 
+## Host integration docs
+
+For the current `pi-mono` host integration work, see:
+
+- `docs/pi-mono-host-integration-plan.md`
+- `docs/pi-mono-implementation-checklist.md`
+- `docs/pi-mono-integration-testing.md`
+- `examples/repo-triage/README.md`
+
+Useful launchers from this repo:
+
+- `scripts/run-pi-mono.sh`
+- `scripts/run-pi-mono-problem-coach.sh`
+- `scripts/run-pi-mono-repo-triage.sh`
+
 ## Quickstart
 
 ```sh
@@ -366,6 +381,20 @@ dune exec camlflow -- run examples/problem-coach/main.cml \
   --sandbox read-only
 ```
 
+### Run repo-triage example
+
+```sh
+dune exec camlflow -- run examples/repo-triage/main.cml \
+  --skills examples/repo-triage/skills \
+  --input examples/repo-triage/input.json
+```
+
+For the `pi-mono` host demo:
+
+```sh
+./scripts/run-pi-mono-repo-triage.sh
+```
+
 ### Run qualified multi-file example
 
 ```sh
@@ -413,6 +442,7 @@ runtime hooks.
 - `examples/codex/` — CLI Codex provider run using a bound agent, local skill, and inline agent
 - `examples/swe-leetcode/` — inline LeetCode solver agent using the caveman skill and a fixed model
 - `examples/problem-coach/` — multi-step solver that returns a directly useful final answer pack
+- `examples/repo-triage/` — repository-grounded triage workflow designed to show host-side tool use in `pi-mono`
 
 ## Provider docs
 
@@ -435,6 +465,7 @@ runtime hooks.
 - `examples/codex/README.md` — runnable Codex provider example
 - `examples/swe-leetcode/README.md` — runnable swe-leetcode example
 - `examples/problem-coach/README.md` — runnable problem-coach example
+- `examples/repo-triage/README.md` — runnable repo-triage example aimed at `pi-mono` host testing
 
 ## Make targets
 
