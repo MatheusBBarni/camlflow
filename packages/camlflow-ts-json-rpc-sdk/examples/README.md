@@ -35,6 +35,7 @@ Demonstrates:
 - `spawnCamlFlowClient(...)`
 - `initialize`, `compile`, and `run`
 - a typed effect handler for the provider-hooks workflow
+- forwarding async text deltas with `context.relayTextOutput(...)`
 - trace, diagnostic, progress, and output-chunk notification callbacks
 
 ### 2. Attach to existing streams

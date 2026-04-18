@@ -40,6 +40,17 @@ function sendResponse(id, result) {
   send({ jsonrpc: '2.0', id, result });
 }
 
+function sendOutputChunk(params, streamId, delta, done) {
+  sendNotification('camlflow/outputChunk', {
+    runId: params.runId ?? null,
+    step: params.step ?? null,
+    streamId,
+    format: 'text',
+    delta,
+    done,
+  });
+}
+
 function parseMessages() {
   while (true) {
     const marker = buffer.indexOf('\r\n\r\n');
@@ -64,11 +75,14 @@ function parseMessages() {
 
 function handleEffect(message) {
   const effect = message.params.effect;
+  const streamId = `raw-host-${effect.name}-${message.params.step ?? 0}`;
   const input = effect.input || {};
   let output;
   switch (`${effect.kind}:${effect.name}`) {
     case 'bound-agent:greeter':
-      output = `hello ${input.name || 'friend'}`;
+      sendOutputChunk(message.params, streamId, 'hello ', false);
+      sendOutputChunk(message.params, streamId, `${String(input.name || 'friend')}!`, true);
+      output = `hello ${input.name || 'friend'}!`;
       break;
     case 'local-prompt-skill:caveman':
       output = String(input.prompt || '').replace(/^hello\s+/i, 'me ');
@@ -96,6 +110,16 @@ function handleMessage(message) {
 
   if (message.method === 'camlflow/diagnostic') {
     console.log('diagnostic:', JSON.stringify(message.params));
+    return;
+  }
+
+  if (message.method === 'camlflow/progress') {
+    console.log('progress:', JSON.stringify(message.params));
+    return;
+  }
+
+  if (message.method === 'camlflow/outputChunk') {
+    console.log('outputChunk:', JSON.stringify(message.params));
     return;
   }
 

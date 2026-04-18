@@ -127,6 +127,11 @@ let label_to_option = function
 
 let reject_optional_arg loc = failf loc "optional arguments are unsupported in CamlFlow MVP"
 
+let fail_at_loc (loc : Loc.t) fmt =
+  Printf.ksprintf
+    (fun message -> raise (Error (Printf.sprintf "%s at %s" message (Loc.to_string loc))))
+    fmt
+
 let literal_of_constant loc (constant : constant) =
   match constant.pconst_desc with
   | Pconst_integer (value, _) -> Syntax.Ast.LInt (int_of_string value)
@@ -264,7 +269,9 @@ let rebuild_function_annotation (params : Syntax.Ast.param list) (return_type : 
       let param_type =
         match param.Syntax.Ast.param_annotation with
         | Some annotation -> annotation
-        | None -> failwith "internal error: missing parameter annotation"
+        | None ->
+            fail_at_loc param.Syntax.Ast.param_loc
+              "function parameters require type annotations when using a return type annotation"
       in
       {
         Syntax.Ast.type_loc = param.Syntax.Ast.param_loc;
@@ -427,8 +434,8 @@ let attribute_kind attributes =
 
 let rec split_arrow_type (typ : Syntax.Ast.type_expr) acc =
   match typ.type_desc with
-  | Syntax.Ast.TEArrow (param, rest) -> split_arrow_type rest (acc @ [ param ])
-  | _ -> (acc, typ)
+  | Syntax.Ast.TEArrow (param, rest) -> split_arrow_type rest (param :: acc)
+  | _ -> (List.rev acc, typ)
 
 let lower_literal_expr expr =
   match lower_expr expr with

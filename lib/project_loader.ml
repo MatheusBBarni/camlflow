@@ -1,5 +1,6 @@
 module StringMap = Map.Make (String)
 module QNameSet = Set.Make (String)
+module StringSet = Set.Make (String)
 
 let ( let* ) = Result.bind
 
@@ -161,18 +162,20 @@ let module_name_of_path ~base_dir path =
 type state = {
   include_paths : string list;
   mutable modules : Syntax.Ast.module_ StringMap.t;
-  mutable visiting : string list;
+  mutable visiting : StringSet.t;
 }
 
 let load ~include_paths ~(root_path : string) : (Syntax.Ast.program, string) result =
-  let state = { include_paths; modules = StringMap.empty; visiting = [] } in
+  let state =
+    { include_paths; modules = StringMap.empty; visiting = StringSet.empty }
+  in
   let rec visit ~from_dir ~(module_name : Syntax.Ast.qname) ~(path : string) =
     let key = qname_key module_name in
     if StringMap.mem key state.modules then Ok ()
-    else if List.mem key state.visiting then
+    else if StringSet.mem key state.visiting then
       Error (Printf.sprintf "cyclic module dependency involving %s" key)
     else
-      let () = state.visiting <- key :: state.visiting in
+      let () = state.visiting <- StringSet.add key state.visiting in
       let result =
         let* module_ = Parsing.parse_file ~module_name path in
         let dependencies = module_dependencies module_ in
@@ -191,7 +194,7 @@ let load ~include_paths ~(root_path : string) : (Syntax.Ast.program, string) res
         state.modules <- StringMap.add key module_ state.modules;
         Ok ()
       in
-      state.visiting <- List.filter (fun item -> not (String.equal item key)) state.visiting;
+      state.visiting <- StringSet.remove key state.visiting;
       result
   in
   let root_module = Parsing_driver.module_name_of_basename root_path in

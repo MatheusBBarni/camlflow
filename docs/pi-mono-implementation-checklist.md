@@ -6,6 +6,7 @@ It assumes the strategy already documented in:
 
 - `docs/host-adapter-architecture.md`
 - `docs/pi-mono-host-integration-plan.md`
+- `docs/pi-mono-integration-testing.md`
 
 The checklist is intentionally biased toward the shortest path to Beta 1 signal.
 

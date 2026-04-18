@@ -188,8 +188,31 @@ Current behavior:
 
 - `initialize().capabilities.streaming` is `true`
 - effect handlers receive a third `context` argument with `emitOutputChunk(...)`
+- effect handlers can also forward iterable/async-iterable text streams with `context.relayTextOutput(...)`
+- the package also exports `relayOutputChunks(...)` and `relayTextOutput(...)` for custom wiring
 - CamlFlow relays those `camlflow/outputChunk` notifications back to the host session
 - streamed chunks remain advisory only; the final typed effect response still controls correctness
+
+Example:
+
+```ts
+effectHandler: async ({ effect }, _request, context) => {
+  if (`${effect.kind}:${effect.name}` !== "bound-agent:greeter") {
+    return effectOutput("");
+  }
+
+  const name = String((effect.input as { name?: string }).name ?? "friend");
+  const output = await context.relayTextOutput(
+    (async function* () {
+      yield "hello ";
+      yield name;
+    })(),
+    { streamId: "greeter-stream" },
+  );
+
+  return effectOutput(output);
+};
+```
 
 ## Notes
 

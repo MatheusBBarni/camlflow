@@ -35,32 +35,38 @@ function stringListField(record: JsonRecord, field: string): string[] {
 
 export { packageRoot, repoRoot };
 
+async function* textDeltas(text: string): AsyncIterable<string> {
+  if (text.length === 0) {
+    return;
+  }
+
+  const midpoint = Math.max(1, Math.floor(text.length / 2));
+  yield text.slice(0, midpoint);
+  yield text.slice(midpoint);
+}
+
 export function makeProviderHooksEffectHandler(): CamlFlowEffectHandler {
   return async ({ effect }, _request, context) => {
     const input = asJsonRecord(effect.input);
-    const emitTextChunk = async (text: string): Promise<void> => {
-      await context.emitOutputChunk({
+    const relayTextOutput = async (text: string): Promise<string> =>
+      context.relayTextOutput(textDeltas(text), {
         streamId: `provider-hooks-${context.step ?? 0}-${effect.name}`,
-        format: "text",
-        delta: text,
-        done: true,
       });
-    };
 
     switch (`${effect.kind}:${effect.name}`) {
       case "bound-agent:greeter": {
         const output = `hello ${stringField(input, "name", "friend")}`;
-        await emitTextChunk(output);
+        await relayTextOutput(output);
         return effectOutput(output);
       }
       case "local-prompt-skill:caveman": {
         const output = stringField(input, "prompt").replace(/^hello\s+/i, "me ");
-        await emitTextChunk(output);
+        await relayTextOutput(output);
         return effectOutput(output);
       }
       case "inline-agent:reviewer": {
         const output = "inline-review";
-        await emitTextChunk(output);
+        await relayTextOutput(output);
         return effectOutput(output);
       }
       default:

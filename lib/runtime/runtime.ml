@@ -1,5 +1,6 @@
 module Context = Runtime_context
 module StringMap = Map.Make (String)
+module StringSet = Set.Make (String)
 
 type effect_step = {
   step_kind : string;
@@ -40,6 +41,7 @@ and callable = {
 
 and runtime_env = {
   locals : (string * runtime_value) list;
+  local_index : runtime_value StringMap.t Lazy.t;
   opened : Syntax.Ast.qname list;
   current_module : Syntax.Ast.qname;
   state : runtime_state;
@@ -49,9 +51,11 @@ and runtime_state = {
   context : Context.t;
   types : Value.type_index;
   modules : Ir.module_ StringMap.t;
-  mutable module_envs : ((string * runtime_value) list) StringMap.t;
-  mutable evaluating_modules : string list;
+  mutable skill_markdown_cache : string option StringMap.t;
+  mutable module_envs : runtime_value StringMap.t StringMap.t;
+  mutable evaluating_modules : StringSet.t;
   effect_steps : effect_step list ref;
+  mutable effect_steps_count : int;
 }
 
 let ( let* ) = Result.bind
@@ -109,12 +113,51 @@ let lookup_in_assoc name items = List.assoc_opt name items
 
 let read_file path = In_channel.with_open_bin path In_channel.input_all
 
-let skills_markdown context name =
-  match context.Context.skills_directory with
-  | None -> None
-  | Some dir ->
-      let path = Filename.concat dir (Filename.concat name "SKILL.md") in
-      if Sys.file_exists path then Some (read_file path) else None
+let local_index_of_bindings bindings =
+  List.fold_left
+    (fun acc (name, value) -> StringMap.add name value acc)
+    StringMap.empty bindings
+
+let make_env ~locals ~opened ~current_module ~state =
+  {
+    locals;
+    local_index = lazy (local_index_of_bindings locals);
+    opened;
+    current_module;
+    state;
+  }
+
+let env_with_local env name value =
+  {
+    env with
+    locals = (name, value) :: env.locals;
+    local_index = lazy (StringMap.add name value (Lazy.force env.local_index));
+  }
+
+let env_with_locals env bindings =
+  {
+    env with
+    locals = bindings @ env.locals;
+    local_index =
+      lazy
+        (List.fold_left
+           (fun acc (name, value) -> StringMap.add name value acc)
+           (Lazy.force env.local_index) bindings);
+  }
+
+let skills_markdown state name =
+  match StringMap.find_opt name state.skill_markdown_cache with
+  | Some markdown -> markdown
+  | None ->
+      let markdown =
+        match state.context.Context.skills_directory with
+        | None -> None
+        | Some dir ->
+            let path = Filename.concat dir (Filename.concat name "SKILL.md") in
+            if Sys.file_exists path then Some (read_file path) else None
+      in
+      state.skill_markdown_cache <- StringMap.add name markdown state.skill_markdown_cache;
+      markdown
 
 let entry_type (program : Ir.program) (entry : string) : (Ir.typ, string) result =
   let root_key = module_key program.Ir.root_module in
@@ -162,9 +205,11 @@ let build_state ?(context = Context.empty) (program : Ir.program) : runtime_stat
     context;
     types = Value.type_index_of_program program;
     modules;
+    skill_markdown_cache = StringMap.empty;
     module_envs = StringMap.empty;
-    evaluating_modules = [];
+    evaluating_modules = StringSet.empty;
     effect_steps = ref [];
+    effect_steps_count = 0;
   }
 
 let poll_cancellation_state state = state.context.Context.cancellation_check ()
@@ -176,26 +221,29 @@ let rec eval_module state module_name =
   match StringMap.find_opt key state.module_envs with
   | Some env -> Ok env
   | None ->
-      if List.mem key state.evaluating_modules then Error (Printf.sprintf "recursive module evaluation for %s" key)
+      if StringSet.mem key state.evaluating_modules then
+        Error (Printf.sprintf "recursive module evaluation for %s" key)
       else
         let* module_ = find_module state module_name in
-        state.evaluating_modules <- key :: state.evaluating_modules;
-        let base_env = { locals = []; opened = []; current_module = module_name; state } in
-        let* exports, _ = eval_module_decls base_env module_.Ir.module_decls [] in
+        state.evaluating_modules <- StringSet.add key state.evaluating_modules;
+        let base_env = make_env ~locals:[] ~opened:[] ~current_module:module_name ~state in
+        let* exports, _ =
+          eval_module_decls base_env module_.Ir.module_decls StringMap.empty
+        in
         state.module_envs <- StringMap.add key exports state.module_envs;
-        state.evaluating_modules <- List.filter (fun item -> not (String.equal item key)) state.evaluating_modules;
+        state.evaluating_modules <- StringSet.remove key state.evaluating_modules;
         Ok exports
 
 and eval_module_decls env decls exports =
   let* () = poll_cancellation_env env in
   match decls with
-  | [] -> Ok (List.rev exports, env)
+  | [] -> Ok (exports, env)
   | decl :: rest -> (
       match decl with
       | Ir.TypeDecl _ -> eval_module_decls env rest exports
       | Ir.OpenDecl (opened, _) ->
           let* _ = eval_module env.state opened in
-          let env = { env with opened = env.opened @ [ opened ] } in
+          let env = { env with opened = opened :: env.opened } in
           eval_module_decls env rest exports
       | Ir.AgentDecl callable ->
           let value =
@@ -210,8 +258,11 @@ and eval_module_decls env decls exports =
                   | Ir.Inline_agent definition -> InlineAgent definition);
               }
           in
-          let env = { env with locals = (callable.Ir.callable_name, value) :: env.locals } in
-          eval_module_decls env rest ((callable.Ir.callable_name, value) :: exports)
+          let env = env_with_local env callable.Ir.callable_name value in
+          let exports =
+            StringMap.add callable.Ir.callable_name value exports
+          in
+          eval_module_decls env rest exports
       | Ir.SkillDecl callable ->
           let value =
             RCallable
@@ -225,24 +276,39 @@ and eval_module_decls env decls exports =
                   | Ir.Inline_agent definition -> InlineAgent definition);
               }
           in
-          let env = { env with locals = (callable.Ir.callable_name, value) :: env.locals } in
-          eval_module_decls env rest ((callable.Ir.callable_name, value) :: exports)
+          let env = env_with_local env callable.Ir.callable_name value in
+          let exports =
+            StringMap.add callable.Ir.callable_name value exports
+          in
+          eval_module_decls env rest exports
       | Ir.LetDecl binding ->
           let* value = eval_binding env binding in
-          let env = { env with locals = (binding.Ir.binding_name, value) :: env.locals } in
-          eval_module_decls env rest ((binding.Ir.binding_name, value) :: exports))
+          let env = env_with_local env binding.Ir.binding_name value in
+          let exports = StringMap.add binding.Ir.binding_name value exports in
+          eval_module_decls env rest exports)
 
 and eval_binding env binding =
   let* () = poll_cancellation_env env in
   match (binding.Ir.binding_recursive, binding.Ir.binding_params) with
   | true, [] -> Error "recursive non-function bindings are unsupported at runtime"
   | true, _ :: _ ->
-      let rec value =
+      let rec closure_env =
+        {
+          locals = (binding.Ir.binding_name, value) :: env.locals;
+          local_index =
+            lazy
+              (StringMap.add binding.Ir.binding_name value
+                 (Lazy.force env.local_index));
+          opened = env.opened;
+          current_module = env.current_module;
+          state = env.state;
+        }
+      and value =
         RClosure
           {
             closure_params = binding.Ir.binding_params;
             closure_body = binding.Ir.binding_body;
-            closure_env = { env with locals = (binding.Ir.binding_name, value) :: env.locals };
+            closure_env;
           }
       in
       Ok value
@@ -253,7 +319,7 @@ and lookup_value env name =
   match name with
   | [] -> Error "empty value name"
   | [ short_name ] -> (
-      match lookup_in_assoc short_name env.locals with
+      match StringMap.find_opt short_name (Lazy.force env.local_index) with
       | Some value -> Ok value
       | None ->
           let rec lookup_opened = function
@@ -263,16 +329,16 @@ and lookup_value env name =
                 | None -> Error (Printf.sprintf "unbound value %s" short_name))
             | opened :: rest ->
                 let* opened_env = eval_module env.state opened in
-                (match lookup_in_assoc short_name opened_env with
+                (match StringMap.find_opt short_name opened_env with
                 | Some value -> Ok value
                 | None -> lookup_opened rest)
           in
-          lookup_opened (List.rev env.opened))
+          lookup_opened env.opened)
   | _ ->
       let module_name = List.rev (List.tl (List.rev name)) in
       let short_name = List.hd (List.rev name) in
       let* opened_env = eval_module env.state module_name in
-      (match lookup_in_assoc short_name opened_env with
+      (match StringMap.find_opt short_name opened_env with
       | Some value -> Ok value
       | None -> Error (Printf.sprintf "unbound qualified value %s" (Syntax.Ast.string_of_qname name)))
 
@@ -311,10 +377,10 @@ and eval_expr env expr =
       eval_construct name args
   | Ir.ELet (binding, body) ->
       let* value = eval_binding env binding in
-      eval_expr { env with locals = (binding.Ir.binding_name, value) :: env.locals } body
+      eval_expr (env_with_local env binding.Ir.binding_name value) body
   | Ir.ELetStar (binding, body) ->
       let* value = eval_expr env binding.Ir.let_star_value in
-      eval_expr { env with locals = (binding.Ir.let_star_name, value) :: env.locals } body
+      eval_expr (env_with_local env binding.Ir.let_star_name value) body
   | Ir.EIf (cond, then_branch, else_branch) ->
       let* cond = eval_expr env cond in
       let* cond = expect_data expr.Ir.expr_loc cond in
@@ -353,7 +419,7 @@ and eval_match env scrutinee cases =
     | [] -> Error "non-exhaustive match at runtime"
     | case :: rest -> (
         match match_pattern case.Ir.case_pattern scrutinee with
-        | Some bindings -> eval_expr { env with locals = bindings @ env.locals } case.Ir.case_body
+        | Some bindings -> eval_expr (env_with_locals env bindings) case.Ir.case_body
         | None -> try_cases rest)
   in
   try_cases cases
@@ -393,9 +459,9 @@ and match_pattern pattern value =
 
 and combine_pattern_matches matches =
   let rec aux acc = function
-    | [] -> Some acc
+    | [] -> Some (List.rev acc)
     | None :: _ -> None
-    | Some bindings :: rest -> aux (acc @ bindings) rest
+    | Some bindings :: rest -> aux (List.rev_append bindings acc) rest
   in
   aux [] matches
 
@@ -459,7 +525,7 @@ and apply_closure loc closure args =
              else Ok (param.Ir.param_name, value))
            matching)
     in
-    let env = { closure.closure_env with locals = bound_locals @ closure.closure_env.locals } in
+    let env = env_with_locals closure.closure_env bound_locals in
     match remaining with
     | [] -> eval_expr env closure.closure_body
     | remaining -> Ok (RClosure { closure with closure_params = remaining; closure_env = env })
@@ -529,7 +595,7 @@ and apply_callable env _loc callable args =
     let input = `Assoc payload_fields in
     let skill_markdown =
       match callable.callable_impl with
-      | BoundSkill target -> skills_markdown env.state.context target
+      | BoundSkill target -> skills_markdown env.state target
       | BoundAgent _ | InlineAgent _ -> None
     in
     let invocation =
@@ -603,7 +669,9 @@ and apply_callable env _loc callable args =
       | Context.Local_prompt_skill -> ("local-skill", invocation.invocation_name)
       | Context.Inline_agent -> ("inline-agent", invocation.invocation_name)
     in
-    env.state.effect_steps := !(env.state.effect_steps) @ [ { step_kind; step_name; input; output } ];
+    env.state.effect_steps :=
+      { step_kind; step_name; input; output } :: !(env.state.effect_steps);
+    env.state.effect_steps_count <- env.state.effect_steps_count + 1;
     env.state.context.effect_observer invocation ~output;
     let* value =
       Value.of_json env.state.types callable.callable_return_type output
@@ -621,11 +689,19 @@ let execute ?(context = Context.empty) ?(entry = "main") ?input (program : Ir.pr
   let* root_env = eval_module state program.Ir.root_module in
   let* entry_type = entry_type program entry in
   let* entry_value =
-    match List.assoc_opt entry root_env with
+    match StringMap.find_opt entry root_env with
     | Some value -> Ok value
     | None -> Error (Printf.sprintf "entry %s not found" entry)
   in
-  let run_env = { locals = root_env; opened = []; current_module = program.Ir.root_module; state } in
+  let run_env =
+    {
+      locals = StringMap.bindings root_env;
+      local_index = lazy root_env;
+      opened = [];
+      current_module = program.Ir.root_module;
+      state;
+    }
+  in
   let* result_value =
     match input with
     | None -> (
@@ -656,4 +732,9 @@ let execute ?(context = Context.empty) ?(entry = "main") ?input (program : Ir.pr
         let* json = result in
         Ok (Some json)
   in
-  Ok { steps_run = List.length !(state.effect_steps); effect_steps = !(state.effect_steps); output }
+  Ok
+    {
+      steps_run = state.effect_steps_count;
+      effect_steps = List.rev !(state.effect_steps);
+      output;
+    }
