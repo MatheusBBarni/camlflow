@@ -434,8 +434,8 @@ let attribute_kind attributes =
 
 let rec split_arrow_type (typ : Syntax.Ast.type_expr) acc =
   match typ.type_desc with
-  | Syntax.Ast.TEArrow (param, rest) -> split_arrow_type rest (acc @ [ param ])
-  | _ -> (acc, typ)
+  | Syntax.Ast.TEArrow (param, rest) -> split_arrow_type rest (param :: acc)
+  | _ -> (List.rev acc, typ)
 
 let lower_literal_expr expr =
   match lower_expr expr with

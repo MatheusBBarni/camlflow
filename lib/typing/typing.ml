@@ -1,6 +1,7 @@
 module Env = Typing_env
 module Loader = Project_loader
 module StringMap = Map.Make (String)
+module StringSet = Set.Make (String)
 
 type typed_program = Ir.program
 
@@ -32,7 +33,7 @@ type compile_state = {
   ast_modules : Syntax.Ast.module_ StringMap.t;
   mutable compiled_modules : Ir.module_ StringMap.t;
   mutable compiled_signatures : Env.module_signature StringMap.t;
-  mutable visiting : string list;
+  mutable visiting : StringSet.t;
 }
 
 let ( let* ) = Result.bind
@@ -247,11 +248,18 @@ let literal_ctor typ literal =
   | _ -> None
 
 let merge_bindings left right loc =
-  let names = List.map fst left in
-  let duplicates = List.filter (fun (name, _) -> List.mem name names) right in
-  match duplicates with
-  | [] -> Ok (left @ right)
-  | (name, _) :: _ -> type_error loc "duplicate binding %s in pattern" name
+  let seen =
+    List.fold_left
+      (fun acc (name, _) -> StringSet.add name acc)
+      StringSet.empty left
+  in
+  let rec loop seen acc = function
+    | [] -> Ok (List.rev acc)
+    | ((name, _) as binding) :: rest ->
+        if StringSet.mem name seen then type_error loc "duplicate binding %s in pattern" name
+        else loop (StringSet.add name seen) (binding :: acc) rest
+  in
+  loop seen (List.rev left) right
 
 let reorder_record_fields loc expected_fields actual_fields =
   let lookup name = List.assoc_opt name actual_fields in
@@ -430,7 +438,7 @@ let ensure_reachable env typ patterns loc =
     | pattern :: rest ->
         let* is_useful = useful env [ typ ] seen [ pattern ] in
         if not is_useful then type_error loc "unreachable match case"
-        else loop (seen @ [ [ pattern ] ]) rest
+        else loop ([ pattern ] :: seen) rest
   in
   loop [] patterns
 
@@ -939,14 +947,15 @@ let rec compile_module (state : compile_state) (module_name : Syntax.Ast.qname) 
   match StringMap.find_opt key state.compiled_modules with
   | Some module_ -> Ok module_
   | None ->
-      if List.mem key state.visiting then Error (Printf.sprintf "cyclic dependency involving module %s" key)
+      if StringSet.mem key state.visiting then
+        Error (Printf.sprintf "cyclic dependency involving module %s" key)
       else
         let* ast_module =
           match StringMap.find_opt key state.ast_modules with
           | Some module_ -> Ok module_
           | None -> Error (Printf.sprintf "missing AST for module %s" key)
         in
-        state.visiting <- key :: state.visiting;
+        state.visiting <- StringSet.add key state.visiting;
         let* () =
           List.fold_left
             (fun acc dependency ->
@@ -962,7 +971,7 @@ let rec compile_module (state : compile_state) (module_name : Syntax.Ast.qname) 
         let ir_module = { Ir.module_name = module_name; module_path = ast_module.module_path; module_decls = List.rev module_decls; module_loc = ast_module.module_loc } in
         state.compiled_modules <- StringMap.add key ir_module state.compiled_modules;
         state.compiled_signatures <- StringMap.add key final_signature state.compiled_signatures;
-        state.visiting <- List.filter (fun item -> not (String.equal item key)) state.visiting;
+        state.visiting <- StringSet.remove key state.visiting;
         Ok ir_module
 
 and check_module_decls env module_name decls acc =
@@ -1001,7 +1010,12 @@ let build_state (program : Syntax.Ast.program) =
   let ast_modules =
     List.fold_left (fun acc module_ -> StringMap.add (qname_key module_.Syntax.Ast.module_name) module_ acc) StringMap.empty program.Syntax.Ast.modules
   in
-  { ast_modules; compiled_modules = StringMap.empty; compiled_signatures = StringMap.empty; visiting = [] }
+  {
+    ast_modules;
+    compiled_modules = StringMap.empty;
+    compiled_signatures = StringMap.empty;
+    visiting = StringSet.empty;
+  }
 
 let check ?env:_ (program : Syntax.Ast.program) : (typed_program, error) result =
   let state = build_state program in

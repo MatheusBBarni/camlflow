@@ -208,7 +208,8 @@ let with_locals (env : t) (values : (string * value_info) list) : t =
   let locals = List.fold_left (fun acc (name, value) -> StringMap.add name value acc) env.locals values in
   { env with locals }
 
-let with_opened (env : t) (opened : Syntax.Ast.qname) : t = { env with opened = env.opened @ [ opened ] }
+let with_opened (env : t) (opened : Syntax.Ast.qname) : t =
+  { env with opened = opened :: env.opened }
 
 let create modules current_module =
   { modules; current_module; opened = []; locals = StringMap.empty }
