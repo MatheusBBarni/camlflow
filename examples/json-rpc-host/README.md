@@ -10,7 +10,8 @@ The host script:
 - handles nested `camlflow/executeEffect` requests
 - returns JSON outputs for each effect step
 - receives the final typed workflow output
-- logs optional `camlflow/trace` notifications
+- logs optional `camlflow/trace`, `camlflow/progress`, and `camlflow/outputChunk` notifications
+- emits advisory `camlflow/outputChunk` previews while the host is computing an effect result
 
 It uses the existing provider-hooks workflow:
 
@@ -30,6 +31,7 @@ node examples/json-rpc-host/host.js
 - JSON-RPC 2.0 over stdio with `Content-Length` framing
 - CamlFlow as the user-authored harness
 - the host tool as the executor for effect steps
+- advisory effect streaming via `camlflow/outputChunk`
 - structured host responses flowing back into CamlFlow execution
 
 ## Expected shape

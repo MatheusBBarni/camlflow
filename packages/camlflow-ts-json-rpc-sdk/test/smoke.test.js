@@ -299,6 +299,66 @@ test('sdk effect handlers can emit output chunks', { timeout: 30000 }, async () 
   }
 });
 
+test('sdk effect handlers can relay async text streams', { timeout: 30000 }, async () => {
+  const chunks = [];
+  let firstChunkResolve;
+  const firstChunk = new Promise((resolve) => {
+    firstChunkResolve = resolve;
+  });
+
+  const client = spawnCamlFlowClient({
+    command: 'dune',
+    args: ['exec', './bin/main.exe', '--', 'serve', '--stdio'],
+    cwd: repoRoot,
+    effectHandler: async ({ effect }, _request, context) => {
+      if (`${effect.kind}:${effect.name}` === 'bound-agent:greeter') {
+        const name = effect.input?.name ?? 'friend';
+        const output = await context.relayTextOutput(
+          (async function* () {
+            yield 'hello ';
+            await new Promise((resolve) => setTimeout(resolve, 25));
+            yield String(name);
+          })(),
+          { streamId: 'greeter-stream' },
+        );
+        return effectOutput(output);
+      }
+      return effectOutput('');
+    },
+    onOutputChunk: async (chunk) => {
+      chunks.push(chunk);
+      firstChunkResolve();
+    },
+  });
+
+  try {
+    const initialize = await client.initialize();
+    assert.equal(initialize.capabilities.streaming, true);
+
+    const resultPromise = client.run({
+      program: {
+        path: 'examples/basic/main.cml',
+        includePaths: [],
+        skillsDir: null,
+      },
+      entry: 'main',
+      input: 'Ada',
+    });
+
+    await firstChunk;
+    assert.ok(chunks.length >= 1);
+
+    const result = await resultPromise;
+    assert.equal(result.output, 'hello Ada!');
+    assert.equal(chunks.length, 2);
+    assert.deepEqual(chunks.map((chunk) => chunk.delta), ['hello ', 'Ada']);
+    assert.deepEqual(chunks.map((chunk) => chunk.done), [false, true]);
+    assert.ok(chunks.every((chunk) => chunk.streamId === 'greeter-stream'));
+  } finally {
+    await client.shutdownAndExit();
+  }
+});
+
 test('sdk can cancel a run with AbortSignal', { timeout: 30000 }, async () => {
   const traces = [];
   const progress = [];

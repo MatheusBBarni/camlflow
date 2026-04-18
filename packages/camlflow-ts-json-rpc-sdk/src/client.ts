@@ -50,10 +50,37 @@ export interface CamlFlowEffectOutputChunk extends JsonObject {
   done: boolean;
 }
 
+export interface CamlFlowRelayOutputChunksOptions<
+  TChunk = JsonValue,
+  TDelta extends JsonValue = JsonValue,
+> {
+  streamId: string;
+  format?: string;
+  mapChunk?: (chunk: TChunk) => MaybePromise<TDelta | null | undefined>;
+  skipEmptyStringDeltas?: boolean;
+}
+
+export interface CamlFlowRelayTextOutputOptions {
+  streamId: string;
+  format?: string;
+  skipEmptyChunks?: boolean;
+}
+
 export interface CamlFlowEffectHandlerContext {
   runId: string | null;
   step: number | null;
   emitOutputChunk: (chunk: CamlFlowEffectOutputChunk) => Promise<void>;
+  relayOutputChunks: <
+    TChunk = JsonValue,
+    TDelta extends JsonValue = JsonValue,
+  >(
+    source: AsyncIterable<TChunk> | Iterable<TChunk>,
+    options: CamlFlowRelayOutputChunksOptions<TChunk, TDelta>,
+  ) => Promise<TDelta[]>;
+  relayTextOutput: (
+    source: AsyncIterable<string> | Iterable<string>,
+    options: CamlFlowRelayTextOutputOptions,
+  ) => Promise<string>;
 }
 
 export type CamlFlowEffectHandler<
@@ -114,6 +141,107 @@ export interface ShutdownAndExitOptions {
 
 export interface JsonRpcRequestOptions {
   signal?: AbortSignal;
+}
+
+function isAsyncIterable<T>(
+  value: AsyncIterable<T> | Iterable<T>,
+): value is AsyncIterable<T> {
+  return typeof (value as AsyncIterable<T>)[Symbol.asyncIterator] === "function";
+}
+
+function asAsyncIterable<T>(
+  source: AsyncIterable<T> | Iterable<T>,
+): AsyncIterable<T> {
+  if (isAsyncIterable(source)) {
+    return source;
+  }
+
+  if (typeof (source as Iterable<T>)[Symbol.iterator] !== "function") {
+    throw new Error("Expected an AsyncIterable or Iterable stream source");
+  }
+
+  return (async function* (): AsyncIterable<T> {
+    for (const chunk of source as Iterable<T>) {
+      yield chunk;
+    }
+  })();
+}
+
+function shouldRelayChunk<TDelta extends JsonValue>(
+  delta: TDelta | null | undefined,
+  skipEmptyStringDeltas: boolean,
+): delta is TDelta {
+  if (delta === null || delta === undefined) {
+    return false;
+  }
+
+  if (skipEmptyStringDeltas && typeof delta === "string" && delta.length === 0) {
+    return false;
+  }
+
+  return true;
+}
+
+export async function relayOutputChunks<
+  TChunk = JsonValue,
+  TDelta extends JsonValue = JsonValue,
+>(
+  context: Pick<CamlFlowEffectHandlerContext, "emitOutputChunk">,
+  source: AsyncIterable<TChunk> | Iterable<TChunk>,
+  options: CamlFlowRelayOutputChunksOptions<TChunk, TDelta>,
+): Promise<TDelta[]> {
+  const format = options.format ?? "text";
+  const streamId = options.streamId;
+  const skipEmptyStringDeltas = options.skipEmptyStringDeltas ?? false;
+  const mapChunk =
+    options.mapChunk ??
+    (async (chunk: TChunk): Promise<TDelta> => chunk as unknown as TDelta);
+  const relayed: TDelta[] = [];
+  let buffered: TDelta | undefined;
+
+  for await (const chunk of asAsyncIterable(source)) {
+    const delta = await mapChunk(chunk);
+    if (!shouldRelayChunk(delta, skipEmptyStringDeltas)) {
+      continue;
+    }
+
+    if (buffered !== undefined) {
+      await context.emitOutputChunk({
+        streamId,
+        format,
+        delta: buffered,
+        done: false,
+      });
+    }
+
+    buffered = delta;
+    relayed.push(delta);
+  }
+
+  if (buffered !== undefined) {
+    await context.emitOutputChunk({
+      streamId,
+      format,
+      delta: buffered,
+      done: true,
+    });
+  }
+
+  return relayed;
+}
+
+export async function relayTextOutput(
+  context: Pick<CamlFlowEffectHandlerContext, "emitOutputChunk">,
+  source: AsyncIterable<string> | Iterable<string>,
+  options: CamlFlowRelayTextOutputOptions,
+): Promise<string> {
+  const deltas = await relayOutputChunks<string, string>(context, source, {
+    streamId: options.streamId,
+    format: options.format ?? "text",
+    skipEmptyStringDeltas: options.skipEmptyChunks ?? true,
+  });
+
+  return deltas.join("");
 }
 
 export class JsonRpcMethodError<
@@ -655,22 +783,30 @@ export class CamlFlowJsonRpcClient {
   private createEffectHandlerContext(
     params: CamlFlowExecuteEffectParams,
   ): CamlFlowEffectHandlerContext {
+    const emitOutputChunk = async (
+      chunk: CamlFlowEffectOutputChunk,
+    ): Promise<void> => {
+      await this.notify<CamlFlowOutputChunkNotification>(
+        CAMLFLOW_METHODS.outputChunk,
+        {
+          runId: params.runId ?? null,
+          step: params.step ?? null,
+          streamId: chunk.streamId,
+          format: chunk.format,
+          delta: chunk.delta,
+          done: chunk.done,
+        },
+      );
+    };
+
     return {
       runId: params.runId ?? null,
       step: params.step ?? null,
-      emitOutputChunk: async (chunk: CamlFlowEffectOutputChunk): Promise<void> => {
-        await this.notify<CamlFlowOutputChunkNotification>(
-          CAMLFLOW_METHODS.outputChunk,
-          {
-            runId: params.runId ?? null,
-            step: params.step ?? null,
-            streamId: chunk.streamId,
-            format: chunk.format,
-            delta: chunk.delta,
-            done: chunk.done,
-          },
-        );
-      },
+      emitOutputChunk,
+      relayOutputChunks: async (source, options) =>
+        relayOutputChunks({ emitOutputChunk }, source, options),
+      relayTextOutput: async (source, options) =>
+        relayTextOutput({ emitOutputChunk }, source, options),
     };
   }
 
