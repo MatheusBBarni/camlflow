@@ -278,6 +278,18 @@ let test_multiline_quoted_strings_preserve_agent_skill_text () =
     "\nagent hello\nskill bye\n"
     (get_output_string result.output)
 
+let test_return_annotated_function_without_param_annotations_fails_cleanly () =
+  with_temp_dir "camlflow-return-annotation-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+let identity x : int = x
+|};
+  expect_error_contains
+    "return annotation without parameter annotations"
+    "function parameters require type annotations when using a return type annotation"
+    (Camlflow.Typing.check_file ~include_paths:[] main)
+
 let test_cli_help_alias () =
   let parsed = parse_cli [ "parse"; "--help" ] in
   Alcotest.(check string) "help command" "help"
@@ -2341,6 +2353,10 @@ let () =
           Alcotest.test_case "parse source" `Quick test_parse_source;
           Alcotest.test_case "multiline quoted strings preserve agent skill text" `Quick
             test_multiline_quoted_strings_preserve_agent_skill_text;
+          Alcotest.test_case
+            "return-annotated function without param annotations fails cleanly"
+            `Quick
+            test_return_annotated_function_without_param_annotations_fails_cleanly;
           Alcotest.test_case "cli help alias" `Quick test_cli_help_alias;
           Alcotest.test_case "cli help subcommand" `Quick
             test_cli_help_subcommand;
