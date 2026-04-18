@@ -20,9 +20,28 @@ type options = {
   provider_options : Provider.settings;
 }
 
+type explicit_options = {
+  include_paths : bool;
+  output : bool;
+  entry : bool;
+  input_file : bool;
+  input_json : bool;
+  skills_dir : bool;
+  rpc_stdio : bool;
+  provider : bool;
+  model : bool;
+  reasoning : bool;
+  provider_profile : bool;
+  provider_configs : bool;
+  sandbox : bool;
+  allow_write_dirs : bool;
+  trace_provider : bool;
+}
+
 type parsed = {
   command : command;
   options : options;
+  explicit_options : explicit_options;
   positionals : string list;
   help_topic : command option;
   completion_shell : shell option;
@@ -30,6 +49,7 @@ type parsed = {
 
 type flag_parse = {
   options : options;
+  explicit_options : explicit_options;
   positionals : string list;
   help_requested : bool;
 }
@@ -46,6 +66,25 @@ let default_options =
     skills_dir = None;
     rpc_stdio = false;
     provider_options = Provider.default_settings;
+  }
+
+let default_explicit_options =
+  {
+    include_paths = false;
+    output = false;
+    entry = false;
+    input_file = false;
+    input_json = false;
+    skills_dir = false;
+    rpc_stdio = false;
+    provider = false;
+    model = false;
+    reasoning = false;
+    provider_profile = false;
+    provider_configs = false;
+    sandbox = false;
+    allow_write_dirs = false;
+    trace_provider = false;
   }
 
 let command_name = function
@@ -74,9 +113,9 @@ let usage_text =
       "Usage:";
       "  camlflow help [command]";
       "  camlflow parse <file.cml>";
-      "  camlflow check <file.cml> [-I dir]...";
-      "  camlflow compile <file.cml> [-I dir]... [-o artifact.json]";
-      "  camlflow run <file.cml|artifact.json> [-I dir]... [--entry name]";
+      "  camlflow check [file.cml] [-I dir]...";
+      "  camlflow compile [file.cml] [-I dir]... [-o artifact.json]";
+      "  camlflow run [file.cml|artifact.json] [-I dir]... [--entry name]";
       "               [--input file.json | --input-json json] [--skills dir]";
       (Printf.sprintf
          "               [--provider <%s>] [--model name] [--reasoning level]"
@@ -152,11 +191,12 @@ let check_help_text =
       "Command: check";
       "";
       "Usage:";
-      "  camlflow check <file.cml> [-I dir]...";
+      "  camlflow check [file.cml] [-I dir]...";
       "";
       "Description:";
       "  Load, resolve, and type-check a CamlFlow program rooted at the given";
-      "  source file.";
+      "  source file. If the file argument is omitted, CamlFlow falls back to";
+      "  the nearest camlflow.json with a configured program.";
       "";
       "Accepted flags:";
       "  -h, --help";
@@ -172,10 +212,12 @@ let compile_help_text =
       "Command: compile";
       "";
       "Usage:";
-      "  camlflow compile <file.cml> [-I dir]... [-o artifact.json]";
+      "  camlflow compile [file.cml] [-I dir]... [-o artifact.json]";
       "";
       "Description:";
       "  Type-check a source program and emit JSON IR to stdout or a file.";
+      "  If the file argument is omitted, CamlFlow falls back to the nearest";
+      "  camlflow.json with a configured program.";
       "";
       "Accepted flags:";
       "  -h, --help";
@@ -192,7 +234,7 @@ let run_help_text =
       "Command: run";
       "";
       "Usage:";
-      "  camlflow run <file.cml|artifact.json> [-I dir]... [--entry name]";
+      "  camlflow run [file.cml|artifact.json] [-I dir]... [--entry name]";
       "               [--input file.json | --input-json json] [--skills dir]";
       (Printf.sprintf
          "               [--provider <%s>] [--model name] [--reasoning level]"
@@ -202,6 +244,8 @@ let run_help_text =
       "";
       "Description:";
       "  Execute a CamlFlow program from source or a compiled JSON IR artifact.";
+      "  If the file argument is omitted, CamlFlow falls back to the nearest";
+      "  camlflow.json with a configured program.";
       "  Provider-backed execution remains opt-in through --provider.";
       "";
       "Accepted flags:";
@@ -292,45 +336,87 @@ let shell_of_string = function
            (String.concat ", " shell_names))
 
 let parse_flags args =
-  let rec loop options positionals = function
-    | [] -> Ok { options; positionals = List.rev positionals; help_requested = false }
+  let rec loop options explicit_options positionals = function
+    | [] ->
+        Ok
+          {
+            options;
+            explicit_options;
+            positionals = List.rev positionals;
+            help_requested = false;
+          }
     | ("-h" | "--help") :: _ ->
-        Ok { options; positionals = List.rev positionals; help_requested = true }
+        Ok
+          {
+            options;
+            explicit_options;
+            positionals = List.rev positionals;
+            help_requested = true;
+          }
     | "-I" :: dir :: rest ->
-        loop { options with include_paths = options.include_paths @ [ dir ] }
+        loop
+          { options with include_paths = options.include_paths @ [ dir ] }
+          { explicit_options with include_paths = true }
           positionals rest
     | "-o" :: path :: rest ->
-        loop { options with output = Some path } positionals rest
+        loop
+          { options with output = Some path }
+          { explicit_options with output = true }
+          positionals rest
     | "--entry" :: name :: rest ->
-        loop { options with entry = name } positionals rest
+        loop
+          { options with entry = name }
+          { explicit_options with entry = true }
+          positionals rest
     | "--input" :: path :: rest ->
-        loop { options with input_file = Some path } positionals rest
+        loop
+          { options with input_file = Some path }
+          { explicit_options with input_file = true }
+          positionals rest
     | "--input-json" :: json :: rest ->
-        loop { options with input_json = Some json } positionals rest
+        loop
+          { options with input_json = Some json }
+          { explicit_options with input_json = true }
+          positionals rest
     | "--skills" :: dir :: rest ->
-        loop { options with skills_dir = Some dir } positionals rest
+        loop
+          { options with skills_dir = Some dir }
+          { explicit_options with skills_dir = true }
+          positionals rest
     | "--provider" :: name :: rest ->
         let* provider = Provider.name_of_string name in
         let provider_options =
           { options.provider_options with provider = Some provider }
         in
-        loop { options with provider_options } positionals rest
+        loop
+          { options with provider_options }
+          { explicit_options with provider = true }
+          positionals rest
     | "--model" :: name :: rest ->
         let provider_options =
           { options.provider_options with model = Some name }
         in
-        loop { options with provider_options } positionals rest
+        loop
+          { options with provider_options }
+          { explicit_options with model = true }
+          positionals rest
     | "--reasoning" :: level :: rest ->
         let* reasoning = Provider.reasoning_of_string level in
         let provider_options =
           { options.provider_options with reasoning = Some reasoning }
         in
-        loop { options with provider_options } positionals rest
+        loop
+          { options with provider_options }
+          { explicit_options with reasoning = true }
+          positionals rest
     | "--provider-profile" :: profile :: rest ->
         let provider_options =
           { options.provider_options with provider_profile = Some profile }
         in
-        loop { options with provider_options } positionals rest
+        loop
+          { options with provider_options }
+          { explicit_options with provider_profile = true }
+          positionals rest
     | "--provider-config" :: config :: rest ->
         let* config = Provider.config_of_string config in
         let provider_options =
@@ -339,11 +425,17 @@ let parse_flags args =
             provider_configs = options.provider_options.provider_configs @ [ config ];
           }
         in
-        loop { options with provider_options } positionals rest
+        loop
+          { options with provider_options }
+          { explicit_options with provider_configs = true }
+          positionals rest
     | "--sandbox" :: mode :: rest ->
         let* sandbox = Provider.sandbox_of_string mode in
         let provider_options = { options.provider_options with sandbox } in
-        loop { options with provider_options } positionals rest
+        loop
+          { options with provider_options }
+          { explicit_options with sandbox = true }
+          positionals rest
     | "--allow-write-dir" :: dir :: rest ->
         let provider_options =
           {
@@ -351,13 +443,23 @@ let parse_flags args =
             allow_write_dirs = options.provider_options.allow_write_dirs @ [ dir ];
           }
         in
-        loop { options with provider_options } positionals rest
+        loop
+          { options with provider_options }
+          { explicit_options with allow_write_dirs = true }
+          positionals rest
     | "--trace-provider" :: rest ->
         let provider_options =
           { options.provider_options with trace_provider = true }
         in
-        loop { options with provider_options } positionals rest
-    | "--stdio" :: rest -> loop { options with rpc_stdio = true } positionals rest
+        loop
+          { options with provider_options }
+          { explicit_options with trace_provider = true }
+          positionals rest
+    | "--stdio" :: rest ->
+        loop
+          { options with rpc_stdio = true }
+          { explicit_options with rpc_stdio = true }
+          positionals rest
     | ( "-I" | "-o" | "--entry" | "--input" | "--input-json" | "--skills"
       | "--provider" | "--model" | "--reasoning" | "--provider-profile"
       | "--provider-config" | "--sandbox" | "--allow-write-dir" )
@@ -365,9 +467,9 @@ let parse_flags args =
         Error (Printf.sprintf "missing value for flag %s" (List.hd trailing))
     | flag :: _ when String.length flag > 0 && flag.[0] = '-' ->
         Error (Printf.sprintf "unknown flag: %s" flag)
-    | arg :: rest -> loop options (arg :: positionals) rest
+    | arg :: rest -> loop options explicit_options (arg :: positionals) rest
   in
-  loop default_options [] args
+  loop default_options default_explicit_options [] args
 
 let parse_help_command = function
   | [] ->
@@ -375,6 +477,7 @@ let parse_help_command = function
         {
           command = Help;
           options = default_options;
+          explicit_options = default_explicit_options;
           positionals = [];
           help_topic = None;
           completion_shell = None;
@@ -385,6 +488,7 @@ let parse_help_command = function
         {
           command = Help;
           options = default_options;
+          explicit_options = default_explicit_options;
           positionals = [];
           help_topic = Some topic;
           completion_shell = None;
@@ -398,6 +502,7 @@ let parse_completion_command = function
         {
           command = Help;
           options = default_options;
+          explicit_options = default_explicit_options;
           positionals = [];
           help_topic = Some Completion;
           completion_shell = None;
@@ -408,6 +513,7 @@ let parse_completion_command = function
         {
           command = Completion;
           options = default_options;
+          explicit_options = default_explicit_options;
           positionals = [];
           help_topic = None;
           completion_shell = Some shell;
@@ -421,6 +527,7 @@ let parse_regular_command command args =
       {
         command = Help;
         options = default_options;
+        explicit_options = default_explicit_options;
         positionals = [];
         help_topic = Some command;
         completion_shell = None;
@@ -430,6 +537,7 @@ let parse_regular_command command args =
       {
         command;
         options = parsed_flags.options;
+        explicit_options = parsed_flags.explicit_options;
         positionals = parsed_flags.positionals;
         help_topic = None;
         completion_shell = None;
@@ -442,6 +550,7 @@ let parse_argv argv =
         {
           command = Help;
           options = default_options;
+          explicit_options = default_explicit_options;
           positionals = [];
           help_topic = None;
           completion_shell = None;
@@ -468,6 +577,95 @@ let ensure_exactly_one_file command_name positionals =
       Error
         (Printf.sprintf "%s expects exactly one file argument, got %d"
            command_name (List.length positionals))
+
+let ensure_program_target command_name positionals =
+  match positionals with
+  | [ file ] -> Ok file
+  | [] ->
+      Error
+        (Printf.sprintf
+           "%s expects exactly one file argument, or define \"program\" in camlflow.json"
+           command_name)
+  | _ ->
+      Error
+        (Printf.sprintf "%s expects exactly one file argument, got %d"
+           command_name (List.length positionals))
+
+let apply_project_config (parsed : parsed) (config : Project_config.t) =
+  let options = parsed.options in
+  let explicit = parsed.explicit_options in
+  let apply_optional explicit current value =
+    if explicit then current else Option.value value ~default:current
+  in
+  let apply_optional_provider explicit current value =
+    if explicit then current else
+      match value with Some _ -> value | None -> current
+  in
+  let options =
+    match parsed.command with
+    | Check | Compile ->
+        {
+          options with
+          include_paths =
+            apply_optional explicit.include_paths options.include_paths
+              config.include_paths;
+        }
+    | Run ->
+        let provider_options = options.provider_options in
+        let provider_options =
+          {
+            Provider.provider =
+              apply_optional_provider explicit.provider
+                provider_options.provider config.provider;
+            model =
+              apply_optional_provider explicit.model provider_options.model
+                config.model;
+            reasoning =
+              apply_optional_provider explicit.reasoning
+                provider_options.reasoning config.reasoning;
+            provider_profile =
+              apply_optional_provider explicit.provider_profile
+                provider_options.provider_profile config.provider_profile;
+            provider_configs =
+              apply_optional explicit.provider_configs
+                provider_options.provider_configs config.provider_configs;
+            sandbox =
+              apply_optional explicit.sandbox provider_options.sandbox
+                config.sandbox;
+            allow_write_dirs =
+              apply_optional explicit.allow_write_dirs
+                provider_options.allow_write_dirs config.allow_write_dirs;
+            trace_provider =
+              apply_optional explicit.trace_provider
+                provider_options.trace_provider config.trace_provider;
+          }
+        in
+        let skills_dir =
+          if explicit.skills_dir then options.skills_dir else
+            match config.skills_dir with
+            | Some _ -> config.skills_dir
+            | None -> options.skills_dir
+        in
+        {
+          include_paths =
+            apply_optional explicit.include_paths options.include_paths
+              config.include_paths;
+          output = options.output;
+          entry = apply_optional explicit.entry options.entry config.entry;
+          input_file = options.input_file;
+          input_json = options.input_json;
+          skills_dir;
+          rpc_stdio = options.rpc_stdio;
+          provider_options;
+        }
+    | _ -> options
+  in
+  let positionals =
+    match (parsed.command, parsed.positionals, config.program) with
+    | (Check | Compile | Run), [], Some program -> [ program ]
+    | _ -> parsed.positionals
+  in
+  { parsed with options; positionals }
 
 let provider_disallowed_flags (settings : Provider.settings) =
   [
@@ -538,7 +736,7 @@ let validate (parsed : parsed) =
       in
       ensure_no_flags "parse" disallowed
   | Check ->
-      let* _ = ensure_exactly_one_file "check" parsed.positionals in
+      let* _ = ensure_program_target "check" parsed.positionals in
       let disallowed =
         [
           Option.map (Fun.const "-o") options.output;
@@ -551,7 +749,7 @@ let validate (parsed : parsed) =
       in
       ensure_no_flags "check" disallowed
   | Compile ->
-      let* _ = ensure_exactly_one_file "compile" parsed.positionals in
+      let* _ = ensure_program_target "compile" parsed.positionals in
       let disallowed =
         [
           (if options.entry = "main" then None else Some "--entry");
@@ -563,7 +761,7 @@ let validate (parsed : parsed) =
       in
       ensure_no_flags "compile" disallowed
   | Run ->
-      let* _ = ensure_exactly_one_file "run" parsed.positionals in
+      let* _ = ensure_program_target "run" parsed.positionals in
       let* () =
         match (options.input_file, options.input_json) with
         | Some _, Some _ -> Error "run accepts either --input or --input-json, not both"

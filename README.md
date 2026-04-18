@@ -504,6 +504,7 @@ make run-provider-hooks
 - `docs/pi-mono-implementation-checklist.md` — concrete `pi-mono` implementation checklist with likely file touch points
 - `docs/alpha-tasks.md` — Alpha completion checklist and closeout notes
 - `docs/beta-1-tasks.md` — Beta 1 implementation checklist
+- `docs/beta-2-tasks.md` — Beta 2 DX plan and implementation checklist
 - `examples/` — runnable examples
 - `Makefile` — common build, test, and run shortcuts
 - `lib/` — parser, typing, IR, runtime, provider bridge, and JSON-RPC server
@@ -562,6 +563,8 @@ Remaining Beta 1 follow-up:
 ### Beta 2
 
 Goal: build the developer experience (DX) layer around the language.
+
+See `docs/beta-2-tasks.md` for the first concrete DX slice.
 
 - [ ] Add LSP support for CamlFlow
 - [ ] Integrate with IDEs and editors

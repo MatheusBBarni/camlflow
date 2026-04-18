@@ -17,6 +17,7 @@ module Providers_codex = Providers_codex
 module Providers_opencode = Providers_opencode
 module Providers = Providers
 module Cli = Cli
+module Project_config = Project_config
 
 let version = "0.2.0-dev"
 let about = "CamlFlow MVP: typed parser, checker, IR, runtime, and CLI." 

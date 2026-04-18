@@ -14,6 +14,10 @@ let with_temp_dir prefix f =
   Unix.mkdir path 0o755;
   Fun.protect ~finally:(fun () -> rm_rf path) (fun () -> f path)
 
+let ensure_dir path =
+  if Sys.file_exists path then ()
+  else Unix.mkdir path 0o755
+
 let write_file path content =
   Out_channel.with_open_bin path (fun channel -> output_string channel content)
 
@@ -69,6 +73,12 @@ let parse_cli argv =
   match Camlflow.Cli.parse_argv argv with
   | Ok parsed -> parsed
   | Error error -> Alcotest.failf "cli parse failed: %s" error
+
+let load_nearest_project_config working_directory =
+  match Camlflow.Project_config.load_nearest ~working_directory with
+  | Ok (Some config) -> config
+  | Ok None -> Alcotest.fail "expected CamlFlow config"
+  | Error error -> Alcotest.failf "project config load failed: %s" error
 
 let write_rpc_messages path messages =
   Out_channel.with_open_bin path (fun channel ->
@@ -460,6 +470,219 @@ let test_cli_check_rejects_provider_flags () =
   let parsed = parse_cli [ "check"; "main.cml"; "--provider"; "codex" ] in
   expect_error_contains "check rejects provider flags" "flag --provider"
     (Camlflow.Cli.validate parsed)
+
+let test_project_config_loads_nearest_and_resolves_paths () =
+  with_temp_dir "camlflow-config-" @@ fun dir ->
+  let nested = Filename.concat dir "nested" in
+  let deep = Filename.concat nested "deep" in
+  ensure_dir nested;
+  ensure_dir deep;
+  write_file (Filename.concat dir Camlflow.Project_config.filename)
+    {|
+{
+  "program": "flows/main.cml",
+  "entry": "workflow",
+  "includePaths": [".", "lib"],
+  "skillsDir": "skills",
+  "provider": "codex",
+  "model": "gpt-5.4-mini",
+  "reasoning": "low",
+  "providerProfile": "daily",
+  "providerConfig": {
+    "foo": "bar"
+  },
+  "sandbox": "read-only",
+  "allowWriteDirs": ["tmp"],
+  "traceProvider": true
+}
+|};
+  let config = load_nearest_project_config deep in
+  Alcotest.(check (option string)) "program"
+    (Some (Filename.concat dir "flows/main.cml"))
+    config.Camlflow.Project_config.program;
+  Alcotest.(check (option string)) "entry" (Some "workflow") config.entry;
+  Alcotest.(check (option (list string))) "include paths"
+    (Some [ dir; Filename.concat dir "lib" ])
+    config.include_paths;
+  Alcotest.(check (option string)) "skills dir"
+    (Some (Filename.concat dir "skills"))
+    config.skills_dir;
+  Alcotest.(check string) "provider" "codex"
+    (match config.provider with
+    | Some provider -> Camlflow.Provider.name_to_string provider
+    | None -> "none");
+  Alcotest.(check (option string)) "model" (Some "gpt-5.4-mini") config.model;
+  Alcotest.(check string) "reasoning" "low"
+    (match config.reasoning with
+    | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
+    | None -> "none");
+  Alcotest.(check (option string)) "provider profile" (Some "daily")
+    config.provider_profile;
+  Alcotest.(check (option string)) "provider config"
+    (Some "foo=bar")
+    (match config.provider_configs with
+    | Some [ item ] -> Some (Camlflow.Provider.config_to_string item)
+    | _ -> None);
+  Alcotest.(check string) "sandbox" "read-only"
+    (match config.sandbox with
+    | Some sandbox -> Camlflow.Provider.sandbox_to_string sandbox
+    | None -> "none");
+  Alcotest.(check (option (list string))) "allow write dirs"
+    (Some [ Filename.concat dir "tmp" ])
+    config.allow_write_dirs;
+  Alcotest.(check (option bool)) "trace provider" (Some true)
+    config.trace_provider
+
+let sample_project_config ?program ?entry ?include_paths ?skills_dir ?provider
+    ?model ?reasoning ?provider_profile ?provider_configs ?sandbox
+    ?allow_write_dirs ?trace_provider () =
+  {
+    Camlflow.Project_config.path = "/tmp/camlflow.json";
+    directory = "/tmp";
+    program;
+    entry;
+    include_paths;
+    skills_dir;
+    provider;
+    model;
+    reasoning;
+    provider_profile;
+    provider_configs;
+    sandbox;
+    allow_write_dirs;
+    trace_provider;
+  }
+
+let test_cli_run_uses_project_config_defaults () =
+  let parsed = parse_cli [ "run" ] in
+  let config =
+    sample_project_config ~program:"/tmp/workflow.cml" ~entry:"workflow"
+      ~include_paths:[ "/tmp/lib" ] ~skills_dir:"/tmp/skills"
+      ~provider:Camlflow.Provider.Codex ~model:"gpt-5.4-mini"
+      ~reasoning:Camlflow.Provider.Low ~provider_profile:"daily"
+      ~provider_configs:[ { Camlflow.Provider.key = "foo"; value = "bar" } ]
+      ~sandbox:Camlflow.Provider.Read_only
+      ~allow_write_dirs:[ "/tmp/out" ] ~trace_provider:true ()
+  in
+  let parsed = Camlflow.Cli.apply_project_config parsed config in
+  (match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "run validate with config failed: %s" error);
+  Alcotest.(check (list string)) "config program applied" [ "/tmp/workflow.cml" ]
+    parsed.positionals;
+  Alcotest.(check string) "config entry applied" "workflow"
+    parsed.options.entry;
+  Alcotest.(check (list string)) "config include paths applied" [ "/tmp/lib" ]
+    parsed.options.include_paths;
+  Alcotest.(check (option string)) "config skills dir applied"
+    (Some "/tmp/skills") parsed.options.skills_dir;
+  Alcotest.(check string) "config provider applied" "codex"
+    (match parsed.options.provider_options.provider with
+    | Some provider -> Camlflow.Provider.name_to_string provider
+    | None -> "none");
+  Alcotest.(check (option string)) "config model applied"
+    (Some "gpt-5.4-mini") parsed.options.provider_options.model;
+  Alcotest.(check string) "config reasoning applied" "low"
+    (match parsed.options.provider_options.reasoning with
+    | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
+    | None -> "none");
+  Alcotest.(check (option string)) "config provider profile applied"
+    (Some "daily") parsed.options.provider_options.provider_profile;
+  Alcotest.(check (list string)) "config allow write dirs applied"
+    [ "/tmp/out" ] parsed.options.provider_options.allow_write_dirs;
+  Alcotest.(check bool) "config trace provider applied" true
+    parsed.options.provider_options.trace_provider
+
+let test_cli_explicit_run_flags_override_project_config () =
+  let parsed =
+    parse_cli
+      [
+        "run";
+        "cli.cml";
+        "--entry";
+        "main";
+        "--skills";
+        "cli-skills";
+        "--provider";
+        "opencode";
+        "--model";
+        "openai/gpt-5.4-mini";
+        "--reasoning";
+        "high";
+        "--provider-profile";
+        "cli-profile";
+        "--provider-config";
+        "alpha=beta";
+        "--sandbox";
+        "danger-full-access";
+        "--allow-write-dir";
+        "cli-out";
+        "--trace-provider";
+      ]
+  in
+  let config =
+    sample_project_config ~program:"/tmp/workflow.cml" ~entry:"workflow"
+      ~skills_dir:"/tmp/skills" ~provider:Camlflow.Provider.Codex
+      ~model:"gpt-5.4-mini" ~reasoning:Camlflow.Provider.Low
+      ~provider_profile:"daily"
+      ~provider_configs:[ { Camlflow.Provider.key = "foo"; value = "bar" } ]
+      ~sandbox:Camlflow.Provider.Read_only
+      ~allow_write_dirs:[ "/tmp/out" ] ~trace_provider:false ()
+  in
+  let parsed = Camlflow.Cli.apply_project_config parsed config in
+  Alcotest.(check (list string)) "cli program preserved" [ "cli.cml" ]
+    parsed.positionals;
+  Alcotest.(check string) "cli entry preserved" "main" parsed.options.entry;
+  Alcotest.(check (option string)) "cli skills preserved" (Some "cli-skills")
+    parsed.options.skills_dir;
+  Alcotest.(check string) "cli provider preserved" "opencode"
+    (match parsed.options.provider_options.provider with
+    | Some provider -> Camlflow.Provider.name_to_string provider
+    | None -> "none");
+  Alcotest.(check (option string)) "cli model preserved"
+    (Some "openai/gpt-5.4-mini") parsed.options.provider_options.model;
+  Alcotest.(check string) "cli reasoning preserved" "high"
+    (match parsed.options.provider_options.reasoning with
+    | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
+    | None -> "none");
+  Alcotest.(check (option string)) "cli provider profile preserved"
+    (Some "cli-profile") parsed.options.provider_options.provider_profile;
+  Alcotest.(check (option string)) "cli provider config preserved"
+    (Some "alpha=beta")
+    (match parsed.options.provider_options.provider_configs with
+    | [ item ] -> Some (Camlflow.Provider.config_to_string item)
+    | _ -> None);
+  Alcotest.(check string) "cli sandbox preserved" "danger-full-access"
+    (Camlflow.Provider.sandbox_to_string
+       parsed.options.provider_options.sandbox);
+  Alcotest.(check (list string)) "cli allow write dirs preserved" [ "cli-out" ]
+    parsed.options.provider_options.allow_write_dirs;
+  Alcotest.(check bool) "cli trace provider preserved" true
+    parsed.options.provider_options.trace_provider
+
+let test_cli_check_uses_project_program_without_run_only_defaults () =
+  let parsed = parse_cli [ "check" ] in
+  let config =
+    sample_project_config ~program:"/tmp/workflow.cml" ~entry:"workflow"
+      ~include_paths:[ "/tmp/lib" ] ~skills_dir:"/tmp/skills"
+      ~provider:Camlflow.Provider.Codex ~model:"gpt-5.4-mini"
+      ~reasoning:Camlflow.Provider.Low ~trace_provider:true ()
+  in
+  let parsed = Camlflow.Cli.apply_project_config parsed config in
+  (match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "check validate with config failed: %s" error);
+  Alcotest.(check (list string)) "check config program applied"
+    [ "/tmp/workflow.cml" ] parsed.positionals;
+  Alcotest.(check (list string)) "check include paths applied" [ "/tmp/lib" ]
+    parsed.options.include_paths;
+  Alcotest.(check string) "check entry unchanged" "main" parsed.options.entry;
+  Alcotest.(check (option string)) "check skills ignored" None
+    parsed.options.skills_dir;
+  Alcotest.(check string) "check provider ignored" "none"
+    (match parsed.options.provider_options.provider with
+    | Some provider -> Camlflow.Provider.name_to_string provider
+    | None -> "none")
 
 let test_rpc_protocol_request_roundtrip () =
   let json =
@@ -2386,6 +2609,16 @@ let () =
             test_cli_invalid_provider_config_rejected;
           Alcotest.test_case "cli check rejects provider flags" `Quick
             test_cli_check_rejects_provider_flags;
+          Alcotest.test_case "project config loads nearest and resolves paths"
+            `Quick test_project_config_loads_nearest_and_resolves_paths;
+          Alcotest.test_case "cli run uses project config defaults" `Quick
+            test_cli_run_uses_project_config_defaults;
+          Alcotest.test_case "cli explicit run flags override project config"
+            `Quick test_cli_explicit_run_flags_override_project_config;
+          Alcotest.test_case
+            "cli check uses project program without run-only defaults"
+            `Quick
+            test_cli_check_uses_project_program_without_run_only_defaults;
           Alcotest.test_case "rpc protocol request roundtrip" `Quick
             test_rpc_protocol_request_roundtrip;
           Alcotest.test_case "rpc protocol notification includes params" `Quick
