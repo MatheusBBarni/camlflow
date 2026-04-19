@@ -20,6 +20,14 @@ jobs:
           ocaml-compiler: 5.4.0
           dune-cache: true
 
+      - name: Pin erratique packages to GitHub mirrors
+        run: |
+          opam pin add --yes --no-action astring https://github.com/dbuenzli/astring.git#v0.8.5
+          opam pin add --yes --no-action topkg https://github.com/dbuenzli/topkg.git#v1.1.1
+          opam pin add --yes --no-action fmt https://github.com/dbuenzli/fmt.git#v0.11.0
+          opam pin add --yes --no-action cmdliner https://github.com/dbuenzli/cmdliner.git#v2.1.0
+          opam pin add --yes --no-action uutf https://github.com/dbuenzli/uutf.git#v1.0.4
+
       - name: Install OCaml dependencies
         run: opam install . --deps-only --with-test --yes
 
@@ -45,6 +53,14 @@ jobs:
           ocaml-compiler: 5.4.0
           dune-cache: true
 
+      - name: Pin erratique packages to GitHub mirrors
+        run: |
+          opam pin add --yes --no-action astring https://github.com/dbuenzli/astring.git#v0.8.5
+          opam pin add --yes --no-action topkg https://github.com/dbuenzli/topkg.git#v1.1.1
+          opam pin add --yes --no-action fmt https://github.com/dbuenzli/fmt.git#v0.11.0
+          opam pin add --yes --no-action cmdliner https://github.com/dbuenzli/cmdliner.git#v2.1.0
+          opam pin add --yes --no-action uutf https://github.com/dbuenzli/uutf.git#v1.0.4
+
       - name: Install OCaml dependencies
         run: opam install . --deps-only --with-test --yes
 
@@ -52,12 +68,15 @@ jobs:
         working-directory: packages/camlflow-ts-json-rpc-sdk
         run: npm install
 
+      - name: Build CamlFlow binary
+        run: opam exec -- dune build
+
       - name: Run SDK smoke tests
         working-directory: packages/camlflow-ts-json-rpc-sdk
-        run: npm test
+        run: opam exec -- npm test
 
       - name: Run JSON-RPC host example
-        run: node examples/json-rpc-host/host.js
+        run: opam exec -- node examples/json-rpc-host/host.js
 
       - name: Run JSON-RPC problem-coach example
-        run: node examples/json-rpc-problem-coach/host.js
+        run: opam exec -- node examples/json-rpc-problem-coach/host.js

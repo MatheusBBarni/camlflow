@@ -235,6 +235,13 @@ make run-basic
 make run-variants-match
 ```
 
+Quickstart with project-local `camlflow.json` defaults:
+
+```sh
+(cd examples/project-config && dune exec camlflow -- check)
+(cd examples/project-config && dune exec camlflow -- run --input input.json)
+```
+
 JSON-RPC host integration quickstart:
 
 ```sh
@@ -256,6 +263,57 @@ dune build
 ```sh
 dune test
 ```
+
+## Project-local config
+
+CamlFlow looks for the nearest `camlflow.json` by walking upward from the
+current working directory. When that file defines `program`, the `run`,
+`check`, and `compile` commands can omit the file argument entirely.
+
+Config precedence is:
+
+- explicit CLI args
+- `camlflow.json`
+- current built-in defaults
+
+Relative paths in `program`, `includePaths`, `skillsDir`, and
+`allowWriteDirs` resolve from the directory that contains `camlflow.json`.
+
+Example shape:
+
+```json
+{
+  "program": "main.cml",
+  "entry": "main",
+  "includePaths": ["."],
+  "skillsDir": "skills",
+  "provider": "codex",
+  "model": "gpt-5.4-mini",
+  "reasoning": "low",
+  "providerProfile": "work",
+  "providerConfig": {
+    "approval-policy": "never"
+  },
+  "sandbox": "workspace-write",
+  "allowWriteDirs": ["tmp"],
+  "traceProvider": false
+}
+```
+
+Supported fields:
+
+- `program`: default workflow source file or compiled JSON artifact
+- `entry`: default entrypoint name
+- `includePaths`: extra module search paths
+- `skillsDir`: local skill root
+- `provider`: unresolved-effect provider, currently `codex` or `opencode`
+- `model`: provider model override
+- `reasoning`: provider-agnostic reasoning level, one of `low`, `medium`, `high`, `max`
+- `providerProfile`: named provider profile
+- `providerConfig`: string-to-string provider config map, equivalent to repeatable `--provider-config key=value`
+- `sandbox`: provider sandbox mode, one of `read-only`, `workspace-write`, `danger-full-access`
+- `allowWriteDirs`: extra writable directories for provider execution
+- `traceProvider`: emit provider trace metadata to stderr
 
 ## CLI
 
@@ -300,16 +358,34 @@ dune exec camlflow -- parse examples/basic/main.cml
 dune exec camlflow -- check examples/basic/main.cml
 ```
 
+### Check with `camlflow.json` defaults
+
+```sh
+(cd examples/project-config && dune exec camlflow -- check)
+```
+
 ### Compile to JSON IR
 
 ```sh
 dune exec camlflow -- compile examples/basic/main.cml -o /tmp/basic.ir.json
 ```
 
+### Compile with `camlflow.json` defaults
+
+```sh
+(cd examples/project-config && dune exec camlflow -- compile -o /tmp/project-config.ir.json)
+```
+
 ### Run from source
 
 ```sh
 dune exec camlflow -- run examples/basic/main.cml --input-json '"Ada"'
+```
+
+### Run with `camlflow.json` defaults
+
+```sh
+(cd examples/project-config && dune exec camlflow -- run --input input.json)
 ```
 
 ### Run from compiled artifact
@@ -430,6 +506,7 @@ runtime hooks.
 ## Runnable examples
 
 - `examples/basic/` — minimal bound-agent flow
+- `examples/project-config/` — minimal project-local `camlflow.json` workflow with omitted program path
 - `examples/local-skill/` — prompt-backed local skill via `--skills`
 - `examples/qualified-imports/` — qualified module refs without `open`
 - `examples/recursion/` — recursion and int builtins
@@ -504,10 +581,13 @@ make run-provider-hooks
 - `docs/pi-mono-implementation-checklist.md` — concrete `pi-mono` implementation checklist with likely file touch points
 - `docs/alpha-tasks.md` — Alpha completion checklist and closeout notes
 - `docs/beta-1-tasks.md` — Beta 1 implementation checklist
+- `docs/beta-2-tasks.md` — Beta 2 DX plan and implementation checklist
 - `examples/` — runnable examples
 - `Makefile` — common build, test, and run shortcuts
 - `lib/` — parser, typing, IR, runtime, provider bridge, and JSON-RPC server
 - `packages/camlflow-ts-json-rpc-sdk/` — maintained TypeScript SDK and runnable host examples
+- `packages/camlflow-vscode/README.md` — local VS Code extension testing and packaging notes
+- `packages/camlflow-zed/README.md` — local Zed extension install and schema-validation notes
 - `bin/main.ml` — CLI
 - `test/test_camlflow.ml` — end-to-end tests
 
@@ -562,6 +642,8 @@ Remaining Beta 1 follow-up:
 ### Beta 2
 
 Goal: build the developer experience (DX) layer around the language.
+
+See `docs/beta-2-tasks.md` for the first concrete DX slice.
 
 - [ ] Add LSP support for CamlFlow
 - [ ] Integrate with IDEs and editors

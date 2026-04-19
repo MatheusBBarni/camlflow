@@ -1,0 +1,52 @@
+{
+  "Let main": {
+    "prefix": "letmain",
+    "body": [
+      "let main (${1:input} : ${2:string}) : ${3:string} =",
+      "  ${0}"
+    ],
+    "description": "Insert a CamlFlow entrypoint binding"
+  },
+  "Agent": {
+    "prefix": "agent",
+    "body": [
+      "agent ${1:name} : ${2:input}:${3:string} -> ${4:string} =",
+      "  Agent.define ~system_prompt:\"${5:Describe the agent behavior.}\""
+    ],
+    "description": "Insert an inline CamlFlow agent declaration"
+  },
+  "Skill": {
+    "prefix": "skill",
+    "body": [
+      "skill ${1:name} : ${2:prompt}:${3:string} -> ${4:string} =",
+      "  Skill.bind \"${5:provider-skill-name}\""
+    ],
+    "description": "Insert a bound CamlFlow skill declaration"
+  },
+  "Match": {
+    "prefix": "match",
+    "body": [
+      "match ${1:value} with",
+      "| ${2:Pattern} -> ${0}"
+    ],
+    "description": "Insert a CamlFlow match expression"
+  },
+  "Type Record": {
+    "prefix": "type-record",
+    "body": [
+      "type ${1:name} = {",
+      "  ${2:field} : ${3:string};",
+      "}"
+    ],
+    "description": "Insert a record type declaration"
+  },
+  "Type Variant": {
+    "prefix": "type-variant",
+    "body": [
+      "type ${1:name} =",
+      "  | ${2:CaseOne}",
+      "  | ${3:CaseTwo} of ${4:string}"
+    ],
+    "description": "Insert a variant type declaration"
+  }
+}

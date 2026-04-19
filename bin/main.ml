@@ -168,6 +168,18 @@ let print_run (options : Camlflow.Cli.options) path =
       | None -> print_endline "null")
   | Error error -> die (Printf.sprintf "run failed for %s: %s" path error)
 
+let load_project_config_defaults ~working_directory parsed =
+  match parsed.Camlflow.Cli.command with
+  | Camlflow.Cli.Check | Camlflow.Cli.Compile | Camlflow.Cli.Run ->
+      let* config =
+        Camlflow.Project_config.load_nearest ~working_directory
+      in
+      Ok
+        (match config with
+        | Some config -> Camlflow.Cli.apply_project_config parsed config
+        | None -> parsed)
+  | _ -> Ok parsed
+
 let dispatch (parsed : Camlflow.Cli.parsed) =
   match (parsed.command, parsed.positionals) with
   | Camlflow.Cli.Help, _ -> print_endline (help_text parsed.help_topic)
@@ -193,5 +205,7 @@ let dispatch (parsed : Camlflow.Cli.parsed) =
 let () =
   let argv = Array.to_list Sys.argv |> List.tl in
   let parsed = or_die (Camlflow.Cli.parse_argv argv) in
+  let working_directory = Sys.getcwd () in
+  let parsed = or_die (load_project_config_defaults ~working_directory parsed) in
   let () = or_die (Camlflow.Cli.validate parsed) in
   dispatch parsed

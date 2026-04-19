@@ -95,16 +95,21 @@ let sandbox_of_string = function
 
 let config_to_string config = config.key ^ "=" ^ config.value
 
+let config_of_parts key value =
+  if String.equal key "" then Error "provider config key cannot be empty"
+  else if String.contains key '=' then
+    Error "provider config key cannot contain ="
+  else Ok { key; value }
+
 let config_of_string text =
   match String.index_opt text '=' with
   | None -> Error "provider config must have the form key=value"
-  | Some 0 -> Error "provider config key cannot be empty"
   | Some index ->
       let key = String.sub text 0 index in
       let value =
         String.sub text (index + 1) (String.length text - index - 1)
       in
-      Ok { key; value }
+      config_of_parts key value
 
 let has_explicit_provider_inputs settings =
   settings.model <> None || settings.reasoning <> None

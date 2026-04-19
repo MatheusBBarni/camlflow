@@ -1,0 +1,5 @@
+let greet (name : string) : string =
+  "Hello, " ^ name
+
+let main (name : string) : string =
+  greet name

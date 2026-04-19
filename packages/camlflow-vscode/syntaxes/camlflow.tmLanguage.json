@@ -1,0 +1,372 @@
+{
+  "name": "CamlFlow",
+  "scopeName": "source.camlflow",
+  "fileTypes": [
+    "cml"
+  ],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#quoted-strings"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#booleans"
+    },
+    {
+      "include": "#open-declarations"
+    },
+    {
+      "include": "#callable-declarations"
+    },
+    {
+      "include": "#type-declarations"
+    },
+    {
+      "include": "#value-declarations"
+    },
+    {
+      "include": "#labels"
+    },
+    {
+      "include": "#type-annotations"
+    },
+    {
+      "include": "#type-builtins"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#qualified-access"
+    },
+    {
+      "include": "#constructors"
+    },
+    {
+      "include": "#field-access"
+    },
+    {
+      "include": "#operators"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.camlflow",
+          "begin": "\\(\\*",
+          "end": "\\*\\)",
+          "patterns": [
+            {
+              "include": "#comments"
+            }
+          ]
+        }
+      ]
+    },
+    "quoted-strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.other.camlflow",
+          "begin": "\\{([a-z_][A-Za-z0-9_']*)?\\|",
+          "end": "\\|\\1\\}"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.camlflow",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.camlflow",
+              "match": "\\\\(?:[\\\\\"'abfnrtv]|x[0-9A-Fa-f]{2}|o[0-7]{3}|[0-9]{3}|\\s+)"
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.camlflow",
+          "match": "\\b(?:0[xX][0-9A-Fa-f][0-9A-Fa-f_]*|0[oO][0-7][0-7_]*|0[bB][01][01_]*|[0-9][0-9_]*(?:\\.[0-9][0-9_]*)?(?:[eE][+-]?[0-9][0-9_]*)?)\\b"
+        }
+      ]
+    },
+    "booleans": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.camlflow",
+          "match": "\\b(?:true|false)\\b"
+        }
+      ]
+    },
+    "open-declarations": {
+      "patterns": [
+        {
+          "name": "meta.declaration.open.camlflow",
+          "match": "\\b(open)\\b\\s+([A-Z][A-Za-z0-9_']*(?:\\.[A-Z][A-Za-z0-9_']*)*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.import.camlflow"
+            },
+            "2": {
+              "name": "entity.name.type.module.camlflow"
+            }
+          }
+        }
+      ]
+    },
+    "callable-declarations": {
+      "patterns": [
+        {
+          "name": "meta.declaration.callable.camlflow",
+          "match": "\\b(agent|skill)\\b\\s+([a-z_][A-Za-z0-9_']*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.camlflow"
+            },
+            "2": {
+              "name": "entity.name.function.camlflow"
+            }
+          }
+        },
+        {
+          "name": "meta.declaration.binding.camlflow",
+          "match": "\\b(let\\*)(?=\\s+[a-z_][A-Za-z0-9_']*)\\s+([a-z_][A-Za-z0-9_']*)",
+          "captures": {
+            "1": {
+              "name": "keyword.control.monadic.camlflow"
+            },
+            "2": {
+              "name": "variable.other.readwrite.camlflow"
+            }
+          }
+        }
+      ]
+    },
+    "type-declarations": {
+      "patterns": [
+        {
+          "name": "meta.declaration.type.camlflow",
+          "match": "\\b(type)\\b\\s+([a-z_][A-Za-z0-9_']*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.camlflow"
+            },
+            "2": {
+              "name": "entity.name.type.camlflow"
+            }
+          }
+        }
+      ]
+    },
+    "value-declarations": {
+      "patterns": [
+        {
+          "name": "meta.declaration.value.camlflow",
+          "match": "\\b(let)\\b\\s+(rec\\s+)?([a-z_][A-Za-z0-9_']*)",
+          "captures": {
+            "1": {
+              "name": "keyword.declaration.camlflow"
+            },
+            "2": {
+              "name": "storage.modifier.camlflow"
+            },
+            "3": {
+              "name": "entity.name.function.camlflow"
+            }
+          }
+        },
+        {
+          "name": "meta.declaration.rec-only.camlflow",
+          "match": "\\b(rec)\\b",
+          "captures": {
+            "0": {
+              "name": "storage.modifier.camlflow"
+            }
+          }
+        }
+      ]
+    },
+    "labels": {
+      "patterns": [
+        {
+          "name": "meta.label.argument.camlflow",
+          "match": "(~|\\?)([a-z_][A-Za-z0-9_']*)(:)",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.parameter.camlflow"
+            },
+            "2": {
+              "name": "variable.parameter.camlflow"
+            },
+            "3": {
+              "name": "punctuation.separator.key-value.camlflow"
+            }
+          }
+        },
+        {
+          "name": "meta.label.parameter.camlflow",
+          "match": "(\\()\\s*([a-z_][A-Za-z0-9_']*)(\\s*)(:)",
+          "captures": {
+            "1": {
+              "name": "punctuation.section.group.begin.camlflow"
+            },
+            "2": {
+              "name": "variable.parameter.camlflow"
+            },
+            "4": {
+              "name": "punctuation.separator.type-annotation.camlflow"
+            }
+          }
+        },
+        {
+          "name": "meta.label.record.camlflow",
+          "match": "(^\\s*|[\\{;,]\\s*)([a-z_][A-Za-z0-9_']*)(\\s*)(:|=)",
+          "captures": {
+            "2": {
+              "name": "variable.other.property.camlflow"
+            },
+            "4": {
+              "name": "punctuation.separator.key-value.camlflow"
+            }
+          }
+        }
+      ]
+    },
+    "type-annotations": {
+      "patterns": [
+        {
+          "name": "meta.type-annotation.builtin.camlflow",
+          "match": "(:)\\s*(int|float|bool|string|unit|list)\\b",
+          "captures": {
+            "1": {
+              "name": "punctuation.separator.type-annotation.camlflow"
+            },
+            "2": {
+              "name": "storage.type.builtin.camlflow"
+            }
+          }
+        },
+        {
+          "name": "meta.type-annotation.custom.camlflow",
+          "match": "(:)\\s*([a-z_][A-Za-z0-9_']*)\\b",
+          "captures": {
+            "1": {
+              "name": "punctuation.separator.type-annotation.camlflow"
+            },
+            "2": {
+              "name": "entity.name.type.camlflow"
+            }
+          }
+        },
+        {
+          "name": "meta.type-annotation.module.camlflow",
+          "match": "(:)\\s*([A-Z][A-Za-z0-9_']*(?:\\.[A-Z][A-Za-z0-9_']*)*)\\b",
+          "captures": {
+            "1": {
+              "name": "punctuation.separator.type-annotation.camlflow"
+            },
+            "2": {
+              "name": "entity.name.type.module.camlflow"
+            }
+          }
+        }
+      ]
+    },
+    "type-builtins": {
+      "patterns": [
+        {
+          "name": "storage.type.builtin.camlflow",
+          "match": "\\b(?:int|float|bool|string|unit|list)\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.camlflow",
+          "match": "\\b(?:if|then|else|match|with|in|of|fun|function|and)\\b"
+        }
+      ]
+    },
+    "qualified-access": {
+      "patterns": [
+        {
+          "name": "meta.qualified.value.camlflow",
+          "match": "\\b([A-Z][A-Za-z0-9_']*(?:\\.[A-Z][A-Za-z0-9_']*)*)(\\.)([a-z_][A-Za-z0-9_']*)\\b",
+          "captures": {
+            "1": {
+              "name": "entity.name.type.module.camlflow"
+            },
+            "2": {
+              "name": "punctuation.accessor.camlflow"
+            },
+            "3": {
+              "name": "support.function.camlflow"
+            }
+          }
+        },
+        {
+          "name": "meta.qualified.constructor.camlflow",
+          "match": "\\b([A-Z][A-Za-z0-9_']*(?:\\.[A-Z][A-Za-z0-9_']*)*)(\\.)([A-Z][A-Za-z0-9_']*)\\b",
+          "captures": {
+            "1": {
+              "name": "entity.name.type.module.camlflow"
+            },
+            "2": {
+              "name": "punctuation.accessor.camlflow"
+            },
+            "3": {
+              "name": "entity.name.type.constructor.camlflow"
+            }
+          }
+        }
+      ]
+    },
+    "constructors": {
+      "patterns": [
+        {
+          "name": "entity.name.type.constructor.camlflow",
+          "match": "\\b[A-Z][A-Za-z0-9_']*\\b"
+        }
+      ]
+    },
+    "field-access": {
+      "patterns": [
+        {
+          "name": "meta.field-access.camlflow",
+          "match": "(\\.)\\s*([a-z_][A-Za-z0-9_']*)",
+          "captures": {
+            "1": {
+              "name": "punctuation.accessor.camlflow"
+            },
+            "2": {
+              "name": "variable.other.member.camlflow"
+            }
+          }
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.camlflow",
+          "match": "(?:->|\\|>|:=|::|\\|\\||&&|<=|>=|<>|=|<|>|\\+|\\-|\\*|/|\\^|@|\\||:)"
+        }
+      ]
+    }
+  }
+}
