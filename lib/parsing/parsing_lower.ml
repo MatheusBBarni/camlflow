@@ -171,6 +171,25 @@ let last_ident loc lid =
   | [] -> failf loc "invalid longident"
   | parts -> List.hd (List.rev parts)
 
+let tuple_component_type loc item =
+  let repr = Obj.repr item in
+  let is_labeled_tuple_component =
+    Obj.is_block repr
+    && Obj.tag repr = 0
+    && Obj.size repr = 2
+    &&
+    let first = Obj.field repr 0 in
+    let second = Obj.field repr 1 in
+    (Obj.is_int first
+    || (Obj.is_block first && Obj.tag first = 0 && Obj.size first = 1))
+    && Obj.is_block second
+  in
+  if is_labeled_tuple_component then
+    let label = Obj.field repr 0 in
+    if Obj.is_int label then Obj.obj (Obj.field repr 1)
+    else failf loc "labeled tuple types are unsupported"
+  else Obj.obj repr
+
 let rec lower_type (typ : core_type) : Syntax.Ast.type_expr =
   let type_loc = loc_of typ.ptyp_loc in
   let type_desc =
@@ -178,7 +197,9 @@ let rec lower_type (typ : core_type) : Syntax.Ast.type_expr =
     | Ptyp_constr ({ txt = lid; _ }, args) ->
         Syntax.Ast.TEConstr
           (Syntax.Ast.qname_of_longident lid, List.map lower_type args)
-    | Ptyp_tuple items -> Syntax.Ast.TETuple (List.map lower_type items)
+    | Ptyp_tuple items ->
+        Syntax.Ast.TETuple
+          (List.map (fun item -> lower_type (tuple_component_type typ.ptyp_loc item)) items)
     | Ptyp_arrow (label, lhs, rhs) ->
         let label =
           match label with
