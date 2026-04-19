@@ -89,9 +89,10 @@ let rec string_of_typ = function
       let params =
         params
         |> List.map (fun (param : Ir.param_type) ->
-               match param.Ir.param_label with
-               | None -> string_of_typ param.Ir.param_typ
-               | Some label -> Printf.sprintf "%s:%s" label (string_of_typ param.Ir.param_typ))
+            match param.Ir.param_label with
+            | None -> string_of_typ param.Ir.param_typ
+            | Some label ->
+                Printf.sprintf "%s:%s" label (string_of_typ param.Ir.param_typ))
       in
       String.concat " -> " (params @ [ string_of_typ result ])
 
@@ -103,14 +104,13 @@ let builtin_value name = RBuiltin name
 
 let lookup_builtin name =
   match name with
-  | "+" | "-" | "*" | "/" | "mod"
-  | "+." | "-." | "*." | "/."
-  | "=" | "<>" | "<" | "<=" | ">" | ">="
-  | "&&" | "||" | "not" | "^" -> Some (builtin_value name)
+  | "+" | "-" | "*" | "/" | "mod" | "+." | "-." | "*." | "/." | "=" | "<>" | "<"
+  | "<=" | ">" | ">=" | "&&" | "||" | "not" | "^" | "is_some" | "is_none"
+  | "unwrap_or" ->
+      Some (builtin_value name)
   | _ -> None
 
 let lookup_in_assoc name items = List.assoc_opt name items
-
 let read_file path = In_channel.with_open_bin path In_channel.input_all
 
 let local_index_of_bindings bindings =
@@ -142,7 +142,8 @@ let env_with_locals env bindings =
       lazy
         (List.fold_left
            (fun acc (name, value) -> StringMap.add name value acc)
-           (Lazy.force env.local_index) bindings);
+           (Lazy.force env.local_index)
+           bindings);
   }
 
 let skills_markdown state name =
@@ -156,23 +157,37 @@ let skills_markdown state name =
             let path = Filename.concat dir (Filename.concat name "SKILL.md") in
             if Sys.file_exists path then Some (read_file path) else None
       in
-      state.skill_markdown_cache <- StringMap.add name markdown state.skill_markdown_cache;
+      state.skill_markdown_cache <-
+        StringMap.add name markdown state.skill_markdown_cache;
       markdown
 
-let entry_type (program : Ir.program) (entry : string) : (Ir.typ, string) result =
+let entry_type (program : Ir.program) (entry : string) : (Ir.typ, string) result
+    =
   let root_key = module_key program.Ir.root_module in
   let* root_module =
-    match List.find_opt (fun module_ -> String.equal (module_key module_.Ir.module_name) root_key) program.Ir.modules with
+    match
+      List.find_opt
+        (fun module_ ->
+          String.equal (module_key module_.Ir.module_name) root_key)
+        program.Ir.modules
+    with
     | Some module_ -> Ok module_
     | None -> Error (Printf.sprintf "root module %s not found" root_key)
   in
   let rec find = function
     | [] -> Error (Printf.sprintf "entry %s not found" entry)
-    | Ir.LetDecl binding :: _ when String.equal binding.Ir.binding_name entry -> Ok binding.Ir.binding_type
-    | Ir.AgentDecl callable :: _ when String.equal callable.Ir.callable_name entry ->
-        Ok (Ir.TFunc (callable.Ir.callable_params, callable.Ir.callable_return_type))
-    | Ir.SkillDecl callable :: _ when String.equal callable.Ir.callable_name entry ->
-        Ok (Ir.TFunc (callable.Ir.callable_params, callable.Ir.callable_return_type))
+    | Ir.LetDecl binding :: _ when String.equal binding.Ir.binding_name entry ->
+        Ok binding.Ir.binding_type
+    | Ir.AgentDecl callable :: _
+      when String.equal callable.Ir.callable_name entry ->
+        Ok
+          (Ir.TFunc
+             (callable.Ir.callable_params, callable.Ir.callable_return_type))
+    | Ir.SkillDecl callable :: _
+      when String.equal callable.Ir.callable_name entry ->
+        Ok
+          (Ir.TFunc
+             (callable.Ir.callable_params, callable.Ir.callable_return_type))
     | _ :: rest -> find rest
   in
   find root_module.Ir.module_decls
@@ -181,24 +196,26 @@ let find_module state module_name =
   let key = module_key module_name in
   match StringMap.find_opt key state.modules with
   | Some module_ -> Ok module_
-  | None ->
+  | None -> (
       let requested = short_name module_name in
       let candidates =
         state.modules |> StringMap.bindings
         |> List.filter_map (fun (_key, module_) ->
-               if String.equal (short_name module_.Ir.module_name) requested then
-                 Some module_
-               else None)
+            if String.equal (short_name module_.Ir.module_name) requested then
+              Some module_
+            else None)
       in
-      (match candidates with
+      match candidates with
       | [ module_ ] -> Ok module_
       | [] -> Error (Printf.sprintf "unknown module %s" key)
       | _ -> Error (Printf.sprintf "ambiguous module %s" key))
 
-let build_state ?(context = Context.empty) (program : Ir.program) : runtime_state =
+let build_state ?(context = Context.empty) (program : Ir.program) :
+    runtime_state =
   let modules =
     List.fold_left
-      (fun acc module_ -> StringMap.add (module_key module_.Ir.module_name) module_ acc)
+      (fun acc module_ ->
+        StringMap.add (module_key module_.Ir.module_name) module_ acc)
       StringMap.empty program.Ir.modules
   in
   {
@@ -226,12 +243,15 @@ let rec eval_module state module_name =
       else
         let* module_ = find_module state module_name in
         state.evaluating_modules <- StringSet.add key state.evaluating_modules;
-        let base_env = make_env ~locals:[] ~opened:[] ~current_module:module_name ~state in
+        let base_env =
+          make_env ~locals:[] ~opened:[] ~current_module:module_name ~state
+        in
         let* exports, _ =
           eval_module_decls base_env module_.Ir.module_decls StringMap.empty
         in
         state.module_envs <- StringMap.add key exports state.module_envs;
-        state.evaluating_modules <- StringSet.remove key state.evaluating_modules;
+        state.evaluating_modules <-
+          StringSet.remove key state.evaluating_modules;
         Ok exports
 
 and eval_module_decls env decls exports =
@@ -259,9 +279,7 @@ and eval_module_decls env decls exports =
               }
           in
           let env = env_with_local env callable.Ir.callable_name value in
-          let exports =
-            StringMap.add callable.Ir.callable_name value exports
-          in
+          let exports = StringMap.add callable.Ir.callable_name value exports in
           eval_module_decls env rest exports
       | Ir.SkillDecl callable ->
           let value =
@@ -277,9 +295,7 @@ and eval_module_decls env decls exports =
               }
           in
           let env = env_with_local env callable.Ir.callable_name value in
-          let exports =
-            StringMap.add callable.Ir.callable_name value exports
-          in
+          let exports = StringMap.add callable.Ir.callable_name value exports in
           eval_module_decls env rest exports
       | Ir.LetDecl binding ->
           let* value = eval_binding env binding in
@@ -290,7 +306,8 @@ and eval_module_decls env decls exports =
 and eval_binding env binding =
   let* () = poll_cancellation_env env in
   match (binding.Ir.binding_recursive, binding.Ir.binding_params) with
-  | true, [] -> Error "recursive non-function bindings are unsupported at runtime"
+  | true, [] ->
+      Error "recursive non-function bindings are unsupported at runtime"
   | true, _ :: _ ->
       let rec closure_env =
         {
@@ -313,7 +330,14 @@ and eval_binding env binding =
       in
       Ok value
   | false, [] -> eval_expr env binding.Ir.binding_body
-  | false, _ -> Ok (RClosure { closure_params = binding.Ir.binding_params; closure_body = binding.Ir.binding_body; closure_env = env })
+  | false, _ ->
+      Ok
+        (RClosure
+           {
+             closure_params = binding.Ir.binding_params;
+             closure_body = binding.Ir.binding_body;
+             closure_env = env;
+           })
 
 and lookup_value env name =
   match name with
@@ -327,20 +351,23 @@ and lookup_value env name =
                 match lookup_builtin short_name with
                 | Some builtin -> Ok builtin
                 | None -> Error (Printf.sprintf "unbound value %s" short_name))
-            | opened :: rest ->
+            | opened :: rest -> (
                 let* opened_env = eval_module env.state opened in
-                (match StringMap.find_opt short_name opened_env with
+                match StringMap.find_opt short_name opened_env with
                 | Some value -> Ok value
                 | None -> lookup_opened rest)
           in
           lookup_opened env.opened)
-  | _ ->
+  | _ -> (
       let module_name = List.rev (List.tl (List.rev name)) in
       let short_name = List.hd (List.rev name) in
       let* opened_env = eval_module env.state module_name in
-      (match StringMap.find_opt short_name opened_env with
+      match StringMap.find_opt short_name opened_env with
       | Some value -> Ok value
-      | None -> Error (Printf.sprintf "unbound qualified value %s" (Syntax.Ast.string_of_qname name)))
+      | None ->
+          Error
+            (Printf.sprintf "unbound qualified value %s"
+               (Syntax.Ast.string_of_qname name)))
 
 and eval_expr env expr =
   let* () = poll_cancellation_env env in
@@ -362,15 +389,18 @@ and eval_expr env expr =
              fields)
       in
       Ok (RData (Value.VRecord fields))
-  | Ir.EField (target_expr, field_name) ->
+  | Ir.EField (target_expr, field_name) -> (
       let* target = eval_expr env target_expr in
       let* target = expect_data target_expr.Ir.expr_loc target in
-      (match target with
+      match target with
       | Value.VRecord fields -> (
           match List.assoc_opt field_name fields with
           | Some value -> Ok (RData value)
           | None -> Error (Printf.sprintf "missing record field %s" field_name))
-      | _ -> Error (Printf.sprintf "field access on non-record value at %s" (Loc.to_string expr.Ir.expr_loc)))
+      | _ ->
+          Error
+            (Printf.sprintf "field access on non-record value at %s"
+               (Loc.to_string expr.Ir.expr_loc)))
   | Ir.EConstruct (name, args) ->
       let* args = all (List.map (eval_expr env) args) in
       let* args = all (List.map (expect_data expr.Ir.expr_loc) args) in
@@ -381,13 +411,16 @@ and eval_expr env expr =
   | Ir.ELetStar (binding, body) ->
       let* value = eval_expr env binding.Ir.let_star_value in
       eval_expr (env_with_local env binding.Ir.let_star_name value) body
-  | Ir.EIf (cond, then_branch, else_branch) ->
+  | Ir.EIf (cond, then_branch, else_branch) -> (
       let* cond = eval_expr env cond in
       let* cond = expect_data expr.Ir.expr_loc cond in
-      (match cond with
+      match cond with
       | Value.VBool true -> eval_expr env then_branch
       | Value.VBool false -> eval_expr env else_branch
-      | _ -> Error (Printf.sprintf "if condition must be bool at %s" (Loc.to_string expr.Ir.expr_loc)))
+      | _ ->
+          Error
+            (Printf.sprintf "if condition must be bool at %s"
+               (Loc.to_string expr.Ir.expr_loc)))
   | Ir.EMatch (scrutinee_expr, cases) ->
       let* scrutinee = eval_expr env scrutinee_expr in
       let* scrutinee = expect_data scrutinee_expr.Ir.expr_loc scrutinee in
@@ -403,7 +436,10 @@ and eval_expr env expr =
              args)
       in
       apply_value env expr.Ir.expr_loc fn args
-  | Ir.ELambda (params, body) -> Ok (RClosure { closure_params = params; closure_body = body; closure_env = env })
+  | Ir.ELambda (params, body) ->
+      Ok
+        (RClosure
+           { closure_params = params; closure_body = body; closure_env = env })
 
 and eval_construct name args =
   let short_name = short_name name in
@@ -419,7 +455,8 @@ and eval_match env scrutinee cases =
     | [] -> Error "non-exhaustive match at runtime"
     | case :: rest -> (
         match match_pattern case.Ir.case_pattern scrutinee with
-        | Some bindings -> eval_expr (env_with_locals env bindings) case.Ir.case_body
+        | Some bindings ->
+            eval_expr (env_with_locals env bindings) case.Ir.case_body
         | None -> try_cases rest)
   in
   try_cases cases
@@ -428,7 +465,8 @@ and match_pattern pattern value =
   match pattern.Ir.pattern_desc with
   | Ir.PWildcard -> Some []
   | Ir.PVar name -> Some [ (name, RData value) ]
-  | Ir.PLiteral literal -> if equal_literal_value literal value then Some [] else None
+  | Ir.PLiteral literal ->
+      if equal_literal_value literal value then Some [] else None
   | Ir.PTuple patterns -> (
       match value with
       | Value.VTuple values when List.length patterns = List.length values ->
@@ -440,20 +478,29 @@ and match_pattern pattern value =
           let matches =
             List.map
               (fun (field_name, pattern) ->
-                match List.assoc_opt field_name values with Some value -> match_pattern pattern value | None -> None)
+                match List.assoc_opt field_name values with
+                | Some value -> match_pattern pattern value
+                | None -> None)
               fields
           in
           combine_pattern_matches matches
       | _ -> None)
-  | Ir.PConstruct (name, patterns) ->
+  | Ir.PConstruct (name, patterns) -> (
       let short = short_name name in
-      (match (short, patterns, value) with
+      match (short, patterns, value) with
       | "[]", [], Value.VList [] -> Some []
       | "::", [ head_pattern; tail_pattern ], Value.VList (head :: tail) ->
-          combine_pattern_matches [ match_pattern head_pattern head; match_pattern tail_pattern (Value.VList tail) ]
-      | "Some", [ pattern ], Value.VVariant ("Some", [ value ]) -> match_pattern pattern value
+          combine_pattern_matches
+            [
+              match_pattern head_pattern head;
+              match_pattern tail_pattern (Value.VList tail);
+            ]
+      | "Some", [ pattern ], Value.VVariant ("Some", [ value ]) ->
+          match_pattern pattern value
       | "None", [], Value.VVariant ("None", []) -> Some []
-      | _, _, Value.VVariant (ctor_name, values) when String.equal ctor_name short && List.length patterns = List.length values ->
+      | _, _, Value.VVariant (ctor_name, values)
+        when String.equal ctor_name short
+             && List.length patterns = List.length values ->
           combine_pattern_matches (List.map2 match_pattern patterns values)
       | _ -> None)
 
@@ -503,15 +550,20 @@ and apply_value env loc fn args =
   | RBuiltin name -> apply_builtin loc name args
   | RClosure closure -> apply_closure loc closure args
   | RCallable callable -> apply_callable env loc callable args
-  | RData _ -> Error (Printf.sprintf "cannot apply non-function value at %s" (Loc.to_string loc))
+  | RData _ ->
+      Error
+        (Printf.sprintf "cannot apply non-function value at %s"
+           (Loc.to_string loc))
 
 and apply_closure loc closure args =
-  if List.length args > List.length closure.closure_params then Error (Printf.sprintf "too many arguments at %s" (Loc.to_string loc))
+  if List.length args > List.length closure.closure_params then
+    Error (Printf.sprintf "too many arguments at %s" (Loc.to_string loc))
   else
     let matching, remaining =
       let rec split consumed params args =
         match (params, args) with
-        | param :: params, arg :: args -> split ((param, arg) :: consumed) params args
+        | param :: params, arg :: args ->
+            split ((param, arg) :: consumed) params args
         | params, [] -> (List.rev consumed, params)
         | [], _ -> assert false
       in
@@ -521,14 +573,20 @@ and apply_closure loc closure args =
       all
         (List.map
            (fun ((param : Ir.param), (label, value, value_loc)) ->
-             if label <> param.Ir.param_label then Error (Printf.sprintf "argument label mismatch at %s" (Loc.to_string value_loc))
+             if label <> param.Ir.param_label then
+               Error
+                 (Printf.sprintf "argument label mismatch at %s"
+                    (Loc.to_string value_loc))
              else Ok (param.Ir.param_name, value))
            matching)
     in
     let env = env_with_locals closure.closure_env bound_locals in
     match remaining with
     | [] -> eval_expr env closure.closure_body
-    | remaining -> Ok (RClosure { closure with closure_params = remaining; closure_env = env })
+    | remaining ->
+        Ok
+          (RClosure
+             { closure with closure_params = remaining; closure_env = env })
 
 and apply_builtin loc name args =
   let unlabeled =
@@ -536,7 +594,8 @@ and apply_builtin loc name args =
       (fun (label, value, value_loc) ->
         if Option.is_some label then
           Error
-            (Printf.sprintf "builtin operator %s does not accept labeled arguments at %s"
+            (Printf.sprintf
+               "builtin operator %s does not accept labeled arguments at %s"
                name (Loc.to_string value_loc))
         else expect_data value_loc value)
       args
@@ -544,18 +603,39 @@ and apply_builtin loc name args =
   let* unlabeled = all unlabeled in
   match (name, unlabeled) with
   | "not", [ Value.VBool value ] -> Ok (RData (Value.VBool (not value)))
-  | "+", [ Value.VInt lhs; Value.VInt rhs ] -> Ok (RData (Value.VInt (lhs + rhs)))
-  | "-", [ Value.VInt lhs; Value.VInt rhs ] -> Ok (RData (Value.VInt (lhs - rhs)))
-  | "*", [ Value.VInt lhs; Value.VInt rhs ] -> Ok (RData (Value.VInt (lhs * rhs)))
-  | "/", [ Value.VInt lhs; Value.VInt rhs ] -> Ok (RData (Value.VInt (lhs / rhs)))
-  | "mod", [ Value.VInt lhs; Value.VInt rhs ] -> Ok (RData (Value.VInt (lhs mod rhs)))
-  | "+.", [ Value.VFloat lhs; Value.VFloat rhs ] -> Ok (RData (Value.VFloat (lhs +. rhs)))
-  | "-.", [ Value.VFloat lhs; Value.VFloat rhs ] -> Ok (RData (Value.VFloat (lhs -. rhs)))
-  | "*.", [ Value.VFloat lhs; Value.VFloat rhs ] -> Ok (RData (Value.VFloat (lhs *. rhs)))
-  | "/.", [ Value.VFloat lhs; Value.VFloat rhs ] -> Ok (RData (Value.VFloat (lhs /. rhs)))
+  | "is_some", [ Value.VVariant ("Some", [ _ ]) ] ->
+      Ok (RData (Value.VBool true))
+  | "is_some", [ Value.VVariant ("None", []) ] -> Ok (RData (Value.VBool false))
+  | "is_none", [ Value.VVariant ("Some", [ _ ]) ] ->
+      Ok (RData (Value.VBool false))
+  | "is_none", [ Value.VVariant ("None", []) ] -> Ok (RData (Value.VBool true))
+  | "unwrap_or", [ Value.VVariant ("Some", [ value ]); _fallback ] ->
+      Ok (RData value)
+  | "unwrap_or", [ Value.VVariant ("None", []); fallback ] ->
+      Ok (RData fallback)
+  | "+", [ Value.VInt lhs; Value.VInt rhs ] ->
+      Ok (RData (Value.VInt (lhs + rhs)))
+  | "-", [ Value.VInt lhs; Value.VInt rhs ] ->
+      Ok (RData (Value.VInt (lhs - rhs)))
+  | "*", [ Value.VInt lhs; Value.VInt rhs ] ->
+      Ok (RData (Value.VInt (lhs * rhs)))
+  | "/", [ Value.VInt lhs; Value.VInt rhs ] ->
+      Ok (RData (Value.VInt (lhs / rhs)))
+  | "mod", [ Value.VInt lhs; Value.VInt rhs ] ->
+      Ok (RData (Value.VInt (lhs mod rhs)))
+  | "+.", [ Value.VFloat lhs; Value.VFloat rhs ] ->
+      Ok (RData (Value.VFloat (lhs +. rhs)))
+  | "-.", [ Value.VFloat lhs; Value.VFloat rhs ] ->
+      Ok (RData (Value.VFloat (lhs -. rhs)))
+  | "*.", [ Value.VFloat lhs; Value.VFloat rhs ] ->
+      Ok (RData (Value.VFloat (lhs *. rhs)))
+  | "/.", [ Value.VFloat lhs; Value.VFloat rhs ] ->
+      Ok (RData (Value.VFloat (lhs /. rhs)))
   | ("=" | "<>"), [ lhs; rhs ] ->
       let* equal = primitive_equal lhs rhs in
-      Ok (RData (Value.VBool (if String.equal name "=" then equal else not equal)))
+      Ok
+        (RData
+           (Value.VBool (if String.equal name "=" then equal else not equal)))
   | ("<" | "<=" | ">" | ">="), [ lhs; rhs ] ->
       let* ordering = primitive_compare lhs rhs in
       let result =
@@ -567,23 +647,34 @@ and apply_builtin loc name args =
         | _ -> false
       in
       Ok (RData (Value.VBool result))
-  | "&&", [ Value.VBool lhs; Value.VBool rhs ] -> Ok (RData (Value.VBool (lhs && rhs)))
-  | "||", [ Value.VBool lhs; Value.VBool rhs ] -> Ok (RData (Value.VBool (lhs || rhs)))
-  | "^", [ Value.VString lhs; Value.VString rhs ] -> Ok (RData (Value.VString (lhs ^ rhs)))
-  | _ -> Error (Printf.sprintf "invalid builtin application %s at %s" name (Loc.to_string loc))
+  | "&&", [ Value.VBool lhs; Value.VBool rhs ] ->
+      Ok (RData (Value.VBool (lhs && rhs)))
+  | "||", [ Value.VBool lhs; Value.VBool rhs ] ->
+      Ok (RData (Value.VBool (lhs || rhs)))
+  | "^", [ Value.VString lhs; Value.VString rhs ] ->
+      Ok (RData (Value.VString (lhs ^ rhs)))
+  | _ ->
+      Error
+        (Printf.sprintf "invalid builtin application %s at %s" name
+           (Loc.to_string loc))
 
 and apply_callable env _loc callable args =
-  if List.length args <> List.length callable.callable_params then Error "callable arity mismatch"
+  if List.length args <> List.length callable.callable_params then
+    Error "callable arity mismatch"
   else
     let* payload_fields =
       all
         (List.mapi
            (fun index ((param : Ir.param_type), (label, value, value_loc)) ->
              if label <> param.Ir.param_label then
-               Error (Printf.sprintf "argument label mismatch at %s" (Loc.to_string value_loc))
+               Error
+                 (Printf.sprintf "argument label mismatch at %s"
+                    (Loc.to_string value_loc))
              else
                let* value = expect_data value_loc value in
-               let* json = Value.to_json env.state.types param.Ir.param_typ value in
+               let* json =
+                 Value.to_json env.state.types param.Ir.param_typ value
+               in
                let field_name =
                  match param.Ir.param_label with
                  | Some label -> label
@@ -615,7 +706,9 @@ and apply_callable env _loc callable args =
       | BoundSkill target ->
           {
             Context.invocation_kind =
-              (match skill_markdown with Some _ -> Context.Local_prompt_skill | None -> Context.Bound_skill);
+              (match skill_markdown with
+              | Some _ -> Context.Local_prompt_skill
+              | None -> Context.Bound_skill);
             invocation_name = target;
             invocation_input = input;
             invocation_return_type = callable.callable_return_type;
@@ -643,19 +736,22 @@ and apply_callable env _loc callable args =
       | BoundAgent target -> (
           match Context.find_agent_handler env.state.context target with
           | Some handler ->
-              handler ~name:target ~input ~return_type:callable.callable_return_type
+              handler ~name:target ~input
+                ~return_type:callable.callable_return_type
                 ~types:env.state.types
           | None -> env.state.context.default_provider invocation)
       | BoundSkill target -> (
           match Context.find_skill_handler env.state.context target with
           | Some handler ->
-              handler ~name:target ~input ~return_type:callable.callable_return_type
+              handler ~name:target ~input
+                ~return_type:callable.callable_return_type
                 ~types:env.state.types
           | None -> (
               match skill_markdown with
               | Some markdown ->
-                  env.state.context.prompt_skill_provider ~name:target ~markdown ~input
-                    ~return_type:callable.callable_return_type ~types:env.state.types
+                  env.state.context.prompt_skill_provider ~name:target ~markdown
+                    ~input ~return_type:callable.callable_return_type
+                    ~types:env.state.types
               | None -> env.state.context.default_provider invocation))
       | InlineAgent definition ->
           env.state.context.inline_agent_provider ~name:callable.callable_name
@@ -676,15 +772,18 @@ and apply_callable env _loc callable args =
     let* value =
       Value.of_json env.state.types callable.callable_return_type output
       |> Result.map_error (fun error ->
-             Printf.sprintf
-               "provider output for %s %s does not match declared return type %s: %s (output: %s)"
-               step_kind step_name (string_of_typ callable.callable_return_type)
-               error (Yojson.Safe.to_string output))
+          Printf.sprintf
+            "provider output for %s %s does not match declared return type %s: \
+             %s (output: %s)"
+            step_kind step_name
+            (string_of_typ callable.callable_return_type)
+            error
+            (Yojson.Safe.to_string output))
     in
     Ok (RData value)
 
-let execute ?(context = Context.empty) ?(entry = "main") ?input (program : Ir.program) :
-    (execution_result, string) result =
+let execute ?(context = Context.empty) ?(entry = "main") ?input
+    (program : Ir.program) : (execution_result, string) result =
   let state = build_state ~context program in
   let* root_env = eval_module state program.Ir.root_module in
   let* entry_type = entry_type program entry in
@@ -712,16 +811,19 @@ let execute ?(context = Context.empty) ?(entry = "main") ?input (program : Ir.pr
         let input_param =
           match entry_type with
           | Ir.TFunc ([ param ], _result) -> Ok param
-          | Ir.TFunc (_ :: _ :: _, _) -> Error "entrypoints may take at most one argument"
+          | Ir.TFunc (_ :: _ :: _, _) ->
+              Error "entrypoints may take at most one argument"
           | _ -> Error "entrypoint is not a function"
         in
         let* input_param = input_param in
         let* value = Value.of_json state.types input_param.Ir.param_typ json in
-        apply_value run_env Loc.none entry_value [ (input_param.Ir.param_label, RData value, Loc.none) ]
+        apply_value run_env Loc.none entry_value
+          [ (input_param.Ir.param_label, RData value, Loc.none) ]
   in
   let output =
     match (result_value, entry_type) with
-    | RData value, Ir.TFunc (_, result_type) -> Some (Value.to_json state.types result_type value)
+    | RData value, Ir.TFunc (_, result_type) ->
+        Some (Value.to_json state.types result_type value)
     | RData value, typ -> Some (Value.to_json state.types typ value)
     | _ -> None
   in

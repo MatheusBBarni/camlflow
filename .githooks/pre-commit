@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+"$(dirname "$0")/nv-context-sync.sh"

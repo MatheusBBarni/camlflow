@@ -45,7 +45,8 @@ let rec string_of_typ = function
           (fun (param : Ir.param_type) ->
             match param.Ir.param_label with
             | None -> string_of_typ param.Ir.param_typ
-            | Some label -> Printf.sprintf "%s:%s" label (string_of_typ param.Ir.param_typ))
+            | Some label ->
+                Printf.sprintf "%s:%s" label (string_of_typ param.Ir.param_typ))
           params
       in
       String.concat " -> " (params @ [ string_of_typ result ])
@@ -54,7 +55,8 @@ let null_or to_json = function None -> `Null | Some value -> to_json value
 let string_option = null_or (fun value -> `String value)
 let int_option = null_or (fun value -> `Int value)
 
-let of_invocation ?step_index ?run_id (invocation : Runtime.Context.invocation) =
+let of_invocation ?step_index ?run_id (invocation : Runtime.Context.invocation)
+    =
   let* output_schema =
     Provider_schema.of_type ~types:invocation.Runtime.Context.invocation_types
       invocation.Runtime.Context.invocation_return_type
@@ -95,7 +97,9 @@ let to_yojson (request : t) : Yojson.Safe.t =
       ("renderedPrompt", `String request.rendered_prompt);
       ("requestedModel", string_option request.requested_model);
       ( "unsupportedSettings",
-        `List (List.map (fun value -> `String value) request.unsupported_settings) );
+        `List
+          (List.map (fun value -> `String value) request.unsupported_settings)
+      );
       ("step", int_option request.step_index);
       ("runId", string_option request.run_id);
     ]

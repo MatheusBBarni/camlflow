@@ -1,5 +1,4 @@
 let ( let* ) = Result.bind
-
 let provider_name = Provider.Opencode
 
 let read_text_file path =
@@ -8,13 +7,13 @@ let read_text_file path =
     Error (Printf.sprintf "failed to read file %s: %s" path message)
 
 let remove_if_exists path = if Sys.file_exists path then Sys.remove path
-
 let command_ok command = Sys.command command = 0
 
 let validate_preflight_status ~opencode_available =
   if not opencode_available then
     Error
-      "provider opencode is not available; install OpenCode CLI and ensure `opencode` is on PATH"
+      "provider opencode is not available; install OpenCode CLI and ensure \
+       `opencode` is on PATH"
   else Ok ()
 
 let unsupported_cli_flags (settings : Provider.settings) =
@@ -47,8 +46,8 @@ let preflight ~working_directory:_ ~settings =
 let trace_start settings ~step ~kind ~name ~model =
   if settings.Provider.trace_provider then
     Printf.eprintf
-      "provider[%d] start provider=opencode kind=%s name=%s model=%s\n%!"
-      step kind name
+      "provider[%d] start provider=opencode kind=%s name=%s model=%s\n%!" step
+      kind name
       (match model with Some model -> model | None -> "(provider default)")
 
 let trace_end settings ~step ~status ~elapsed =
@@ -79,7 +78,9 @@ let build_exec_args ~working_directory ~settings ~model ~prompt =
       "--dangerously-skip-permissions";
     ]
   in
-  let model_args = match model with Some model -> [ "--model"; model ] | None -> [] in
+  let model_args =
+    match model with Some model -> [ "--model"; model ] | None -> []
+  in
   let reasoning_args =
     match settings.Provider.reasoning with
     | Some reasoning -> [ "--variant"; opencode_reasoning_value reasoning ]
@@ -93,11 +94,12 @@ let json_line_events stdout =
     | line :: rest when String.trim line = "" -> loop acc rest
     | line :: rest ->
         let* json =
-          try Ok (Yojson.Safe.from_string line) with
-          | Yojson.Json_error message ->
-              Error
-                (Printf.sprintf "opencode returned invalid JSON event: %s (line: %s)"
-                   message line)
+          try Ok (Yojson.Safe.from_string line)
+          with Yojson.Json_error message ->
+            Error
+              (Printf.sprintf
+                 "opencode returned invalid JSON event: %s (line: %s)" message
+                 line)
         in
         loop (json :: acc) rest
   in
@@ -112,24 +114,21 @@ let rec nested_message = function
   | `Assoc fields -> (
       match assoc_string_field "message" fields with
       | Some message -> Some message
-      | None ->
-          List.find_map
-            (fun (_, value) -> nested_message value)
-            fields)
+      | None -> List.find_map (fun (_, value) -> nested_message value) fields)
   | `List items -> List.find_map nested_message items
   | _ -> None
 
 let last_error_message events =
   List.rev events
   |> List.find_map (function
-       | `Assoc fields -> (
-           match assoc_string_field "type" fields with
-           | Some "error" -> (
-               match List.assoc_opt "error" fields with
-               | Some error -> nested_message error
-               | None -> nested_message (`Assoc fields))
-           | _ -> None)
-       | _ -> None)
+    | `Assoc fields -> (
+        match assoc_string_field "type" fields with
+        | Some "error" -> (
+            match List.assoc_opt "error" fields with
+            | Some error -> nested_message error
+            | None -> nested_message (`Assoc fields))
+        | _ -> None)
+    | _ -> None)
 
 let text_chunks events =
   List.filter_map
@@ -138,7 +137,8 @@ let text_chunks events =
           match assoc_string_field "type" fields with
           | Some "text" -> (
               match List.assoc_opt "part" fields with
-              | Some (`Assoc part_fields) -> assoc_string_field "text" part_fields
+              | Some (`Assoc part_fields) ->
+                  assoc_string_field "text" part_fields
               | _ -> None)
           | _ -> None)
       | _ -> None)
@@ -165,27 +165,19 @@ let response_text_or_error ~trace_kind ~trace_name events =
 
 let parse_wrapped_response ~trace_kind ~trace_name text =
   let* wrapped_json =
-    try Ok (Yojson.Safe.from_string (String.trim text)) with
-    | Yojson.Json_error message ->
-        Error
-          (Printf.sprintf
-             "opencode returned invalid JSON for %s %s: %s (output: %s)"
-             trace_kind trace_name message (String.trim text))
-  in
-  match wrapped_json with
-  | `Assoc fields -> (
-      match List.assoc_opt "result" fields with
-      | Some result -> Ok result
-      | None ->
-          Error
-            (Printf.sprintf
-               "opencode returned JSON without result field for %s %s: %s"
-               trace_kind trace_name (Yojson.Safe.to_string wrapped_json)))
-  | _ ->
+    try Ok (Yojson.Safe.from_string (String.trim text))
+    with Yojson.Json_error message ->
       Error
         (Printf.sprintf
-           "opencode returned non-object JSON wrapper for %s %s: %s" trace_kind
-           trace_name (Yojson.Safe.to_string wrapped_json))
+           "opencode returned invalid JSON for %s %s: %s (output: %s)"
+           trace_kind trace_name message (String.trim text))
+  in
+  Provider_schema.unwrap_wrapped_response_json wrapped_json
+  |> Result.map_error (fun error ->
+      Printf.sprintf
+        "opencode returned invalid model response for %s %s: %s (output: %s)"
+        trace_kind trace_name error
+        (Yojson.Safe.to_string wrapped_json))
 
 let run_opencode_exec ~working_directory ~settings ~prompt ~schema:_ ~model =
   let stdout_path = Filename.temp_file "camlflow-opencode-stdout-" ".log" in
@@ -199,11 +191,13 @@ let run_opencode_exec ~working_directory ~settings ~prompt ~schema:_ ~model =
           (build_exec_args ~working_directory ~settings ~model ~prompt)
       in
       let stdout_fd =
-        Unix.openfile stdout_path [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ]
+        Unix.openfile stdout_path
+          [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ]
           0o644
       in
       let stderr_fd =
-        Unix.openfile stderr_path [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ]
+        Unix.openfile stderr_path
+          [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ]
           0o644
       in
       let status =
@@ -240,7 +234,8 @@ let run_opencode_exec ~working_directory ~settings ~prompt ~schema:_ ~model =
                    if String.equal stderr "" then String.trim stdout else stderr)))
 
 let unsupported_settings_error (request : Effect_request.t) settings =
-  Printf.sprintf "provider opencode does not support inline setting(s) %s for %s %s"
+  Printf.sprintf
+    "provider opencode does not support inline setting(s) %s for %s %s"
     (String.concat ", " settings)
     (match request.Effect_request.kind with
     | Runtime.Context.Inline_agent -> "agent"
@@ -249,7 +244,8 @@ let unsupported_settings_error (request : Effect_request.t) settings =
     | Runtime.Context.Local_prompt_skill -> "local-prompt-skill")
     request.Effect_request.name
 
-let execute_request ~working_directory ~settings ~step (request : Effect_request.t) =
+let execute_request ~working_directory ~settings ~step
+    (request : Effect_request.t) =
   let* wrapped_schema =
     Provider_schema.wrapped_response_schema request.Effect_request.output_schema
   in
@@ -312,10 +308,12 @@ let build_runtime_context ~working_directory ~settings context =
   let step_counter = ref 0 in
   let run invocation =
     incr step_counter;
-    execute_invocation ~working_directory ~settings ~step:!step_counter invocation
+    execute_invocation ~working_directory ~settings ~step:!step_counter
+      invocation
   in
   let context =
-    Runtime.Context.with_default_provider context (fun invocation -> run invocation)
+    Runtime.Context.with_default_provider context (fun invocation ->
+        run invocation)
   in
   let context =
     Runtime.Context.with_prompt_skill_provider context
@@ -327,8 +325,10 @@ let build_runtime_context ~working_directory ~settings context =
             invocation_input = input;
             invocation_return_type = return_type;
             invocation_types = types;
-            invocation_working_directory = context.Runtime.Context.working_directory;
-            invocation_skills_directory = context.Runtime.Context.skills_directory;
+            invocation_working_directory =
+              context.Runtime.Context.working_directory;
+            invocation_skills_directory =
+              context.Runtime.Context.skills_directory;
             invocation_markdown = Some markdown;
             invocation_definition = None;
           })
@@ -343,8 +343,10 @@ let build_runtime_context ~working_directory ~settings context =
             invocation_input = input;
             invocation_return_type = return_type;
             invocation_types = types;
-            invocation_working_directory = context.Runtime.Context.working_directory;
-            invocation_skills_directory = context.Runtime.Context.skills_directory;
+            invocation_working_directory =
+              context.Runtime.Context.working_directory;
+            invocation_skills_directory =
+              context.Runtime.Context.skills_directory;
             invocation_markdown = None;
             invocation_definition = Some definition;
           })

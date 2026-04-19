@@ -1,6 +1,4 @@
-type id =
-  | Int of int
-  | String of string
+type id = Int of int | String of string
 
 let ( let* ) = Result.bind
 
@@ -18,26 +16,22 @@ let string_of_id = function
   | String value -> value
 
 let request ?id ?params method_ =
-  let id_fields = match id with None -> [] | Some id -> [ ("id", id_to_yojson id) ] in
-  let param_fields = match params with None -> [] | Some params -> [ ("params", params) ] in
+  let id_fields =
+    match id with None -> [] | Some id -> [ ("id", id_to_yojson id) ]
+  in
+  let param_fields =
+    match params with None -> [] | Some params -> [ ("params", params) ]
+  in
   `Assoc
     ([ ("jsonrpc", `String "2.0"); ("method", `String method_) ]
     @ id_fields @ param_fields)
 
 let success id result =
   `Assoc
-    [
-      ("jsonrpc", `String "2.0");
-      ("id", id_to_yojson id);
-      ("result", result);
-    ]
+    [ ("jsonrpc", `String "2.0"); ("id", id_to_yojson id); ("result", result) ]
 
 let error ?id ?data ~code ~message () =
-  let id_field =
-    match id with
-    | Some id -> id_to_yojson id
-    | None -> `Null
-  in
+  let id_field = match id with Some id -> id_to_yojson id | None -> `Null in
   `Assoc
     [
       ("jsonrpc", `String "2.0");
@@ -73,7 +67,10 @@ let request_of_yojson = function
         | Some (`String version) -> Ok version
         | _ -> Error "missing jsonrpc version"
       in
-      let* () = if String.equal version "2.0" then Ok () else Error "unsupported jsonrpc version" in
+      let* () =
+        if String.equal version "2.0" then Ok ()
+        else Error "unsupported jsonrpc version"
+      in
       let* request_method =
         match List.assoc_opt "method" fields with
         | Some (`String method_) -> Ok method_
@@ -91,14 +88,18 @@ let request_of_yojson = function
 
 let response_of_yojson = function
   | `Assoc fields ->
-      if List.mem_assoc "method" fields then Error "expected JSON-RPC response object"
+      if List.mem_assoc "method" fields then
+        Error "expected JSON-RPC response object"
       else
         let* version =
           match List.assoc_opt "jsonrpc" fields with
           | Some (`String version) -> Ok version
           | _ -> Error "missing jsonrpc version"
         in
-        let* () = if String.equal version "2.0" then Ok () else Error "unsupported jsonrpc version" in
+        let* () =
+          if String.equal version "2.0" then Ok ()
+          else Error "unsupported jsonrpc version"
+        in
         let response_id =
           match List.assoc_opt "id" fields with
           | None | Some `Null -> Ok None

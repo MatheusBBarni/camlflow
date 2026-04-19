@@ -40,9 +40,7 @@ type invocation = {
 }
 
 type default_provider = invocation -> (Yojson.Safe.t, string) result
-
 type effect_observer = invocation -> output:Yojson.Safe.t -> unit
-
 type cancellation_check = unit -> (unit, string) result
 
 type t = {
@@ -60,14 +58,17 @@ type t = {
 let default_named_handler ~name:_ ~input:_ ~return_type ~types =
   Value.default_json types return_type
 
-let default_inline_agent_provider ~name:_ ~definition:_ ~input:_ ~return_type ~types =
+let default_inline_agent_provider ~name:_ ~definition:_ ~input:_ ~return_type
+    ~types =
   Value.default_json types return_type
 
-let default_prompt_skill_provider ~name:_ ~markdown:_ ~input:_ ~return_type ~types =
+let default_prompt_skill_provider ~name:_ ~markdown:_ ~input:_ ~return_type
+    ~types =
   Value.default_json types return_type
 
 let default_provider invocation =
-  Value.default_json invocation.invocation_types invocation.invocation_return_type
+  Value.default_json invocation.invocation_types
+    invocation.invocation_return_type
 
 let ignore_effect _invocation ~output:_ = ()
 let default_cancellation_check () = Ok ()

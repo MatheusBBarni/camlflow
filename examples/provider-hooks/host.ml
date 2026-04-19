@@ -1,11 +1,7 @@
 let ( let* ) = Result.bind
-
 let workflow_path = "examples/provider-hooks/workflow.cml"
 let skills_dir = "examples/provider-hooks/skills"
-
-let or_fail = function
-  | Ok value -> value
-  | Error error -> failwith error
+let or_fail = function Ok value -> value | Error error -> failwith error
 
 let string_of_kind = function
   | Camlflow.Runtime.Context.Bound_agent -> "bound-agent"
@@ -60,5 +56,4 @@ let () =
   | Some json -> print_endline (Yojson.Safe.pretty_to_string json)
   | None -> print_endline "null");
   List.rev !observed
-  |> List.iter (fun (kind, name) ->
-         Printf.printf "observed: %s %s\n" kind name)
+  |> List.iter (fun (kind, name) -> Printf.printf "observed: %s %s\n" kind name)

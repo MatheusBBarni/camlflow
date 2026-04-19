@@ -3,15 +3,8 @@ module StringSet = Set.Make (String)
 
 let ( let* ) = Result.bind
 
-type position = {
-  line : int;
-  character : int;
-}
-
-type range = {
-  start_pos : position;
-  end_pos : position;
-}
+type position = { line : int; character : int }
+type range = { start_pos : position; end_pos : position }
 
 type diagnostic = {
   uri : string;
@@ -121,16 +114,15 @@ type walk_env = {
 let module_key = Syntax.Ast.string_of_qname
 
 let normalize_path path =
-  if Filename.is_relative path then Filename.concat (Sys.getcwd ()) path else path
+  if Filename.is_relative path then Filename.concat (Sys.getcwd ()) path
+  else path
 
 let hex_digit value =
   Char.chr
-    (if value < 10 then Char.code '0' + value
-     else Char.code 'A' + (value - 10))
+    (if value < 10 then Char.code '0' + value else Char.code 'A' + (value - 10))
 
 let is_unreserved = function
-  | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '-' | '_' | '.' | '~' | '/' ->
-      true
+  | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '-' | '_' | '.' | '~' | '/' -> true
   | _ -> false
 
 let uri_of_path path =
@@ -154,8 +146,9 @@ let decode_hex = function
 
 let path_of_uri uri =
   let prefix = "file://" in
-  if String.length uri < String.length prefix
-     || String.sub uri 0 (String.length prefix) <> prefix
+  if
+    String.length uri < String.length prefix
+    || String.sub uri 0 (String.length prefix) <> prefix
   then Error (Printf.sprintf "unsupported URI: %s" uri)
   else
     let encoded =
@@ -164,7 +157,8 @@ let path_of_uri uri =
     in
     let buffer = Buffer.create (String.length encoded) in
     let rec loop index =
-      if index >= String.length encoded then Ok (normalize_path (Buffer.contents buffer))
+      if index >= String.length encoded then
+        Ok (normalize_path (Buffer.contents buffer))
       else
         match encoded.[index] with
         | '%' when index + 2 < String.length encoded ->
@@ -229,10 +223,11 @@ let range_for_name_in_loc builder path (loc : Loc.t) ~name ~prefer_last
   let path = normalize_path path in
   match StringMap.find_opt path builder.files with
   | None -> basic_range_of_loc loc
-  | Some file ->
+  | Some file -> (
       let start_offset = max 0 loc.start_pos.offset in
       let end_offset = min (String.length file.text) loc.end_pos.offset in
-      if start_offset >= end_offset || String.length name = 0 then basic_range_of_loc loc
+      if start_offset >= end_offset || String.length name = 0 then
+        basic_range_of_loc loc
       else
         let snippet =
           String.sub file.text start_offset (end_offset - start_offset)
@@ -240,8 +235,7 @@ let range_for_name_in_loc builder path (loc : Loc.t) ~name ~prefer_last
         let limit = String.length snippet - String.length name in
         let matches = ref [] in
         for index = 0 to max (-1) limit do
-          if index >= 0
-             && String.sub snippet index (String.length name) = name
+          if index >= 0 && String.sub snippet index (String.length name) = name
           then
             let before_ok =
               index = 0
@@ -253,8 +247,9 @@ let range_for_name_in_loc builder path (loc : Loc.t) ~name ~prefer_last
             let after_index = index + String.length name in
             let after_ok =
               after_index >= String.length snippet
-              || let ch = snippet.[after_index] in
-                 not (is_ident_char ch || ch = '.')
+              ||
+              let ch = snippet.[after_index] in
+              not (is_ident_char ch || ch = '.')
             in
             if before_ok && after_ok then matches := index :: !matches
         done;
@@ -262,11 +257,12 @@ let range_for_name_in_loc builder path (loc : Loc.t) ~name ~prefer_last
         | [] -> basic_range_of_loc loc
         | matches ->
             let chosen =
-              if prefer_last then List.hd (List.rev matches) else List.hd matches
+              if prefer_last then List.hd (List.rev matches)
+              else List.hd matches
             in
             let start_offset = start_offset + chosen in
             let end_offset = start_offset + String.length name in
-            range_of_offsets file start_offset end_offset
+            range_of_offsets file start_offset end_offset)
 
 let range_size range =
   ((range.end_pos.line - range.start_pos.line) * 1_000_000)
@@ -320,20 +316,44 @@ let add_document_symbols builder uri symbols =
   builder.document_symbols_by_uri <-
     StringMap.add uri symbols builder.document_symbols_by_uri
 
-let add_symbol builder (symbol : symbol) = Hashtbl.replace builder.symbols symbol.id symbol
+let add_symbol builder (symbol : symbol) =
+  Hashtbl.replace builder.symbols symbol.id symbol
 
 let builtin_type_names =
-  StringSet.of_list [ "string"; "int"; "bool"; "float"; "unit"; "list"; "option" ]
+  StringSet.of_list
+    [ "string"; "int"; "bool"; "float"; "unit"; "list"; "option" ]
 
 let builtin_value_names =
   StringSet.of_list
     [
-      "+"; "-"; "*"; "/"; "mod"; "+."; "-."; "*."; "/."; "="; "<>";
-      "<"; "<="; ">"; ">="; "&&"; "||"; "not"; "^";
+      "+";
+      "-";
+      "*";
+      "/";
+      "mod";
+      "+.";
+      "-.";
+      "*.";
+      "/.";
+      "=";
+      "<>";
+      "<";
+      "<=";
+      ">";
+      ">=";
+      "&&";
+      "||";
+      "not";
+      "^";
     ]
 
 let is_builtin_constructor = function
-  | [ "Some" ] | [ "None" ] | [ "[]" ] | [ "::" ] | [ "true" ] | [ "false" ]
+  | [ "Some" ]
+  | [ "None" ]
+  | [ "[]" ]
+  | [ "::" ]
+  | [ "true" ]
+  | [ "false" ]
   | [ "()" ] ->
       true
   | _ -> false
@@ -376,27 +396,35 @@ let rec string_of_type_expr (typ : Syntax.Ast.type_expr) =
         match param.Syntax.Ast.param_label with
         | None -> string_of_type_expr param.Syntax.Ast.param_typ
         | Some label ->
-            Printf.sprintf "%s:%s" label (string_of_type_expr param.Syntax.Ast.param_typ)
+            Printf.sprintf "%s:%s" label
+              (string_of_type_expr param.Syntax.Ast.param_typ)
       in
       Printf.sprintf "%s -> %s" left (string_of_type_expr result)
 
 let string_of_param (param : Syntax.Ast.param) =
   match param.Syntax.Ast.param_annotation with
-  | Some annotation ->
-      (match param.Syntax.Ast.param_label with
-      | None -> Printf.sprintf "%s:%s" param.param_name (string_of_type_expr annotation)
+  | Some annotation -> (
+      match param.Syntax.Ast.param_label with
+      | None ->
+          Printf.sprintf "%s:%s" param.param_name
+            (string_of_type_expr annotation)
       | Some label ->
           Printf.sprintf "~%s:%s" label (string_of_type_expr annotation))
   | None -> param.param_name
 
 let render_binding_hover (binding : Syntax.Ast.binding) =
   match binding.Syntax.Ast.binding_annotation with
-  | Some annotation -> Some (Printf.sprintf "let %s : %s" binding.binding_name (string_of_type_expr annotation))
+  | Some annotation ->
+      Some
+        (Printf.sprintf "let %s : %s" binding.binding_name
+           (string_of_type_expr annotation))
   | None ->
-      if binding.binding_params = [] then Some (Printf.sprintf "let %s" binding.binding_name)
+      if binding.binding_params = [] then
+        Some (Printf.sprintf "let %s" binding.binding_name)
       else
         let params =
-          binding.binding_params |> List.map string_of_param |> String.concat " -> "
+          binding.binding_params |> List.map string_of_param
+          |> String.concat " -> "
         in
         Some (Printf.sprintf "let %s : %s -> ?" binding.binding_name params)
 
@@ -404,14 +432,16 @@ let render_callable_hover keyword (callable : Syntax.Ast.callable_decl) =
   let params =
     callable.callable_params
     |> List.map (fun (param : Syntax.Ast.param_type) ->
-           match param.Syntax.Ast.param_label with
-           | None -> string_of_type_expr param.Syntax.Ast.param_typ
-           | Some label ->
-               Printf.sprintf "%s:%s" label (string_of_type_expr param.Syntax.Ast.param_typ))
+        match param.Syntax.Ast.param_label with
+        | None -> string_of_type_expr param.Syntax.Ast.param_typ
+        | Some label ->
+            Printf.sprintf "%s:%s" label
+              (string_of_type_expr param.Syntax.Ast.param_typ))
     |> String.concat " -> "
   in
   let suffix =
-    if String.equal params "" then string_of_type_expr callable.callable_return_type
+    if String.equal params "" then
+      string_of_type_expr callable.callable_return_type
     else
       Printf.sprintf "%s -> %s" params
         (string_of_type_expr callable.callable_return_type)
@@ -425,27 +455,26 @@ let render_type_decl_hover (decl : Syntax.Ast.type_decl) =
     | Syntax.Ast.Type_record fields ->
         fields
         |> List.map (fun field ->
-               Printf.sprintf "%s : %s" field.Syntax.Ast.field_name
-                 (string_of_type_expr field.Syntax.Ast.field_type))
-        |> String.concat "; "
-        |> Printf.sprintf "{ %s }"
+            Printf.sprintf "%s : %s" field.Syntax.Ast.field_name
+              (string_of_type_expr field.Syntax.Ast.field_type))
+        |> String.concat "; " |> Printf.sprintf "{ %s }"
     | Syntax.Ast.Type_variant ctors ->
         ctors
         |> List.map (fun ctor ->
-               match ctor.Syntax.Ast.ctor_args with
-               | [] -> ctor.Syntax.Ast.ctor_name
-               | args ->
-                   Printf.sprintf "%s of %s" ctor.Syntax.Ast.ctor_name
-                     (args |> List.map string_of_type_expr |> String.concat " * "))
+            match ctor.Syntax.Ast.ctor_args with
+            | [] -> ctor.Syntax.Ast.ctor_name
+            | args ->
+                Printf.sprintf "%s of %s" ctor.Syntax.Ast.ctor_name
+                  (args |> List.map string_of_type_expr |> String.concat " * "))
         |> String.concat " | "
   in
   Some (Printf.sprintf "type %s = %s" decl.type_name body)
 
 let render_field_hover parent_name (field : Syntax.Ast.record_field) =
   Some
-    (Printf.sprintf "field %s : %s\nparent type: %s"
-       field.Syntax.Ast.field_name
-       (string_of_type_expr field.Syntax.Ast.field_type) parent_name)
+    (Printf.sprintf "field %s : %s\nparent type: %s" field.Syntax.Ast.field_name
+       (string_of_type_expr field.Syntax.Ast.field_type)
+       parent_name)
 
 let render_ctor_hover parent_name (ctor : Syntax.Ast.variant_ctor) =
   let text =
@@ -466,8 +495,8 @@ let symbol_id kind module_name name =
   Printf.sprintf "%s:%s:%s" kind (string_of_qname module_name) name
 
 let local_symbol_id path loc kind name =
-  Printf.sprintf "local:%s:%d:%s:%s" (normalize_path path) loc.Loc.start_pos.offset
-    kind name
+  Printf.sprintf "local:%s:%d:%s:%s" (normalize_path path)
+    loc.Loc.start_pos.offset kind name
 
 let top_level_symbol builder module_ name kind loc hover renameable =
   let path = normalize_path module_.Syntax.Ast.module_path in
@@ -501,7 +530,8 @@ let top_level_symbol builder module_ name kind loc hover renameable =
     }
   in
   add_symbol builder symbol;
-  add_occurrence builder { symbol_id = id; uri; range = selection_range; role = Declaration };
+  add_occurrence builder
+    { symbol_id = id; uri; range = selection_range; role = Declaration };
   (id, symbol)
 
 let create_local_symbol builder path loc name kind annotation =
@@ -527,7 +557,8 @@ let create_local_symbol builder path loc name kind annotation =
     }
   in
   add_symbol builder symbol;
-  add_occurrence builder { symbol_id = id; uri; range = selection_range; role = Declaration };
+  add_occurrence builder
+    { symbol_id = id; uri; range = selection_range; role = Declaration };
   id
 
 let rec read_text_file path =
@@ -568,11 +599,12 @@ let load_program ~overlays ~root_path ~include_paths =
             (fun acc dependency ->
               let* () = acc in
               let* resolved =
-                Project_loader.resolve_module_path ~from_dir
-                  ~include_paths dependency
+                Project_loader.resolve_module_path ~from_dir ~include_paths
+                  dependency
               in
-              visit ~from_dir:(Filename.dirname resolved) ~module_name:dependency
-                ~path:resolved)
+              visit
+                ~from_dir:(Filename.dirname resolved)
+                ~module_name:dependency ~path:resolved)
             (Ok ()) dependencies
         in
         let () = state_modules := StringMap.add key module_ !state_modules in
@@ -583,8 +615,9 @@ let load_program ~overlays ~root_path ~include_paths =
   in
   let root_module = Parsing_driver.module_name_of_basename root_path in
   let* () =
-    visit ~from_dir:(Filename.dirname root_path) ~module_name:root_module
-      ~path:root_path
+    visit
+      ~from_dir:(Filename.dirname root_path)
+      ~module_name:root_module ~path:root_path
   in
   let modules = !state_modules |> StringMap.bindings |> List.map snd in
   Ok { program = { Syntax.Ast.root_module; modules }; files = !state_files }
@@ -630,7 +663,8 @@ let parse_loc_suffix message =
   | Some index -> (
       let prefix = String.sub message 0 index in
       let suffix =
-        String.sub message (index + String.length marker)
+        String.sub message
+          (index + String.length marker)
           (String.length message - index - String.length marker)
       in
       try
@@ -640,7 +674,8 @@ let parse_loc_suffix message =
               ( prefix,
                 {
                   Loc.file;
-                  start_pos = { line = start_line; column = start_col; offset = 0 };
+                  start_pos =
+                    { line = start_line; column = start_col; offset = 0 };
                   end_pos = { line = end_line; column = end_col; offset = 0 };
                 } ))
       with _ -> None)
@@ -685,8 +720,8 @@ let unique_or_error kind name = function
 let lookup_module env (name : Syntax.Ast.qname) =
   let requested = short_name name in
   if env.current_summary.module_name = name then Ok env.current_summary
-  else if String.equal (short_name env.current_summary.module_name) requested then
-    Ok env.current_summary
+  else if String.equal (short_name env.current_summary.module_name) requested
+  then Ok env.current_summary
   else
     match StringMap.find_opt (module_key name) env.catalogs with
     | Some summary -> Ok summary
@@ -694,40 +729,41 @@ let lookup_module env (name : Syntax.Ast.qname) =
         let candidates =
           env.catalogs |> StringMap.bindings
           |> List.filter_map (fun (_key, summary) ->
-                 if String.equal (short_name summary.module_name) requested then
-                   Some summary
-                 else None)
+              if String.equal (short_name summary.module_name) requested then
+                Some summary
+              else None)
         in
         unique_or_error "module" (string_of_qname name) candidates
 
 let lookup_type env (name : Syntax.Ast.qname) =
   match List.rev name with
   | [] -> Error "empty type name"
-  | short :: rev_mod ->
+  | short :: rev_mod -> (
       let module_path = List.rev rev_mod in
       if module_path = [] then
-        (match StringMap.find_opt short env.current_summary.type_ids with
+        match StringMap.find_opt short env.current_summary.type_ids with
         | Some symbol_id -> Ok symbol_id
         | None ->
             let candidates =
               opened_modules env
               |> List.filter_map (fun summary ->
-                     StringMap.find_opt short summary.type_ids)
+                  StringMap.find_opt short summary.type_ids)
             in
-            unique_or_error "type" short candidates)
+            unique_or_error "type" short candidates
       else
         let* summary = lookup_module env module_path in
-        (match StringMap.find_opt short summary.type_ids with
+        match StringMap.find_opt short summary.type_ids with
         | Some symbol_id -> Ok symbol_id
-        | None -> Error (Printf.sprintf "unbound type %s" (string_of_qname name)))
+        | None ->
+            Error (Printf.sprintf "unbound type %s" (string_of_qname name)))
 
 let lookup_value env (name : Syntax.Ast.qname) =
   match List.rev name with
   | [] -> Error "empty value name"
-  | short :: rev_mod ->
+  | short :: rev_mod -> (
       let module_path = List.rev rev_mod in
       if module_path = [] then
-        (match StringMap.find_opt short env.locals with
+        match StringMap.find_opt short env.locals with
         | Some symbol_id -> Ok symbol_id
         | None -> (
             match StringMap.find_opt short env.current_summary.value_ids with
@@ -736,12 +772,12 @@ let lookup_value env (name : Syntax.Ast.qname) =
                 let candidates =
                   opened_modules env
                   |> List.filter_map (fun summary ->
-                         StringMap.find_opt short summary.value_ids)
+                      StringMap.find_opt short summary.value_ids)
                 in
-                unique_or_error "value" short candidates))
+                unique_or_error "value" short candidates)
       else
         let* summary = lookup_module env module_path in
-        (match StringMap.find_opt short summary.value_ids with
+        match StringMap.find_opt short summary.value_ids with
         | Some symbol_id -> Ok symbol_id
         | None ->
             Error (Printf.sprintf "unbound value %s" (string_of_qname name)))
@@ -752,18 +788,18 @@ let lookup_constructor env (name : Syntax.Ast.qname) =
   | short :: rev_mod ->
       let module_path = List.rev rev_mod in
       if module_path = [] then
-        (match StringMap.find_opt short env.current_summary.ctor_ids with
+        match StringMap.find_opt short env.current_summary.ctor_ids with
         | Some symbol_ids when symbol_ids <> [] ->
             unique_or_error "constructor" short symbol_ids
         | _ ->
             let candidates =
               opened_modules env
               |> List.concat_map (fun summary ->
-                     match StringMap.find_opt short summary.ctor_ids with
-                     | Some items -> items
-                     | None -> [])
+                  match StringMap.find_opt short summary.ctor_ids with
+                  | Some items -> items
+                  | None -> [])
             in
-            unique_or_error "constructor" short candidates)
+            unique_or_error "constructor" short candidates
       else
         let* summary = lookup_module env module_path in
         let candidates =
@@ -775,14 +811,15 @@ let lookup_constructor env (name : Syntax.Ast.qname) =
 
 let lookup_field env name =
   match StringMap.find_opt name env.current_summary.field_ids with
-  | Some symbol_ids when symbol_ids <> [] -> unique_or_error "field" name symbol_ids
+  | Some symbol_ids when symbol_ids <> [] ->
+      unique_or_error "field" name symbol_ids
   | _ ->
       let candidates =
         opened_modules env
         |> List.concat_map (fun summary ->
-               match StringMap.find_opt name summary.field_ids with
-               | Some items -> items
-               | None -> [])
+            match StringMap.find_opt name summary.field_ids with
+            | Some items -> items
+            | None -> [])
       in
       unique_or_error "field" name candidates
 
@@ -804,12 +841,7 @@ let add_reference_occurrence env symbol_id path loc name ~prefer_last =
     range_for_name_in_loc env.builder path loc ~name ~prefer_last ()
   in
   add_occurrence env.builder
-    {
-      symbol_id;
-      uri = uri_of_path path;
-      range;
-      role = Reference;
-    }
+    { symbol_id; uri = uri_of_path path; range; role = Reference }
 
 let add_qname_reference_occurrence env symbol_id path loc name =
   let terminal_name = terminal_name_of_qname name in
@@ -818,12 +850,7 @@ let add_qname_reference_occurrence env symbol_id path loc name =
       ~prefer_last:true ~allow_qualified_prefix:true ()
   in
   add_occurrence env.builder
-    {
-      symbol_id;
-      uri = uri_of_path path;
-      range;
-      role = Reference;
-    }
+    { symbol_id; uri = uri_of_path path; range; role = Reference }
 
 let add_module_prefix_reference env path loc name =
   match module_prefix_of_qname name with
@@ -832,23 +859,24 @@ let add_module_prefix_reference env path loc name =
       match lookup_module env module_name with
       | Ok summary ->
           add_reference_occurrence env summary.module_symbol_id path loc
-            (string_of_qname module_name) ~prefer_last:false
+            (string_of_qname module_name)
+            ~prefer_last:false
       | Error message -> add_resolution_diagnostic env loc message)
 
 let rec walk_type_expr env path (typ : Syntax.Ast.type_expr) =
   match typ.Syntax.Ast.type_desc with
   | Syntax.Ast.TEConstr (name, args) ->
       add_module_prefix_reference env path typ.type_loc name;
-      if
-        not
-          (match name with
-          | [ single ] -> StringSet.mem single builtin_type_names
-          | _ -> false)
-      then
-        (match lookup_type env name with
-        | Ok symbol_id ->
-            add_qname_reference_occurrence env symbol_id path typ.type_loc name
-        | Error message -> add_resolution_diagnostic env typ.type_loc message);
+      (if
+         not
+           (match name with
+           | [ single ] -> StringSet.mem single builtin_type_names
+           | _ -> false)
+       then
+         match lookup_type env name with
+         | Ok symbol_id ->
+             add_qname_reference_occurrence env symbol_id path typ.type_loc name
+         | Error message -> add_resolution_diagnostic env typ.type_loc message);
       List.iter (walk_type_expr env path) args
   | Syntax.Ast.TETuple items -> List.iter (walk_type_expr env path) items
   | Syntax.Ast.TEArrow (param, result) ->
@@ -876,18 +904,19 @@ let rec bind_pattern_locals env path locals (pattern : Syntax.Ast.pattern) =
         locals fields
   | Syntax.Ast.PConstruct (name, args) ->
       add_module_prefix_reference env path pattern.pattern_loc name;
-      if not (is_builtin_constructor name) then
-        (match lookup_constructor env name with
-        | Ok symbol_id ->
-            add_qname_reference_occurrence env symbol_id path pattern.pattern_loc
-              name
-        | Error message -> add_resolution_diagnostic env pattern.pattern_loc message);
+      (if not (is_builtin_constructor name) then
+         match lookup_constructor env name with
+         | Ok symbol_id ->
+             add_qname_reference_occurrence env symbol_id path
+               pattern.pattern_loc name
+         | Error message ->
+             add_resolution_diagnostic env pattern.pattern_loc message);
       List.fold_left (bind_pattern_locals env path) locals args
 
 let rec walk_expr env path (expr : Syntax.Ast.expr) =
   match expr.Syntax.Ast.expr_desc with
   | Syntax.Ast.ELiteral _ -> ()
-  | Syntax.Ast.EVar name ->
+  | Syntax.Ast.EVar name -> (
       add_module_prefix_reference env path expr.expr_loc name;
       if
         not
@@ -895,27 +924,28 @@ let rec walk_expr env path (expr : Syntax.Ast.expr) =
           | [ single ] -> StringSet.mem single builtin_value_names
           | _ -> false)
       then
-        (match lookup_value env name with
+        match lookup_value env name with
         | Ok symbol_id ->
             add_qname_reference_occurrence env symbol_id path expr.expr_loc name
         | Error message -> add_resolution_diagnostic env expr.expr_loc message)
   | Syntax.Ast.ETuple items -> List.iter (walk_expr env path) items
   | Syntax.Ast.ERecord fields ->
       List.iter (fun (_name, value) -> walk_expr env path value) fields
-  | Syntax.Ast.EField (target, field_name) ->
+  | Syntax.Ast.EField (target, field_name) -> (
       walk_expr env path target;
-      (match lookup_field env field_name with
+      match lookup_field env field_name with
       | Ok symbol_id ->
           add_reference_occurrence env symbol_id path expr.expr_loc field_name
             ~prefer_last:true
       | Error _ -> ())
   | Syntax.Ast.EConstruct (name, args) ->
       add_module_prefix_reference env path expr.expr_loc name;
-      if not (is_builtin_constructor name) then
-        (match lookup_constructor env name with
-        | Ok symbol_id ->
-            add_qname_reference_occurrence env symbol_id path expr.expr_loc name
-        | Error message -> add_resolution_diagnostic env expr.expr_loc message);
+      (if not (is_builtin_constructor name) then
+         match lookup_constructor env name with
+         | Ok symbol_id ->
+             add_qname_reference_occurrence env symbol_id path expr.expr_loc
+               name
+         | Error message -> add_resolution_diagnostic env expr.expr_loc message);
       List.iter (walk_expr env path) args
   | Syntax.Ast.ELet (binding, body) ->
       walk_binding env path binding;
@@ -924,7 +954,10 @@ let rec walk_expr env path (expr : Syntax.Ast.expr) =
           binding.binding_name Local binding.binding_annotation
       in
       let env_body =
-        { env with locals = StringMap.add binding.binding_name local_id env.locals }
+        {
+          env with
+          locals = StringMap.add binding.binding_name local_id env.locals;
+        }
       in
       walk_expr env_body path body
   | Syntax.Ast.ELetStar (binding, body) ->
@@ -934,7 +967,10 @@ let rec walk_expr env path (expr : Syntax.Ast.expr) =
           binding.let_star_name Local None
       in
       let env_body =
-        { env with locals = StringMap.add binding.let_star_name local_id env.locals }
+        {
+          env with
+          locals = StringMap.add binding.let_star_name local_id env.locals;
+        }
       in
       walk_expr env_body path body
   | Syntax.Ast.EIf (cond, then_branch, else_branch) ->
@@ -960,8 +996,8 @@ let rec walk_expr env path (expr : Syntax.Ast.expr) =
         List.fold_left
           (fun locals (param : Syntax.Ast.param) ->
             let symbol_id =
-              create_local_symbol env.builder path param.param_loc param.param_name
-                Parameter param.param_annotation
+              create_local_symbol env.builder path param.param_loc
+                param.param_name Parameter param.param_annotation
             in
             StringMap.add param.param_name symbol_id locals)
           env.locals params
@@ -1002,7 +1038,9 @@ let add_type_to_summary summary type_name type_id field_ids ctor_ids =
       List.fold_left
         (fun acc (name, symbol_id) ->
           let items =
-            match StringMap.find_opt name acc with Some items -> items | None -> []
+            match StringMap.find_opt name acc with
+            | Some items -> items
+            | None -> []
           in
           StringMap.add name (symbol_id :: items) acc)
         summary.field_ids field_ids;
@@ -1010,7 +1048,9 @@ let add_type_to_summary summary type_name type_id field_ids ctor_ids =
       List.fold_left
         (fun acc (name, symbol_id) ->
           let items =
-            match StringMap.find_opt name acc with Some items -> items | None -> []
+            match StringMap.find_opt name acc with
+            | Some items -> items
+            | None -> []
           in
           StringMap.add name (symbol_id :: items) acc)
         summary.ctor_ids ctor_ids;
@@ -1018,7 +1058,10 @@ let add_type_to_summary summary type_name type_id field_ids ctor_ids =
 
 let build_catalogs builder (program : Syntax.Ast.program) =
   let build_module (module_ : Syntax.Ast.module_) =
-    let module_id = symbol_id "module" module_.module_name (string_of_qname module_.module_name) in
+    let module_id =
+      symbol_id "module" module_.module_name
+        (string_of_qname module_.module_name)
+    in
     let module_symbol =
       {
         id = module_id;
@@ -1027,14 +1070,15 @@ let build_catalogs builder (program : Syntax.Ast.program) =
         uri = uri_of_path module_.module_path;
         decl_range = basic_range_of_loc module_.module_loc;
         decl_selection_range = basic_range_of_loc module_.module_loc;
-        hover = Some (Printf.sprintf "module %s" (string_of_qname module_.module_name));
+        hover =
+          Some
+            (Printf.sprintf "module %s" (string_of_qname module_.module_name));
         renameable = false;
       }
     in
     add_symbol builder module_symbol;
     let summary =
-      ref
-        (empty_summary module_.module_name module_.module_path module_id)
+      ref (empty_summary module_.module_name module_.module_path module_id)
     in
     let document_symbols = ref [] in
     List.iter
@@ -1042,7 +1086,9 @@ let build_catalogs builder (program : Syntax.Ast.program) =
         | Syntax.Ast.TypeDecl decl ->
             let type_id, type_symbol =
               top_level_symbol builder module_ decl.type_name Type
-                decl.type_decl_loc (render_type_decl_hover decl) true
+                decl.type_decl_loc
+                (render_type_decl_hover decl)
+                true
             in
             let children =
               match decl.Syntax.Ast.type_kind with
@@ -1050,23 +1096,25 @@ let build_catalogs builder (program : Syntax.Ast.program) =
               | Syntax.Ast.Type_record fields ->
                   fields
                   |> List.map (fun (field : Syntax.Ast.record_field) ->
-                         let field_id, field_symbol =
-                           top_level_symbol builder module_
-                             field.Syntax.Ast.field_name Field
-                             field.Syntax.Ast.field_loc
-                             (render_field_hover decl.type_name field) true
-                         in
-                         (field.Syntax.Ast.field_name, field_id, field_symbol))
+                      let field_id, field_symbol =
+                        top_level_symbol builder module_
+                          field.Syntax.Ast.field_name Field
+                          field.Syntax.Ast.field_loc
+                          (render_field_hover decl.type_name field)
+                          true
+                      in
+                      (field.Syntax.Ast.field_name, field_id, field_symbol))
               | Syntax.Ast.Type_variant ctors ->
                   ctors
                   |> List.map (fun (ctor : Syntax.Ast.variant_ctor) ->
-                         let ctor_id, ctor_symbol =
-                           top_level_symbol builder module_
-                             ctor.Syntax.Ast.ctor_name Constructor
-                             ctor.Syntax.Ast.ctor_loc
-                             (render_ctor_hover decl.type_name ctor) true
-                         in
-                         (ctor.Syntax.Ast.ctor_name, ctor_id, ctor_symbol))
+                      let ctor_id, ctor_symbol =
+                        top_level_symbol builder module_
+                          ctor.Syntax.Ast.ctor_name Constructor
+                          ctor.Syntax.Ast.ctor_loc
+                          (render_ctor_hover decl.type_name ctor)
+                          true
+                      in
+                      (ctor.Syntax.Ast.ctor_name, ctor_id, ctor_symbol))
             in
             let field_ids, ctor_ids, child_symbols =
               match decl.Syntax.Ast.type_kind with
@@ -1101,7 +1149,8 @@ let build_catalogs builder (program : Syntax.Ast.program) =
                       children )
             in
             summary :=
-              add_type_to_summary !summary decl.type_name type_id field_ids ctor_ids;
+              add_type_to_summary !summary decl.type_name type_id field_ids
+                ctor_ids;
             document_symbols :=
               {
                 name = decl.type_name;
@@ -1115,10 +1164,16 @@ let build_catalogs builder (program : Syntax.Ast.program) =
         | Syntax.Ast.LetDecl binding ->
             let value_id, value_symbol =
               top_level_symbol builder module_ binding.binding_name Value
-                binding.binding_loc (render_binding_hover binding) true
+                binding.binding_loc
+                (render_binding_hover binding)
+                true
             in
             summary :=
-              { !summary with value_ids = StringMap.add binding.binding_name value_id !summary.value_ids };
+              {
+                !summary with
+                value_ids =
+                  StringMap.add binding.binding_name value_id !summary.value_ids;
+              };
             document_symbols :=
               {
                 name = binding.binding_name;
@@ -1132,11 +1187,17 @@ let build_catalogs builder (program : Syntax.Ast.program) =
         | Syntax.Ast.AgentDecl callable ->
             let symbol_id, symbol =
               top_level_symbol builder module_ callable.callable_name Agent
-                callable.callable_loc (render_callable_hover "agent" callable)
+                callable.callable_loc
+                (render_callable_hover "agent" callable)
                 true
             in
             summary :=
-              { !summary with value_ids = StringMap.add callable.callable_name symbol_id !summary.value_ids };
+              {
+                !summary with
+                value_ids =
+                  StringMap.add callable.callable_name symbol_id
+                    !summary.value_ids;
+              };
             document_symbols :=
               {
                 name = callable.callable_name;
@@ -1150,11 +1211,17 @@ let build_catalogs builder (program : Syntax.Ast.program) =
         | Syntax.Ast.SkillDecl callable ->
             let symbol_id, symbol =
               top_level_symbol builder module_ callable.callable_name Skill
-                callable.callable_loc (render_callable_hover "skill" callable)
+                callable.callable_loc
+                (render_callable_hover "skill" callable)
                 true
             in
             summary :=
-              { !summary with value_ids = StringMap.add callable.callable_name symbol_id !summary.value_ids };
+              {
+                !summary with
+                value_ids =
+                  StringMap.add callable.callable_name symbol_id
+                    !summary.value_ids;
+              };
             document_symbols :=
               {
                 name = callable.callable_name;
@@ -1167,12 +1234,12 @@ let build_catalogs builder (program : Syntax.Ast.program) =
               :: !document_symbols
         | Syntax.Ast.OpenDecl _ -> ())
       module_.module_decls;
-    add_document_symbols builder (uri_of_path module_.module_path)
+    add_document_symbols builder
+      (uri_of_path module_.module_path)
       (List.rev !document_symbols);
     (!summary, module_)
   in
-  program.modules
-  |> List.map build_module
+  program.modules |> List.map build_module
   |> List.fold_left
        (fun acc (summary, _module_) ->
          StringMap.add (module_key summary.module_name) summary acc)
@@ -1215,7 +1282,8 @@ let rec walk_modules builder catalogs (program : Syntax.Ast.program) =
               loop current_summary opened' rest
           | Syntax.Ast.TypeDecl decl ->
               (match decl.Syntax.Ast.type_kind with
-              | Syntax.Ast.Type_alias typ -> walk_type_expr base_env current_summary.path typ
+              | Syntax.Ast.Type_alias typ ->
+                  walk_type_expr base_env current_summary.path typ
               | Syntax.Ast.Type_record fields ->
                   List.iter
                     (fun field ->
@@ -1225,11 +1293,14 @@ let rec walk_modules builder catalogs (program : Syntax.Ast.program) =
               | Syntax.Ast.Type_variant ctors ->
                   List.iter
                     (fun ctor ->
-                      List.iter (walk_type_expr base_env current_summary.path)
+                      List.iter
+                        (walk_type_expr base_env current_summary.path)
                         ctor.Syntax.Ast.ctor_args)
                     ctors);
               let current_summary =
-                match StringMap.find_opt decl.type_name full_summary.type_ids with
+                match
+                  StringMap.find_opt decl.type_name full_summary.type_ids
+                with
                 | None -> current_summary
                 | Some type_id ->
                     let field_ids =
@@ -1269,9 +1340,12 @@ let rec walk_modules builder catalogs (program : Syntax.Ast.program) =
           | Syntax.Ast.LetDecl binding ->
               walk_binding base_env current_summary.path binding;
               let current_summary =
-                match StringMap.find_opt binding.binding_name full_summary.value_ids with
+                match
+                  StringMap.find_opt binding.binding_name full_summary.value_ids
+                with
                 | Some symbol_id ->
-                    add_value_to_summary current_summary binding.binding_name symbol_id
+                    add_value_to_summary current_summary binding.binding_name
+                      symbol_id
                 | None -> current_summary
               in
               loop current_summary opened rest
@@ -1284,7 +1358,8 @@ let rec walk_modules builder catalogs (program : Syntax.Ast.program) =
                 callable.callable_return_type;
               let current_summary =
                 match
-                  StringMap.find_opt callable.callable_name full_summary.value_ids
+                  StringMap.find_opt callable.callable_name
+                    full_summary.value_ids
                 with
                 | Some symbol_id ->
                     add_value_to_summary current_summary callable.callable_name
@@ -1301,7 +1376,8 @@ let rec walk_modules builder catalogs (program : Syntax.Ast.program) =
                 callable.callable_return_type;
               let current_summary =
                 match
-                  StringMap.find_opt callable.callable_name full_summary.value_ids
+                  StringMap.find_opt callable.callable_name
+                    full_summary.value_ids
                 with
                 | Some symbol_id ->
                     add_value_to_summary current_summary callable.callable_name
@@ -1369,13 +1445,16 @@ let analyze_with_loaded ~context ~current_path (loaded : loaded_project) =
   | Ok _ -> ()
   | Error message ->
       add_diagnostic builder
-        (diagnostic_from_message builder ~fallback_path:context.root_path message));
+        (diagnostic_from_message builder ~fallback_path:context.root_path
+           message));
   let symbols =
-    Hashtbl.to_seq builder.symbols |> List.of_seq |> List.to_seq |> StringMap.of_seq
+    Hashtbl.to_seq builder.symbols
+    |> List.of_seq |> List.to_seq |> StringMap.of_seq
   in
   let occurrences_by_uri = StringMap.map List.rev builder.occurrences_by_uri in
   let diagnostics_by_uri =
-    StringMap.map (fun items -> dedup_diagnostics (List.rev items))
+    StringMap.map
+      (fun items -> dedup_diagnostics (List.rev items))
       builder.diagnostics_by_uri
   in
   {
@@ -1383,8 +1462,7 @@ let analyze_with_loaded ~context ~current_path (loaded : loaded_project) =
     current_uri = builder.current_uri;
     symbols;
     occurrences_by_uri;
-    occurrences_by_symbol =
-      finalize_occurrences_by_symbol occurrences_by_uri;
+    occurrences_by_symbol = finalize_occurrences_by_symbol occurrences_by_uri;
     document_symbols_by_uri = builder.document_symbols_by_uri;
     diagnostics_by_uri;
   }
@@ -1397,20 +1475,23 @@ let analyze ?(overlays = StringMap.empty) path =
       if String.equal root_path context.root_path then context
       else { context with project_id = root_path; root_path }
     in
-    match load_program ~overlays ~root_path ~include_paths:context.include_paths with
+    match
+      load_program ~overlays ~root_path ~include_paths:context.include_paths
+    with
     | Ok loaded -> Ok (context, loaded)
     | Error error -> Error (context, error)
   in
   let loaded =
     match load_current context.root_path with
     | Ok (context, loaded)
-      when not (String.equal context.root_path path)
+      when (not (String.equal context.root_path path))
            && not (program_contains_path loaded.program path) ->
         load_current path
     | other -> other
   in
   match loaded with
-  | Ok (context, loaded) -> analyze_with_loaded ~context ~current_path:path loaded
+  | Ok (context, loaded) ->
+      analyze_with_loaded ~context ~current_path:path loaded
   | Error (context, error) ->
       {
         project_id = context.project_id;
@@ -1420,8 +1501,10 @@ let analyze ?(overlays = StringMap.empty) path =
         occurrences_by_symbol = StringMap.empty;
         document_symbols_by_uri = StringMap.empty;
         diagnostics_by_uri =
-          StringMap.singleton (uri_of_path context.root_path)
-            [ diagnostic_from_message
+          StringMap.singleton
+            (uri_of_path context.root_path)
+            [
+              diagnostic_from_message
                 {
                   current_uri = uri_of_path path;
                   files = StringMap.empty;
@@ -1430,7 +1513,8 @@ let analyze ?(overlays = StringMap.empty) path =
                   diagnostics_by_uri = StringMap.empty;
                   document_symbols_by_uri = StringMap.empty;
                 }
-                ~fallback_path:context.root_path error ];
+                ~fallback_path:context.root_path error;
+            ];
       }
 
 let diagnostics_for_uri (analysis : analysis) uri =
@@ -1458,8 +1542,8 @@ let symbol_at_position (analysis : analysis) uri ~line ~character =
       items
       |> List.filter (fun item -> position_in_range line character item.range)
       |> List.sort (fun left right ->
-             compare (range_size left.range) (range_size right.range))
+          compare (range_size left.range) (range_size right.range))
       |> List.find_map (fun item ->
-             match symbol_by_id analysis item.symbol_id with
-             | Some symbol -> Some (item, symbol)
-             | None -> None)
+          match symbol_by_id analysis item.symbol_id with
+          | Some symbol -> Some (item, symbol)
+          | None -> None)

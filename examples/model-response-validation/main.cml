@@ -1,0 +1,26 @@
+type action = TEST | RUN
+
+type code_response = {
+  action : action;
+  accuracy : int;
+  description : string;
+}
+
+agent reviewer : code:string -> code_response =
+  Agent.define
+    ~name:"model-response-reviewer"
+    ~system_prompt:"Review the submitted code."
+
+let branch_summary (response : code_response) : string =
+  if response.accuracy < 90 then
+    match response.action with
+    | TEST -> "retry-after-tests: " ^ response.description
+    | RUN -> "retry-after-fix: " ^ response.description
+  else
+    match response.action with
+    | TEST -> "run-tests: " ^ response.description
+    | RUN -> "continue: " ^ response.description
+
+let main (code : string) : string =
+  let* response = reviewer ~code:code in
+  branch_summary response

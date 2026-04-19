@@ -1,13 +1,7 @@
 type name = Codex | Opencode
-
 type reasoning = Low | Medium | High | Max
-
 type sandbox = Read_only | Workspace_write | Danger_full_access
-
-type config = {
-  key : string;
-  value : string;
-}
+type config = { key : string; value : string }
 
 type settings = {
   provider : name option;
@@ -22,7 +16,8 @@ type settings = {
 
 type adapter = {
   provider_name : name;
-  preflight : working_directory:string -> settings:settings -> (unit, string) result;
+  preflight :
+    working_directory:string -> settings:settings -> (unit, string) result;
   build_runtime_context :
     working_directory:string ->
     settings:settings ->
@@ -44,10 +39,7 @@ let default_settings =
     trace_provider = false;
   }
 
-let name_to_string = function
-  | Codex -> "codex"
-  | Opencode -> "opencode"
-
+let name_to_string = function Codex -> "codex" | Opencode -> "opencode"
 let available_provider_names = List.map name_to_string [ Codex; Opencode ]
 
 let name_of_string = function
@@ -116,7 +108,8 @@ let has_explicit_provider_inputs settings =
   || settings.provider_profile <> None
   || settings.provider_configs <> []
   || settings.sandbox <> default_sandbox
-  || settings.allow_write_dirs <> [] || settings.trace_provider
+  || settings.allow_write_dirs <> []
+  || settings.trace_provider
 
 let settings_are_default settings =
   settings.provider = None && not (has_explicit_provider_inputs settings)

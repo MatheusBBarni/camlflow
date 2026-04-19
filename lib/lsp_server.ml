@@ -115,7 +115,7 @@ let overlays_of_server (server : server) =
 let document_version_by_uri (server : server) uri =
   server.open_documents |> StringMap.bindings
   |> List.find_map (fun (_path, (document : document)) ->
-         if String.equal document.uri uri then document.version else None)
+      if String.equal document.uri uri then document.version else None)
 
 let range_to_yojson (range : Analysis.range) =
   `Assoc
@@ -156,19 +156,21 @@ let rec document_symbol_to_yojson (symbol : Analysis.document_symbol) =
        ("range", range_to_yojson symbol.range);
        ("selectionRange", range_to_yojson symbol.selection_range);
      ]
-    @ match symbol.detail with
-      | Some detail -> [ ("detail", `String detail) ]
-      | None -> []
     @
-    if symbol.children = [] then []
-    else
-      [
-        ("children", `List (List.map document_symbol_to_yojson symbol.children));
-      ])
+    match symbol.detail with
+    | Some detail -> [ ("detail", `String detail) ]
+    | None ->
+        []
+        @
+        if symbol.children = [] then []
+        else
+          [
+            ( "children",
+              `List (List.map document_symbol_to_yojson symbol.children) );
+          ])
 
 let text_edit_to_yojson range new_text =
-  `Assoc
-    [ ("range", range_to_yojson range); ("newText", `String new_text) ]
+  `Assoc [ ("range", range_to_yojson range); ("newText", `String new_text) ]
 
 let is_ident_char = function
   | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '_' | '\'' -> true
@@ -177,9 +179,7 @@ let is_ident_char = function
 let valid_new_name value =
   let len = String.length value in
   len > 0
-  && (match value.[0] with
-     | 'A' .. 'Z' | 'a' .. 'z' | '_' -> true
-     | _ -> false)
+  && (match value.[0] with 'A' .. 'Z' | 'a' .. 'z' | '_' -> true | _ -> false)
   && String.for_all is_ident_char value
 
 let respond server id result =
@@ -192,13 +192,13 @@ let respond_error server ?data id ~code ~message =
     (Rpc_protocol.error ?id:(Some id) ?data ~code ~message ())
 
 let notify server method_ params =
-  Rpc_stdio.write_message server.output
-    (Rpc_protocol.request method_ ~params)
+  Rpc_stdio.write_message server.output (Rpc_protocol.request method_ ~params)
 
 let publish_diagnostics server uri version diagnostics =
   let payload =
     `Assoc
-      ([ ("uri", `String uri);
+      ([
+         ("uri", `String uri);
          ("diagnostics", `List (List.map diagnostic_to_yojson diagnostics));
        ]
       @
@@ -215,10 +215,13 @@ let publish_analysis server (analysis : Analysis.analysis) =
     else StringMap.add analysis.current_uri [] analysis.diagnostics_by_uri
   in
   let current_uris =
-    diagnostics_by_uri |> StringMap.bindings |> List.map fst |> StringSet.of_list
+    diagnostics_by_uri |> StringMap.bindings |> List.map fst
+    |> StringSet.of_list
   in
   let previous =
-    match StringMap.find_opt analysis.project_id server.published_by_project with
+    match
+      StringMap.find_opt analysis.project_id server.published_by_project
+    with
     | Some uris -> uris
     | None -> StringSet.empty
   in
@@ -228,7 +231,9 @@ let publish_analysis server (analysis : Analysis.analysis) =
     |> List.fold_left
          (fun acc uri ->
            let* () = acc in
-           publish_diagnostics server uri (document_version_by_uri server uri) [])
+           publish_diagnostics server uri
+             (document_version_by_uri server uri)
+             [])
          (Ok ())
   in
   let* () =
@@ -236,7 +241,8 @@ let publish_analysis server (analysis : Analysis.analysis) =
     |> List.fold_left
          (fun acc (uri, diagnostics) ->
            let* () = acc in
-           publish_diagnostics server uri (document_version_by_uri server uri)
+           publish_diagnostics server uri
+             (document_version_by_uri server uri)
              diagnostics)
          (Ok ())
   in
@@ -264,8 +270,7 @@ let lsp_capabilities =
       ("definitionProvider", `Bool true);
       ("referencesProvider", `Bool true);
       ("documentSymbolProvider", `Bool true);
-      ( "renameProvider",
-        `Assoc [ ("prepareProvider", `Bool true) ] );
+      ("renameProvider", `Assoc [ ("prepareProvider", `Bool true) ]);
     ]
 
 let initialize_result () =
@@ -274,10 +279,8 @@ let initialize_result () =
       ("capabilities", lsp_capabilities);
       ( "serverInfo",
         `Assoc
-          [
-            ("name", `String "camlflow-lsp");
-            ("version", `String "0.2.0-dev");
-          ] );
+          [ ("name", `String "camlflow-lsp"); ("version", `String "0.2.0-dev") ]
+      );
     ]
 
 let hover_result (symbol : Analysis.symbol) =
@@ -302,9 +305,9 @@ let references_result (occurrences : Analysis.occurrence list)
     include_declaration =
   occurrences
   |> List.filter (fun (occurrence : Analysis.occurrence) ->
-         include_declaration || occurrence.role = Analysis.Reference)
+      include_declaration || occurrence.role = Analysis.Reference)
   |> List.map (fun (occurrence : Analysis.occurrence) ->
-         location_to_yojson occurrence.uri occurrence.range)
+      location_to_yojson occurrence.uri occurrence.range)
   |> fun items -> `List items
 
 let prepare_rename_result (occurrence : Analysis.occurrence)
@@ -355,12 +358,7 @@ let update_document server (document : text_document) text =
   let* path = Analysis.path_of_uri document.uri in
   server.open_documents <-
     StringMap.add path
-      {
-        uri = document.uri;
-        path;
-        version = document.version;
-        text;
-      }
+      { uri = document.uri; path; version = document.version; text }
       server.open_documents;
   Ok path
 
@@ -368,11 +366,7 @@ let handle_did_open server params =
   let* fields = object_fields params in
   let* text_document_json = field fields "textDocument" in
   let* text_document = text_document_of_yojson text_document_json in
-  let text =
-    match text_document.text with
-    | Some text -> text
-    | None -> ""
-  in
+  let text = match text_document.text with Some text -> text | None -> "" in
   let* path = update_document server text_document text in
   publish_analysis server (analysis_for_path server path)
 
@@ -383,7 +377,7 @@ let handle_did_change server params =
   let* changes = list_field fields "contentChanges" in
   let latest_text =
     match List.rev changes with
-    | (`Assoc fields) :: _ -> (
+    | `Assoc fields :: _ -> (
         match List.assoc_opt "text" fields with
         | Some (`String text) -> Ok text
         | _ -> Error "contentChanges entries must contain text")
@@ -417,7 +411,9 @@ let handle_hover server request params =
   let* id = request_id_or_error request in
   let* document, line, character = text_document_position_params params in
   with_document_analysis server document (fun _path analysis ->
-      match Analysis.symbol_at_position analysis document.uri ~line ~character with
+      match
+        Analysis.symbol_at_position analysis document.uri ~line ~character
+      with
       | Some (_occurrence, symbol) -> respond server id (hover_result symbol)
       | None -> respond_null server id)
 
@@ -425,8 +421,11 @@ let handle_definition server request params =
   let* id = request_id_or_error request in
   let* document, line, character = text_document_position_params params in
   with_document_analysis server document (fun _path analysis ->
-      match Analysis.symbol_at_position analysis document.uri ~line ~character with
-      | Some (_occurrence, symbol) -> respond server id (definition_result symbol)
+      match
+        Analysis.symbol_at_position analysis document.uri ~line ~character
+      with
+      | Some (_occurrence, symbol) ->
+          respond server id (definition_result symbol)
       | None -> respond_null server id)
 
 let handle_references server request params =
@@ -445,9 +444,13 @@ let handle_references server request params =
   in
   let* include_declaration = include_declaration in
   with_document_analysis server document (fun _path analysis ->
-      match Analysis.symbol_at_position analysis document.uri ~line ~character with
+      match
+        Analysis.symbol_at_position analysis document.uri ~line ~character
+      with
       | Some (_occurrence, symbol) ->
-          let occurrences = Analysis.occurrences_for_symbol analysis symbol.id in
+          let occurrences =
+            Analysis.occurrences_for_symbol analysis symbol.id
+          in
           respond server id (references_result occurrences include_declaration)
       | None -> respond server id (`List []))
 
@@ -457,16 +460,16 @@ let handle_document_symbol server request params =
   let* text_document_json = field fields "textDocument" in
   let* document = text_document_of_yojson text_document_json in
   with_document_analysis server document (fun _path analysis ->
-      let items =
-        Analysis.document_symbols_for_uri analysis document.uri
-      in
+      let items = Analysis.document_symbols_for_uri analysis document.uri in
       respond server id (`List (List.map document_symbol_to_yojson items)))
 
 let handle_prepare_rename server request params =
   let* id = request_id_or_error request in
   let* document, line, character = text_document_position_params params in
   with_document_analysis server document (fun _path analysis ->
-      match Analysis.symbol_at_position analysis document.uri ~line ~character with
+      match
+        Analysis.symbol_at_position analysis document.uri ~line ~character
+      with
       | Some (occurrence, symbol) when can_rename symbol ->
           respond server id (prepare_rename_result occurrence symbol)
       | _ -> respond_null server id)
@@ -479,7 +482,9 @@ let handle_rename server request params =
       ~message:"newName must be a valid CamlFlow identifier"
   else
     with_document_analysis server document (fun _path analysis ->
-        match Analysis.symbol_at_position analysis document.uri ~line ~character with
+        match
+          Analysis.symbol_at_position analysis document.uri ~line ~character
+        with
         | Some (_occurrence, symbol) when can_rename symbol ->
             let occurrences =
               Analysis.occurrences_for_symbol analysis symbol.id
@@ -490,7 +495,9 @@ let handle_rename server request params =
               ~message:"symbol at position is not renameable")
 
 let handle_request server request =
-  let params = Option.value request.Rpc_protocol.request_params ~default:(`Assoc []) in
+  let params =
+    Option.value request.Rpc_protocol.request_params ~default:(`Assoc [])
+  in
   match request.Rpc_protocol.request_method with
   | "initialize" -> handle_initialize server request
   | "initialized" -> Ok ()
@@ -505,8 +512,7 @@ let handle_request server request =
   | "textDocument/references" -> handle_references server request params
   | "textDocument/documentSymbol" ->
       handle_document_symbol server request params
-  | "textDocument/prepareRename" ->
-      handle_prepare_rename server request params
+  | "textDocument/prepareRename" -> handle_prepare_rename server request params
   | "textDocument/rename" -> handle_rename server request params
   | "workspace/didChangeConfiguration" | "$/setTrace" -> Ok ()
   | method_ -> (
@@ -534,7 +540,8 @@ let run ~input ~output =
         match Rpc_protocol.request_of_yojson json with
         | Ok request ->
             let* () = handle_request server request in
-            if String.equal request.request_method "exit" then Ok () else loop ()
+            if String.equal request.request_method "exit" then Ok ()
+            else loop ()
         | Error error ->
             let* () =
               Rpc_stdio.write_message server.output

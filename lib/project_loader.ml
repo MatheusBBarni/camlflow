@@ -3,15 +3,16 @@ module QNameSet = Set.Make (String)
 module StringSet = Set.Make (String)
 
 let ( let* ) = Result.bind
-
 let qname_key = Syntax.Ast.string_of_qname
 
 let lowercase_path (module_name : Syntax.Ast.qname) : string =
-  (module_name |> List.map String.lowercase_ascii |> String.concat Filename.dir_sep)
+  (module_name
+  |> List.map String.lowercase_ascii
+  |> String.concat Filename.dir_sep)
   ^ ".cml"
 
-let resolve_module_path ~from_dir ~include_paths (module_name : Syntax.Ast.qname) :
-    (string, string) result =
+let resolve_module_path ~from_dir ~include_paths
+    (module_name : Syntax.Ast.qname) : (string, string) result =
   let relative = lowercase_path module_name in
   let candidates =
     Filename.concat from_dir relative
@@ -23,8 +24,12 @@ let resolve_module_path ~from_dir ~include_paths (module_name : Syntax.Ast.qname
       let module_text = Syntax.Ast.string_of_qname module_name in
       Error
         (Printf.sprintf
-           "unable to resolve module %s; looked for %s. CamlFlow MVP only resolves project .cml modules, and qualified library/module calls such as %s.<value> are unsupported"
-           module_text (String.concat ", " candidates) module_text)
+           "unable to resolve module %s; looked for %s. CamlFlow MVP only \
+            resolves project .cml modules, and qualified library/module calls \
+            such as %s.<value> are unsupported"
+           module_text
+           (String.concat ", " candidates)
+           module_text)
 
 let module_prefix_of_qname (name : Syntax.Ast.qname) : Syntax.Ast.qname option =
   match List.rev name with
@@ -47,7 +52,9 @@ let rec refs_of_type_expr set (typ : Syntax.Ast.type_expr) =
       List.fold_left refs_of_type_expr (add_module_ref set name) args
   | Syntax.Ast.TETuple items -> List.fold_left refs_of_type_expr set items
   | Syntax.Ast.TEArrow (param, result) ->
-      refs_of_type_expr (refs_of_type_expr set param.Syntax.Ast.param_typ) result
+      refs_of_type_expr
+        (refs_of_type_expr set param.Syntax.Ast.param_typ)
+        result
 
 let refs_of_param set (param : Syntax.Ast.param) =
   match param.Syntax.Ast.param_annotation with
@@ -59,7 +66,9 @@ let rec refs_of_pattern set (pattern : Syntax.Ast.pattern) =
   | Syntax.Ast.PWildcard | PVar _ | PLiteral _ -> set
   | Syntax.Ast.PTuple items -> List.fold_left refs_of_pattern set items
   | Syntax.Ast.PRecord fields ->
-      List.fold_left (fun acc (_name, item) -> refs_of_pattern acc item) set fields
+      List.fold_left
+        (fun acc (_name, item) -> refs_of_pattern acc item)
+        set fields
   | Syntax.Ast.PConstruct (name, args) ->
       List.fold_left refs_of_pattern (add_module_ref set name) args
 
@@ -73,15 +82,22 @@ let rec refs_of_expr set (expr : Syntax.Ast.expr) =
   | Syntax.Ast.EField (target, _field) -> refs_of_expr set target
   | Syntax.Ast.EConstruct (name, args) ->
       List.fold_left refs_of_expr (add_module_ref set name) args
-  | Syntax.Ast.ELet (binding, body) -> refs_of_expr (refs_of_binding set binding) body
+  | Syntax.Ast.ELet (binding, body) ->
+      refs_of_expr (refs_of_binding set binding) body
   | Syntax.Ast.ELetStar (binding, body) ->
       refs_of_expr (refs_of_expr set binding.Syntax.Ast.let_star_value) body
   | Syntax.Ast.EIf (cond, then_branch, else_branch) ->
-      refs_of_expr (refs_of_expr (refs_of_expr set cond) then_branch) else_branch
+      refs_of_expr
+        (refs_of_expr (refs_of_expr set cond) then_branch)
+        else_branch
   | Syntax.Ast.EMatch (scrutinee, cases) ->
       List.fold_left
-        (fun acc case -> refs_of_expr (refs_of_pattern acc case.Syntax.Ast.case_pattern) case.case_body)
-        (refs_of_expr set scrutinee) cases
+        (fun acc case ->
+          refs_of_expr
+            (refs_of_pattern acc case.Syntax.Ast.case_pattern)
+            case.case_body)
+        (refs_of_expr set scrutinee)
+        cases
   | Syntax.Ast.EApply (fn, args) ->
       List.fold_left
         (fun acc arg -> refs_of_expr acc arg.Syntax.Ast.arg_value)
@@ -114,7 +130,8 @@ let refs_of_type_decl set (decl : Syntax.Ast.type_decl) =
         set fields
   | Syntax.Ast.Type_variant ctors ->
       List.fold_left
-        (fun acc ctor -> List.fold_left refs_of_type_expr acc ctor.Syntax.Ast.ctor_args)
+        (fun acc ctor ->
+          List.fold_left refs_of_type_expr acc ctor.Syntax.Ast.ctor_args)
         set ctors
 
 let decl_module_refs (decl : Syntax.Ast.decl) : QNameSet.t =
@@ -134,30 +151,49 @@ let module_dependencies (module_ : Syntax.Ast.module_) : Syntax.Ast.qname list =
   |> QNameSet.to_list |> List.map qname_of_key
 
 let rec walk_cml_files base_dir current_dir =
-  Sys.readdir current_dir
-  |> Array.to_list
-  |> List.sort String.compare
+  Sys.readdir current_dir |> Array.to_list |> List.sort String.compare
   |> List.concat_map (fun entry ->
-         let path = Filename.concat current_dir entry in
-         if Sys.is_directory path then walk_cml_files base_dir path
-         else if Filename.check_suffix path ".cml" then [ path ]
-         else [])
+      let path = Filename.concat current_dir entry in
+      if Sys.is_directory path then walk_cml_files base_dir path
+      else if Filename.check_suffix path ".cml" then [ path ]
+      else [])
 
 let module_name_of_path ~base_dir path =
   let relative =
-    let base = if Filename.is_relative base_dir then Filename.concat (Sys.getcwd ()) base_dir else base_dir in
-    let absolute = if Filename.is_relative path then Filename.concat (Sys.getcwd ()) path else path in
+    let base =
+      if Filename.is_relative base_dir then
+        Filename.concat (Sys.getcwd ()) base_dir
+      else base_dir
+    in
+    let absolute =
+      if Filename.is_relative path then Filename.concat (Sys.getcwd ()) path
+      else path
+    in
     let prefix = base ^ Filename.dir_sep in
     if String.equal absolute base then []
-    else if String.length absolute >= String.length prefix && String.sub absolute 0 (String.length prefix) = prefix then
-      String.sub absolute (String.length prefix) (String.length absolute - String.length prefix)
+    else if
+      String.length absolute >= String.length prefix
+      && String.sub absolute 0 (String.length prefix) = prefix
+    then
+      String.sub absolute (String.length prefix)
+        (String.length absolute - String.length prefix)
       |> Filename.remove_extension
       |> String.split_on_char Filename.dir_sep.[0]
       |> List.filter (fun part -> part <> "")
       |> List.map String.capitalize_ascii
-    else [ path |> Filename.basename |> Filename.remove_extension |> String.capitalize_ascii ]
+    else
+      [
+        path |> Filename.basename |> Filename.remove_extension
+        |> String.capitalize_ascii;
+      ]
   in
-  match relative with [] -> [ path |> Filename.basename |> Filename.remove_extension |> String.capitalize_ascii ] | _ -> relative
+  match relative with
+  | [] ->
+      [
+        path |> Filename.basename |> Filename.remove_extension
+        |> String.capitalize_ascii;
+      ]
+  | _ -> relative
 
 type state = {
   include_paths : string list;
@@ -165,7 +201,8 @@ type state = {
   mutable visiting : StringSet.t;
 }
 
-let load ~include_paths ~(root_path : string) : (Syntax.Ast.program, string) result =
+let load ~include_paths ~(root_path : string) :
+    (Syntax.Ast.program, string) result =
   let state =
     { include_paths; modules = StringMap.empty; visiting = StringSet.empty }
   in
@@ -187,8 +224,9 @@ let load ~include_paths ~(root_path : string) : (Syntax.Ast.program, string) res
                 resolve_module_path ~from_dir:(Filename.dirname path)
                   ~include_paths:state.include_paths dependency
               in
-              visit ~from_dir:(Filename.dirname resolved) ~module_name:dependency
-                ~path:resolved)
+              visit
+                ~from_dir:(Filename.dirname resolved)
+                ~module_name:dependency ~path:resolved)
             (Ok ()) dependencies
         in
         state.modules <- StringMap.add key module_ state.modules;

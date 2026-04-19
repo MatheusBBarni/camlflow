@@ -1,16 +1,13 @@
 module StringSet = Set.Make (String)
 
 let ( let* ) = Result.bind
-
 let schema_uri = "https://json-schema.org/draft/2020-12/schema"
 let type_key = Syntax.Ast.string_of_qname
-
 let assoc fields = `Assoc fields
 let string value = `String value
 let bool value = `Bool value
 let int value = `Int value
 let list values = `List values
-
 let string_list values = list (List.map string values)
 
 let merge_assoc_fields extra = function
@@ -57,13 +54,11 @@ let all_results results =
 
 let constructor_schema ctor_name payload =
   match payload with
-  | [] -> object_schema [ ("tag", assoc [ ("const", string ctor_name) ]) ] [ "tag" ]
+  | [] ->
+      object_schema [ ("tag", assoc [ ("const", string ctor_name) ]) ] [ "tag" ]
   | [ value ] ->
       object_schema
-        [
-          ("tag", assoc [ ("const", string ctor_name) ]);
-          ("value", value);
-        ]
+        [ ("tag", assoc [ ("const", string ctor_name) ]); ("value", value) ]
         [ "tag"; "value" ]
   | values ->
       object_schema
@@ -76,7 +71,10 @@ let constructor_schema ctor_name payload =
 let option_schema inner =
   assoc
     [
-      ("oneOf", list [ constructor_schema "None" []; constructor_schema "Some" [ inner ] ]);
+      ( "oneOf",
+        list
+          [ constructor_schema "None" []; constructor_schema "Some" [ inner ] ]
+      );
     ]
 
 let variant_schema ctors = assoc [ ("oneOf", list ctors) ]
@@ -104,7 +102,8 @@ let rec schema_for_type state typ =
 
 and ensure_named_definition state name =
   let key = type_key name in
-  if List.mem_assoc key state.defs || StringSet.mem key state.in_progress then Ok ()
+  if List.mem_assoc key state.defs || StringSet.mem key state.in_progress then
+    Ok ()
   else (
     state.in_progress <- StringSet.add key state.in_progress;
     let result =
@@ -129,7 +128,8 @@ and ensure_named_definition state name =
               (List.map
                  (fun ctor ->
                    let* payload =
-                     all_results (List.map (schema_for_type state) ctor.Ir.ctor_args)
+                     all_results
+                       (List.map (schema_for_type state) ctor.Ir.ctor_args)
                    in
                    Ok (constructor_schema ctor.Ir.ctor_name payload))
                  ctors)
@@ -146,22 +146,22 @@ and ensure_named_definition state name =
 let of_type ~types typ =
   let state = { types; defs = []; in_progress = StringSet.empty } in
   let* root = schema_for_type state typ in
-  let defs = List.sort (fun (lhs, _) (rhs, _) -> String.compare lhs rhs) state.defs in
+  let defs =
+    List.sort (fun (lhs, _) (rhs, _) -> String.compare lhs rhs) state.defs
+  in
   let extra_fields =
     match defs with
     | [] -> [ ("$schema", string schema_uri) ]
-    | defs ->
-        [
-          ("$schema", string schema_uri);
-          ("$defs", assoc defs);
-        ]
+    | defs -> [ ("$schema", string schema_uri); ("$defs", assoc defs) ]
   in
   merge_assoc_fields extra_fields root
 
 let unwrap_schema_root = function
   | `Assoc fields ->
       let defs =
-        match List.assoc_opt "$defs" fields with Some (`Assoc defs) -> defs | _ -> []
+        match List.assoc_opt "$defs" fields with
+        | Some (`Assoc defs) -> defs
+        | _ -> []
       in
       let inner_fields =
         List.filter
@@ -175,11 +175,33 @@ let wrapped_response_schema schema =
   let* inner_schema, defs = unwrap_schema_root schema in
   Ok
     (`Assoc
-      (([
+       ([
           ("$schema", `String schema_uri);
           ("type", `String "object");
           ("properties", `Assoc [ ("result", inner_schema) ]);
           ("required", `List [ `String "result" ]);
           ("additionalProperties", `Bool false);
-        ])
-      @ match defs with [] -> [] | defs -> [ ("$defs", `Assoc defs) ]))
+        ]
+       @ match defs with [] -> [] | defs -> [ ("$defs", `Assoc defs) ]))
+
+let unwrap_wrapped_response_json = function
+  | `Assoc fields -> (
+      let result_values, extra_fields =
+        List.fold_left
+          (fun (results, extras) (name, value) ->
+            if String.equal name "result" then (value :: results, extras)
+            else (results, name :: extras))
+          ([], []) fields
+      in
+      let result_values = List.rev result_values in
+      let extra_fields = extra_fields |> List.sort_uniq String.compare in
+      match (result_values, extra_fields) with
+      | [ result ], [] -> Ok result
+      | [], _ | _ :: _ :: _, _ ->
+          Error "model response wrapper must contain exactly one result field"
+      | [ _ ], extra_fields ->
+          Error
+            (Printf.sprintf
+               "model response wrapper must not contain extra field(s): %s"
+               (String.concat ", " extra_fields)))
+  | _ -> Error "model response wrapper must be a JSON object"

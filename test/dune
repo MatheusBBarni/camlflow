@@ -1,3 +1,5 @@
 (test
  (name test_camlflow)
- (libraries camlflow alcotest unix))
+ (libraries camlflow alcotest unix)
+ (deps
+  (glob_files_rec ../examples/dev-workflow/*)))

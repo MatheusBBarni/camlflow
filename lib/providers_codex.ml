@@ -1,5 +1,4 @@
 let ( let* ) = Result.bind
-
 let provider_name = Provider.Codex
 
 let read_text_file path =
@@ -9,7 +8,8 @@ let read_text_file path =
 
 let write_text_file path content =
   try
-    Out_channel.with_open_bin path (fun channel -> output_string channel content);
+    Out_channel.with_open_bin path (fun channel ->
+        output_string channel content);
     Ok ()
   with Sys_error message ->
     Error (Printf.sprintf "failed to write file %s: %s" path message)
@@ -23,13 +23,16 @@ let codex_reasoning_value = function
   | Provider.Max -> "xhigh"
 
 let resolve_path ~working_directory path =
-  if Filename.is_relative path then Filename.concat working_directory path else path
+  if Filename.is_relative path then Filename.concat working_directory path
+  else path
 
 let command_ok command = Sys.command command = 0
 
 let validate_preflight_status ~codex_available ~logged_in =
   if not codex_available then
-    Error "provider codex is not available; install Codex CLI and ensure `codex` is on PATH"
+    Error
+      "provider codex is not available; install Codex CLI and ensure `codex` \
+       is on PATH"
   else if not logged_in then
     Error "provider codex requires login; run `codex login` first"
   else Ok ()
@@ -42,8 +45,8 @@ let preflight ~working_directory:_ ~settings:_ =
 let trace_start settings ~step ~kind ~name ~model =
   if settings.Provider.trace_provider then
     Printf.eprintf
-      "provider[%d] start provider=codex kind=%s name=%s model=%s\n%!"
-      step kind name
+      "provider[%d] start provider=codex kind=%s name=%s model=%s\n%!" step kind
+      name
       (match model with Some model -> model | None -> "(provider default)")
 
 let trace_end settings ~step ~status ~elapsed =
@@ -55,7 +58,8 @@ let process_status_message = function
   | Unix.WSIGNALED signal -> Printf.sprintf "signal %d" signal
   | Unix.WSTOPPED signal -> Printf.sprintf "stopped by signal %d" signal
 
-let build_exec_args ~working_directory ~settings ~model ~schema_path ~output_path =
+let build_exec_args ~working_directory ~settings ~model ~schema_path
+    ~output_path =
   let base_args =
     [
       "codex";
@@ -101,7 +105,8 @@ let build_exec_args ~working_directory ~settings ~model ~schema_path ~output_pat
          (fun dir -> [ "--add-dir"; resolve_path ~working_directory dir ])
          settings.Provider.allow_write_dirs)
   in
-  base_args @ model_args @ profile_args @ reasoning_args @ config_args @ add_dir_args @ [ "-" ]
+  base_args @ model_args @ profile_args @ reasoning_args @ config_args
+  @ add_dir_args @ [ "-" ]
 
 let wrapped_response_schema = Provider_schema.wrapped_response_schema
 
@@ -111,12 +116,16 @@ let run_codex_exec ~working_directory ~settings ~prompt ~schema ~model =
   let output_path = Filename.temp_file "camlflow-codex-output-" ".json" in
   let stdout_path = Filename.temp_file "camlflow-codex-stdout-" ".log" in
   let stderr_path = Filename.temp_file "camlflow-codex-stderr-" ".log" in
-  let temp_paths = [ prompt_path; schema_path; output_path; stdout_path; stderr_path ] in
+  let temp_paths =
+    [ prompt_path; schema_path; output_path; stdout_path; stderr_path ]
+  in
   Fun.protect
     ~finally:(fun () -> List.iter remove_if_exists temp_paths)
     (fun () ->
       let* () = write_text_file prompt_path prompt in
-      let* () = write_text_file schema_path (Yojson.Safe.pretty_to_string schema) in
+      let* () =
+        write_text_file schema_path (Yojson.Safe.pretty_to_string schema)
+      in
       let argv =
         Array.of_list
           (build_exec_args ~working_directory ~settings ~model ~schema_path
@@ -124,11 +133,13 @@ let run_codex_exec ~working_directory ~settings ~prompt ~schema ~model =
       in
       let prompt_fd = Unix.openfile prompt_path [ Unix.O_RDONLY ] 0 in
       let stdout_fd =
-        Unix.openfile stdout_path [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ]
+        Unix.openfile stdout_path
+          [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ]
           0o644
       in
       let stderr_fd =
-        Unix.openfile stderr_path [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ]
+        Unix.openfile stderr_path
+          [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ]
           0o644
       in
       let status =
@@ -159,7 +170,8 @@ let run_codex_exec ~working_directory ~settings ~prompt ~schema ~model =
                (String.trim stderr)))
 
 let unsupported_settings_error (request : Effect_request.t) settings =
-  Printf.sprintf "provider codex does not support inline setting(s) %s for %s %s"
+  Printf.sprintf
+    "provider codex does not support inline setting(s) %s for %s %s"
     (String.concat ", " settings)
     (match request.Effect_request.kind with
     | Runtime.Context.Inline_agent -> "agent"
@@ -168,8 +180,11 @@ let unsupported_settings_error (request : Effect_request.t) settings =
     | Runtime.Context.Local_prompt_skill -> "local-prompt-skill")
     request.Effect_request.name
 
-let execute_request ~working_directory ~settings ~step (request : Effect_request.t) =
-  let* wrapped_schema = wrapped_response_schema request.Effect_request.output_schema in
+let execute_request ~working_directory ~settings ~step
+    (request : Effect_request.t) =
+  let* wrapped_schema =
+    wrapped_response_schema request.Effect_request.output_schema
+  in
   let model =
     match request.Effect_request.requested_model with
     | Some model -> Some model
@@ -207,27 +222,19 @@ let execute_request ~working_directory ~settings ~step (request : Effect_request
         ~prompt:wrapped_prompt ~schema:wrapped_schema ~model
     in
     let* wrapped_json =
-      try Ok (Yojson.Safe.from_string last_message) with
-      | Yojson.Json_error message ->
-          Error
-            (Printf.sprintf
-               "codex returned invalid JSON for %s %s: %s (output: %s)"
-               trace_kind trace_name message (String.trim last_message))
-    in
-    (match wrapped_json with
-    | `Assoc fields -> (
-        match List.assoc_opt "result" fields with
-        | Some result -> Ok result
-        | None ->
-            Error
-              (Printf.sprintf
-                 "codex returned JSON without result field for %s %s: %s"
-                 trace_kind trace_name (Yojson.Safe.to_string wrapped_json)))
-    | _ ->
+      try Ok (Yojson.Safe.from_string last_message)
+      with Yojson.Json_error message ->
         Error
           (Printf.sprintf
-             "codex returned non-object JSON wrapper for %s %s: %s" trace_kind
-             trace_name (Yojson.Safe.to_string wrapped_json)))
+             "codex returned invalid JSON for %s %s: %s (output: %s)" trace_kind
+             trace_name message (String.trim last_message))
+    in
+    Provider_schema.unwrap_wrapped_response_json wrapped_json
+    |> Result.map_error (fun error ->
+        Printf.sprintf
+          "codex returned invalid model response for %s %s: %s (output: %s)"
+          trace_kind trace_name error
+          (Yojson.Safe.to_string wrapped_json))
   in
   let elapsed = Unix.gettimeofday () -. started_at in
   trace_end settings ~step
@@ -247,10 +254,12 @@ let build_runtime_context ~working_directory ~settings context =
   let step_counter = ref 0 in
   let run invocation =
     incr step_counter;
-    execute_invocation ~working_directory ~settings ~step:!step_counter invocation
+    execute_invocation ~working_directory ~settings ~step:!step_counter
+      invocation
   in
   let context =
-    Runtime.Context.with_default_provider context (fun invocation -> run invocation)
+    Runtime.Context.with_default_provider context (fun invocation ->
+        run invocation)
   in
   let context =
     Runtime.Context.with_prompt_skill_provider context
@@ -262,8 +271,10 @@ let build_runtime_context ~working_directory ~settings context =
             invocation_input = input;
             invocation_return_type = return_type;
             invocation_types = types;
-            invocation_working_directory = context.Runtime.Context.working_directory;
-            invocation_skills_directory = context.Runtime.Context.skills_directory;
+            invocation_working_directory =
+              context.Runtime.Context.working_directory;
+            invocation_skills_directory =
+              context.Runtime.Context.skills_directory;
             invocation_markdown = Some markdown;
             invocation_definition = None;
           })
@@ -278,8 +289,10 @@ let build_runtime_context ~working_directory ~settings context =
             invocation_input = input;
             invocation_return_type = return_type;
             invocation_types = types;
-            invocation_working_directory = context.Runtime.Context.working_directory;
-            invocation_skills_directory = context.Runtime.Context.skills_directory;
+            invocation_working_directory =
+              context.Runtime.Context.working_directory;
+            invocation_skills_directory =
+              context.Runtime.Context.skills_directory;
             invocation_markdown = None;
             invocation_definition = Some definition;
           })

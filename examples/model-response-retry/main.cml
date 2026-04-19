@@ -1,0 +1,42 @@
+type action = TEST | RUN
+
+type code_response = {
+  action : action;
+  accuracy : int;
+  description : string;
+  retry_hint : string option;
+}
+
+type review_outcome =
+  | Approved of code_response
+  | Exhausted of code_response
+
+agent reviewer : code:string -> code_response =
+  Agent.define
+    ~name:"model-response-reviewer"
+    ~system_prompt:"Review the submitted code."
+
+let needs_retry (response : code_response) : bool =
+  response.accuracy < 90 || is_some response.retry_hint
+
+let retry_message (response : code_response) : string =
+  unwrap_or response.retry_hint response.description
+
+let rec review_until_ready (code : string) (attempt : int) : review_outcome =
+  let* response = reviewer ~code:code in
+  if needs_retry response then
+    if attempt >= 2 then Exhausted response
+    else
+      review_until_ready
+        (code ^ "\nRetry guidance: " ^ retry_message response)
+        (attempt + 1)
+  else Approved response
+
+let summarize (outcome : review_outcome) : string =
+  match outcome with
+  | Approved response -> "approved: " ^ response.description
+  | Exhausted response -> "exhausted: " ^ response.description
+
+let main (code : string) : string =
+  let outcome = review_until_ready code 0 in
+  summarize outcome

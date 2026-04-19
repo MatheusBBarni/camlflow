@@ -22,4 +22,4 @@ module Cli = Cli
 module Project_config = Project_config
 
 let version = "0.2.0-dev"
-let about = "CamlFlow MVP: typed parser, checker, IR, runtime, and CLI." 
+let about = "CamlFlow MVP: typed parser, checker, IR, runtime, and CLI."
