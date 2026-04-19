@@ -3018,6 +3018,358 @@ let main : string =
       Alcotest.failf "unexpected diagnostics payload %s"
         (Yojson.Safe.to_string other)
 
+let test_lsp_references_and_document_symbols () =
+  with_temp_dir "camlflow-lsp-refs-symbols-" @@ fun dir ->
+  let helpers = Filename.concat dir "helpers.cml" in
+  let main = Filename.concat dir "main.cml" in
+  let helpers_text =
+    {|
+type payload = { name : string }
+
+let make (name : string) : payload =
+  { name = name }
+|}
+  in
+  let main_text =
+    {|
+open Helpers
+
+let main (name : string) : string =
+  let payload : payload = make name in
+  payload.name
+|}
+  in
+  write_file helpers helpers_text;
+  write_file main main_text;
+  let helper_uri = Camlflow.Lsp_analysis.uri_of_path helpers in
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let lines = String.split_on_char '\n' main_text in
+  let make_line = List.nth lines 4 in
+  let make_character = substring_index make_line "make" + 1 in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+              [
+                ( "textDocument",
+                  `Assoc
+                    [
+                      ("uri", `String main_uri);
+                      ("version", `Int 1);
+                      ("text", `String main_text);
+                    ] );
+              ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+          "textDocument/references"
+          ~params:
+            (`Assoc
+              [
+                ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                ( "position",
+                  `Assoc
+                    [ ("line", `Int 4); ("character", `Int make_character) ]
+                );
+                ( "context",
+                  `Assoc [ ("includeDeclaration", `Bool false) ] );
+              ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 3)
+          "textDocument/references"
+          ~params:
+            (`Assoc
+              [
+                ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                ( "position",
+                  `Assoc
+                    [ ("line", `Int 4); ("character", `Int make_character) ]
+                );
+                ( "context",
+                  `Assoc [ ("includeDeclaration", `Bool true) ] );
+              ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 4)
+          "textDocument/documentSymbol"
+          ~params:
+            (`Assoc
+              [ ("textDocument", `Assoc [ ("uri", `String helper_uri) ]) ]);
+      ]
+  in
+  let references_without_declaration = find_rpc_response_by_id "2" messages in
+  (match references_without_declaration.Camlflow.Rpc_protocol.response_result with
+  | Some (`List [ reference ]) ->
+      expect_string_field "uri" main_uri reference
+  | Some other ->
+      Alcotest.failf "unexpected references without declaration payload %s"
+        (Yojson.Safe.to_string other)
+  | None -> Alcotest.fail "missing references without declaration result");
+  let references_with_declaration = find_rpc_response_by_id "3" messages in
+  (match references_with_declaration.Camlflow.Rpc_protocol.response_result with
+  | Some (`List references) ->
+      Alcotest.(check int) "references with declaration count" 2
+        (List.length references);
+      let uris =
+        List.map
+          (fun reference ->
+            match expect_assoc_field "uri" reference with
+            | `String uri -> uri
+            | other ->
+                Alcotest.failf "unexpected reference payload %s"
+                  (Yojson.Safe.to_string other))
+          references
+      in
+      Alcotest.(check bool) "includes helper declaration" true
+        (List.mem helper_uri uris);
+      Alcotest.(check bool) "includes main reference" true
+        (List.mem main_uri uris)
+  | Some other ->
+      Alcotest.failf "unexpected references with declaration payload %s"
+        (Yojson.Safe.to_string other)
+  | None -> Alcotest.fail "missing references with declaration result");
+  let document_symbols = find_rpc_response_by_id "4" messages in
+  (match document_symbols.Camlflow.Rpc_protocol.response_result with
+  | Some (`List [ payload_symbol; make_symbol ]) ->
+      expect_string_field "name" "payload" payload_symbol;
+      expect_int_field "kind" 23 payload_symbol;
+      (match expect_assoc_field "children" payload_symbol with
+      | `List [ field_symbol ] ->
+          expect_string_field "name" "name" field_symbol;
+          expect_int_field "kind" 8 field_symbol
+      | other ->
+          Alcotest.failf "unexpected payload children %s"
+            (Yojson.Safe.to_string other));
+      expect_string_field "name" "make" make_symbol;
+      expect_int_field "kind" 12 make_symbol
+  | Some other ->
+      Alcotest.failf "unexpected document symbol payload %s"
+        (Yojson.Safe.to_string other)
+  | None -> Alcotest.fail "missing document symbols result")
+
+let test_lsp_did_change_republishes_diagnostics () =
+  with_temp_dir "camlflow-lsp-did-change-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  let invalid_text =
+    {|
+let main : string =
+  missing
+|}
+  in
+  let fixed_text = {|
+let main : string =
+  "ok"
+|} in
+  write_file main fixed_text;
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+              [
+                ( "textDocument",
+                  `Assoc
+                    [
+                      ("uri", `String main_uri);
+                      ("version", `Int 1);
+                      ("text", `String invalid_text);
+                    ] );
+              ]);
+        Camlflow.Rpc_protocol.request "textDocument/didChange"
+          ~params:
+            (`Assoc
+              [
+                ( "textDocument",
+                  `Assoc [ ("uri", `String main_uri); ("version", `Int 2) ] );
+                ( "contentChanges",
+                  `List [ `Assoc [ ("text", `String fixed_text) ] ] );
+              ]);
+      ]
+  in
+  match find_rpc_requests "textDocument/publishDiagnostics" messages with
+  | [ first; second ] ->
+      let first_params =
+        match first.Camlflow.Rpc_protocol.request_params with
+        | Some params -> params
+        | None -> Alcotest.fail "missing first diagnostics params"
+      in
+      let second_params =
+        match second.Camlflow.Rpc_protocol.request_params with
+        | Some params -> params
+        | None -> Alcotest.fail "missing second diagnostics params"
+      in
+      expect_string_field "uri" main_uri first_params;
+      expect_int_field "version" 1 first_params;
+      (match expect_assoc_field "diagnostics" first_params with
+      | `List diagnostics ->
+          Alcotest.(check bool) "initial diagnostics emitted" true
+            (diagnostics <> [])
+      | other ->
+          Alcotest.failf "unexpected first diagnostics payload %s"
+            (Yojson.Safe.to_string other));
+      expect_string_field "uri" main_uri second_params;
+      expect_int_field "version" 2 second_params;
+      (match expect_assoc_field "diagnostics" second_params with
+      | `List diagnostics ->
+          Alcotest.(check int) "changed diagnostics cleared" 0
+            (List.length diagnostics)
+      | other ->
+          Alcotest.failf "unexpected second diagnostics payload %s"
+            (Yojson.Safe.to_string other))
+  | other ->
+      Alcotest.failf "expected two publishDiagnostics notifications, got %d"
+        (List.length other)
+
+let test_lsp_did_close_reverts_to_on_disk_analysis () =
+  with_temp_dir "camlflow-lsp-did-close-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  let invalid_text =
+    {|
+let main : string =
+  missing
+|}
+  in
+  let fixed_text = {|
+let main : string =
+  "ok"
+|} in
+  write_file main fixed_text;
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+              [
+                ( "textDocument",
+                  `Assoc
+                    [
+                      ("uri", `String main_uri);
+                      ("version", `Int 1);
+                      ("text", `String invalid_text);
+                    ] );
+              ]);
+        Camlflow.Rpc_protocol.request "textDocument/didClose"
+          ~params:
+            (`Assoc
+              [ ("textDocument", `Assoc [ ("uri", `String main_uri) ]) ]);
+      ]
+  in
+  match find_rpc_requests "textDocument/publishDiagnostics" messages with
+  | [ first; second ] ->
+      let first_params =
+        match first.Camlflow.Rpc_protocol.request_params with
+        | Some params -> params
+        | None -> Alcotest.fail "missing first diagnostics params"
+      in
+      let second_params =
+        match second.Camlflow.Rpc_protocol.request_params with
+        | Some params -> params
+        | None -> Alcotest.fail "missing second diagnostics params"
+      in
+      expect_string_field "uri" main_uri first_params;
+      expect_int_field "version" 1 first_params;
+      (match expect_assoc_field "diagnostics" first_params with
+      | `List diagnostics ->
+          Alcotest.(check bool) "opened diagnostics emitted" true
+            (diagnostics <> [])
+      | other ->
+          Alcotest.failf "unexpected first diagnostics payload %s"
+            (Yojson.Safe.to_string other));
+      expect_string_field "uri" main_uri second_params;
+      Alcotest.(check bool) "closed diagnostics omit version" true
+        (Option.is_none (assoc_field "version" second_params));
+      (match expect_assoc_field "diagnostics" second_params with
+      | `List diagnostics ->
+          Alcotest.(check int) "closed diagnostics cleared" 0
+            (List.length diagnostics)
+      | other ->
+          Alcotest.failf "unexpected second diagnostics payload %s"
+            (Yojson.Safe.to_string other))
+  | other ->
+      Alcotest.failf "expected two publishDiagnostics notifications, got %d"
+        (List.length other)
+
+let test_lsp_rename_rejects_nonrenameable_field () =
+  with_temp_dir "camlflow-lsp-rename-field-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  let main_text =
+    {|
+type payload = { name : string }
+
+let main (name : string) : string =
+  let payload : payload = { name = name } in
+  payload.name
+|}
+  in
+  write_file main main_text;
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let lines = String.split_on_char '\n' main_text in
+  let field_line = List.nth lines 5 in
+  let field_character = substring_index field_line ".name" + 2 in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+              [
+                ( "textDocument",
+                  `Assoc
+                    [
+                      ("uri", `String main_uri);
+                      ("version", `Int 1);
+                      ("text", `String main_text);
+                    ] );
+              ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+          "textDocument/prepareRename"
+          ~params:
+            (`Assoc
+              [
+                ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                ( "position",
+                  `Assoc
+                    [ ("line", `Int 5); ("character", `Int field_character) ]
+                );
+              ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 3)
+          "textDocument/rename"
+          ~params:
+            (`Assoc
+              [
+                ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                ( "position",
+                  `Assoc
+                    [ ("line", `Int 5); ("character", `Int field_character) ]
+                );
+                ("newName", `String "label");
+              ]);
+      ]
+  in
+  let prepare = find_rpc_response_by_id "2" messages in
+  (match prepare.Camlflow.Rpc_protocol.response_result with
+  | Some `Null -> ()
+  | Some other ->
+      Alcotest.failf "expected null prepareRename result, got %s"
+        (Yojson.Safe.to_string other)
+  | None -> Alcotest.fail "missing prepareRename result");
+  let rename = find_rpc_response_by_id "3" messages in
+  match rename.Camlflow.Rpc_protocol.response_error with
+  | Some error ->
+      Alcotest.(check int) "rename error code" (-32801) error.error_code;
+      Alcotest.(check string) "rename error message"
+        "symbol at position is not renameable" error.error_message
+  | None -> Alcotest.fail "missing rename error"
+
 let () =
   Alcotest.run "camlflow"
     [
@@ -3137,6 +3489,14 @@ let () =
             test_lsp_definition_hover_and_rename;
           Alcotest.test_case "lsp diagnostics for unbound value" `Quick
             test_lsp_diagnostics_for_unbound_value;
+          Alcotest.test_case "lsp references and document symbols" `Quick
+            test_lsp_references_and_document_symbols;
+          Alcotest.test_case "lsp didChange republishes diagnostics" `Quick
+            test_lsp_did_change_republishes_diagnostics;
+          Alcotest.test_case "lsp didClose reverts to on-disk analysis" `Quick
+            test_lsp_did_close_reverts_to_on_disk_analysis;
+          Alcotest.test_case "lsp rename rejects nonrenameable field" `Quick
+            test_lsp_rename_rejects_nonrenameable_field;
           Alcotest.test_case "rpc server check failure error" `Quick
             test_rpc_server_check_failure_error;
           Alcotest.test_case "rpc server compile failure error" `Quick
