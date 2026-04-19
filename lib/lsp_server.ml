@@ -307,10 +307,11 @@ let references_result (occurrences : Analysis.occurrence list)
          location_to_yojson occurrence.uri occurrence.range)
   |> fun items -> `List items
 
-let prepare_rename_result (symbol : Analysis.symbol) =
+let prepare_rename_result (occurrence : Analysis.occurrence)
+    (symbol : Analysis.symbol) =
   `Assoc
     [
-      ("range", range_to_yojson symbol.decl_selection_range);
+      ("range", range_to_yojson occurrence.range);
       ("placeholder", `String symbol.name);
     ]
 
@@ -466,8 +467,8 @@ let handle_prepare_rename server request params =
   let* document, line, character = text_document_position_params params in
   with_document_analysis server document (fun _path analysis ->
       match Analysis.symbol_at_position analysis document.uri ~line ~character with
-      | Some (_occurrence, symbol) when can_rename symbol ->
-          respond server id (prepare_rename_result symbol)
+      | Some (occurrence, symbol) when can_rename symbol ->
+          respond server id (prepare_rename_result occurrence symbol)
       | _ -> respond_null server id)
 
 let handle_rename server request params =

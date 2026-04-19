@@ -2964,6 +2964,117 @@ let main (name : string) : string =
       Alcotest.failf "unexpected rename payload %s"
         (Yojson.Safe.to_string other)
 
+let test_lsp_prepare_rename_uses_occurrence_range_for_qualified_symbol () =
+  with_temp_dir "camlflow-lsp-rename-qualified-" @@ fun dir ->
+  let helpers = Filename.concat dir "helpers.cml" in
+  let main = Filename.concat dir "main.cml" in
+  let helpers_text =
+    {|
+type payload = { name : string }
+
+let make (name : string) : payload =
+  { name = name }
+|}
+  in
+  let main_text =
+    {|
+let main (name : string) : Helpers.payload =
+  Helpers.make name
+|}
+  in
+  write_file helpers helpers_text;
+  write_file main main_text;
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let helper_uri = Camlflow.Lsp_analysis.uri_of_path helpers in
+  let lines = String.split_on_char '\n' main_text in
+  let make_line = List.nth lines 2 in
+  let make_start =
+    substring_index make_line "Helpers.make" + String.length "Helpers."
+  in
+  let make_character = make_start + 1 in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+              [
+                ( "textDocument",
+                  `Assoc
+                    [
+                      ("uri", `String main_uri);
+                      ("version", `Int 1);
+                      ("text", `String main_text);
+                    ] );
+              ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+          "textDocument/prepareRename"
+          ~params:
+            (`Assoc
+              [
+                ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                ( "position",
+                  `Assoc
+                    [ ("line", `Int 2); ("character", `Int make_character) ]
+                );
+              ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 3)
+          "textDocument/rename"
+          ~params:
+            (`Assoc
+              [
+                ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                ( "position",
+                  `Assoc
+                    [ ("line", `Int 2); ("character", `Int make_character) ]
+                );
+                ("newName", `String "build");
+              ]);
+      ]
+  in
+  let prepare = find_rpc_response_by_id "2" messages in
+  let prepare_json =
+    match prepare.Camlflow.Rpc_protocol.response_result with
+    | Some json -> json
+    | None -> Alcotest.fail "missing prepareRename result"
+  in
+  expect_string_field "placeholder" "make" prepare_json;
+  let prepare_range = expect_assoc_field "range" prepare_json in
+  let prepare_start = expect_assoc_field "start" prepare_range in
+  let prepare_end = expect_assoc_field "end" prepare_range in
+  expect_int_field "line" 2 prepare_start;
+  expect_int_field "character" make_start prepare_start;
+  expect_int_field "line" 2 prepare_end;
+  expect_int_field "character" (make_start + String.length "make") prepare_end;
+  let rename = find_rpc_response_by_id "3" messages in
+  let rename_json =
+    match rename.Camlflow.Rpc_protocol.response_result with
+    | Some json -> json
+    | None -> Alcotest.fail "missing rename result"
+  in
+  match expect_assoc_field "changes" rename_json with
+  | `Assoc changes -> (
+      match (List.assoc_opt main_uri changes, List.assoc_opt helper_uri changes) with
+      | Some (`List [ main_edit ]), Some (`List [ helper_edit ]) ->
+          expect_string_field "newText" "build" main_edit;
+          expect_string_field "newText" "build" helper_edit;
+          let main_range = expect_assoc_field "range" main_edit in
+          let main_start = expect_assoc_field "start" main_range in
+          let main_end = expect_assoc_field "end" main_range in
+          expect_int_field "line" 2 main_start;
+          expect_int_field "character" make_start main_start;
+          expect_int_field "line" 2 main_end;
+          expect_int_field "character" (make_start + String.length "make")
+            main_end
+      | _ ->
+          Alcotest.failf "unexpected rename changes payload %s"
+            (Yojson.Safe.to_string (`Assoc changes)))
+  | other ->
+      Alcotest.failf "unexpected rename payload %s"
+        (Yojson.Safe.to_string other)
+
 let test_lsp_diagnostics_for_unbound_value () =
   with_temp_dir "camlflow-lsp-diagnostics-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
@@ -3487,6 +3598,9 @@ let () =
             test_rpc_server_method_not_found_error;
           Alcotest.test_case "lsp definition hover and rename" `Quick
             test_lsp_definition_hover_and_rename;
+          Alcotest.test_case
+            "lsp prepareRename uses occurrence range for qualified symbol" `Quick
+            test_lsp_prepare_rename_uses_occurrence_range_for_qualified_symbol;
           Alcotest.test_case "lsp diagnostics for unbound value" `Quick
             test_lsp_diagnostics_for_unbound_value;
           Alcotest.test_case "lsp references and document symbols" `Quick

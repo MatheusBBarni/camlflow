@@ -10,6 +10,33 @@ let failf loc fmt =
 
 let loc_of (loc : Location.t) = Loc.of_location loc
 
+type constant_view =
+  | Const_integer of string * char option
+  | Const_float of string * char option
+  | Const_string of string * Location.t * string option
+  | Const_char of char
+
+let constant_view (constant : constant) =
+  let repr = Obj.repr constant in
+  let desc =
+    (* OCaml 5.4 wraps constants in a record with pconst_desc/pconst_loc,
+       while earlier compilers expose the descriptor variant directly. *)
+    if Obj.is_block repr && Obj.tag repr = 0 && Obj.size repr = 2 then
+      let maybe_loc = Obj.field repr 1 in
+      if Obj.is_block maybe_loc && Obj.tag maybe_loc = 0 && Obj.size maybe_loc >= 3
+      then Obj.field repr 0
+      else repr
+    else repr
+  in
+  match (Obj.tag desc, Obj.size desc) with
+  | 0, 2 -> Const_integer (Obj.obj (Obj.field desc 0), Obj.obj (Obj.field desc 1))
+  | 1, 1 -> Const_char (Obj.obj (Obj.field desc 0))
+  | 2, 3 ->
+      Const_string
+        (Obj.obj (Obj.field desc 0), Obj.obj (Obj.field desc 1), Obj.obj (Obj.field desc 2))
+  | 3, 2 -> Const_float (Obj.obj (Obj.field desc 0), Obj.obj (Obj.field desc 1))
+  | _ -> failwith "unsupported Parsetree.constant representation"
+
 let is_horizontal_space = function ' ' | '\t' -> true | _ -> false
 let is_line_break = function '\n' | '\r' -> true | _ -> false
 
@@ -133,11 +160,11 @@ let fail_at_loc (loc : Loc.t) fmt =
     fmt
 
 let literal_of_constant loc (constant : constant) =
-  match constant with
-  | Pconst_integer (value, _) -> Syntax.Ast.LInt (int_of_string value)
-  | Pconst_float (value, _) -> Syntax.Ast.LFloat (float_of_string value)
-  | Pconst_string (value, _, _) -> Syntax.Ast.LString value
-  | Pconst_char _ -> failf loc "char literals are unsupported"
+  match constant_view constant with
+  | Const_integer (value, _) -> Syntax.Ast.LInt (int_of_string value)
+  | Const_float (value, _) -> Syntax.Ast.LFloat (float_of_string value)
+  | Const_string (value, _, _) -> Syntax.Ast.LString value
+  | Const_char _ -> failf loc "char literals are unsupported"
 
 let last_ident loc lid =
   match Syntax.Ast.qname_of_longident lid with
@@ -437,8 +464,8 @@ let ident_qname (expr : expression) =
 let string_literal (expr : expression) =
   match expr.pexp_desc with
   | Pexp_constant constant -> (
-      match constant with
-      | Pconst_string (value, _, _) -> Some value
+      match constant_view constant with
+      | Const_string (value, _, _) -> Some value
       | _ -> None)
   | _ -> None
 

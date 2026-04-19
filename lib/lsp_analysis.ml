@@ -224,7 +224,8 @@ let is_ident_char = function
   | 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '_' | '\'' -> true
   | _ -> false
 
-let range_for_name_in_loc builder path (loc : Loc.t) ~name ~prefer_last =
+let range_for_name_in_loc builder path (loc : Loc.t) ~name ~prefer_last
+    ?(allow_qualified_prefix = false) () =
   let path = normalize_path path in
   match StringMap.find_opt path builder.files with
   | None -> basic_range_of_loc loc
@@ -244,8 +245,10 @@ let range_for_name_in_loc builder path (loc : Loc.t) ~name ~prefer_last =
           then
             let before_ok =
               index = 0
-              || let ch = snippet.[index - 1] in
-                 not (is_ident_char ch || ch = '.')
+              ||
+              let ch = snippet.[index - 1] in
+              if allow_qualified_prefix then not (is_ident_char ch)
+              else not (is_ident_char ch || ch = '.')
             in
             let after_index = index + String.length name in
             let after_ok =
@@ -356,6 +359,10 @@ let lsp_symbol_kind = function
 
 let string_of_qname = Syntax.Ast.string_of_qname
 
+let terminal_name_of_qname = function
+  | [] -> ""
+  | names -> List.hd (List.rev names)
+
 let rec string_of_type_expr (typ : Syntax.Ast.type_expr) =
   match typ.Syntax.Ast.type_desc with
   | Syntax.Ast.TEConstr (name, []) -> string_of_qname name
@@ -465,7 +472,9 @@ let local_symbol_id path loc kind name =
 let top_level_symbol builder module_ name kind loc hover renameable =
   let path = normalize_path module_.Syntax.Ast.module_path in
   let uri = uri_of_path path in
-  let selection_range = range_for_name_in_loc builder path loc ~name ~prefer_last:false in
+  let selection_range =
+    range_for_name_in_loc builder path loc ~name ~prefer_last:false ()
+  in
   let decl_range = basic_range_of_loc loc in
   let id =
     symbol_id
@@ -503,7 +512,7 @@ let create_local_symbol builder path loc name kind annotation =
       name
   in
   let selection_range =
-    range_for_name_in_loc builder path loc ~name ~prefer_last:false
+    range_for_name_in_loc builder path loc ~name ~prefer_last:false ()
   in
   let symbol =
     {
@@ -791,7 +800,23 @@ let add_resolution_diagnostic env loc message =
     }
 
 let add_reference_occurrence env symbol_id path loc name ~prefer_last =
-  let range = range_for_name_in_loc env.builder path loc ~name ~prefer_last in
+  let range =
+    range_for_name_in_loc env.builder path loc ~name ~prefer_last ()
+  in
+  add_occurrence env.builder
+    {
+      symbol_id;
+      uri = uri_of_path path;
+      range;
+      role = Reference;
+    }
+
+let add_qname_reference_occurrence env symbol_id path loc name =
+  let terminal_name = terminal_name_of_qname name in
+  let range =
+    range_for_name_in_loc env.builder path loc ~name:terminal_name
+      ~prefer_last:true ~allow_qualified_prefix:true ()
+  in
   add_occurrence env.builder
     {
       symbol_id;
@@ -822,8 +847,7 @@ let rec walk_type_expr env path (typ : Syntax.Ast.type_expr) =
       then
         (match lookup_type env name with
         | Ok symbol_id ->
-            add_reference_occurrence env symbol_id path typ.type_loc
-              (string_of_qname name) ~prefer_last:false
+            add_qname_reference_occurrence env symbol_id path typ.type_loc name
         | Error message -> add_resolution_diagnostic env typ.type_loc message);
       List.iter (walk_type_expr env path) args
   | Syntax.Ast.TETuple items -> List.iter (walk_type_expr env path) items
@@ -855,8 +879,8 @@ let rec bind_pattern_locals env path locals (pattern : Syntax.Ast.pattern) =
       if not (is_builtin_constructor name) then
         (match lookup_constructor env name with
         | Ok symbol_id ->
-            add_reference_occurrence env symbol_id path pattern.pattern_loc
-              (string_of_qname name) ~prefer_last:false
+            add_qname_reference_occurrence env symbol_id path pattern.pattern_loc
+              name
         | Error message -> add_resolution_diagnostic env pattern.pattern_loc message);
       List.fold_left (bind_pattern_locals env path) locals args
 
@@ -873,8 +897,7 @@ let rec walk_expr env path (expr : Syntax.Ast.expr) =
       then
         (match lookup_value env name with
         | Ok symbol_id ->
-            add_reference_occurrence env symbol_id path expr.expr_loc
-              (string_of_qname name) ~prefer_last:false
+            add_qname_reference_occurrence env symbol_id path expr.expr_loc name
         | Error message -> add_resolution_diagnostic env expr.expr_loc message)
   | Syntax.Ast.ETuple items -> List.iter (walk_expr env path) items
   | Syntax.Ast.ERecord fields ->
@@ -891,8 +914,7 @@ let rec walk_expr env path (expr : Syntax.Ast.expr) =
       if not (is_builtin_constructor name) then
         (match lookup_constructor env name with
         | Ok symbol_id ->
-            add_reference_occurrence env symbol_id path expr.expr_loc
-              (string_of_qname name) ~prefer_last:false
+            add_qname_reference_occurrence env symbol_id path expr.expr_loc name
         | Error message -> add_resolution_diagnostic env expr.expr_loc message);
       List.iter (walk_expr env path) args
   | Syntax.Ast.ELet (binding, body) ->
