@@ -20,8 +20,14 @@
   },
   "scripts": {
     "sync-schema": "node ./scripts/sync-schema.mjs",
+    "smoke:highlight": "node ./scripts/smoke-highlight.mjs",
+    "test": "npm run smoke:highlight",
     "package": "npm run sync-schema && npx @vscode/vsce package --allow-missing-repository",
     "package:dry-run": "npm run sync-schema && npx @vscode/vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.2.1"
   },
   "contributes": {
     "languages": [
@@ -34,6 +40,10 @@
         "extensions": [
           ".cml"
         ],
+        "icon": {
+          "light": "./icons/camlflow-light.svg",
+          "dark": "./icons/camlflow-dark.svg"
+        },
         "configuration": "./language-configuration.json"
       }
     ],
@@ -42,6 +52,12 @@
         "language": "camlflow",
         "scopeName": "source.camlflow",
         "path": "./syntaxes/camlflow.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "camlflow",
+        "path": "./snippets/camlflow.code-snippets"
       }
     ],
     "jsonValidation": [

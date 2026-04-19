@@ -106,17 +106,17 @@ an optional project-local `camlflow.json`.
 
 ### Task 3 - VS Code extension scaffold
 
-- [ ] Create a VS Code extension package
-- [ ] Recommended location: `packages/camlflow-vscode/`
-- [ ] Contribute the `camlflow` language id and associate it with `.cml`
-- [ ] Register `language-configuration.json` for comments, brackets, auto-closing pairs, indentation, and folding behavior
-- [ ] Register a TextMate grammar for `.cml`
-- [ ] Register JSON schema validation for `camlflow.json`
-- [ ] Add extension README and local packaging instructions
+- [x] Create a VS Code extension package
+- [x] Recommended location: `packages/camlflow-vscode/`
+- [x] Contribute the `camlflow` language id and associate it with `.cml`
+- [x] Register `language-configuration.json` for comments, brackets, auto-closing pairs, indentation, and folding behavior
+- [x] Register a TextMate grammar for `.cml`
+- [x] Register JSON schema validation for `camlflow.json`
+- [x] Add extension README and local packaging instructions
 
 ### Task 4 - Syntax highlighting and editing UX
 
-- [ ] Highlight core keywords:
+- [x] Highlight core keywords:
   - `type`
   - `let`
   - `let*`
@@ -129,17 +129,17 @@ an optional project-local `camlflow.json`.
   - `else`
   - `match`
   - `with`
-- [ ] Highlight type names, variant constructors, labels, strings, numbers, comments, operators, and field access consistently
-- [ ] Cover multiline strings and OCaml-style block comments in the grammar
-- [ ] Add starter snippets for `let main`, `agent`, `skill`, `match`, and type declarations
-- [ ] Smoke-test highlighting against the runnable examples in `examples/`
+- [x] Highlight type names, variant constructors, labels, strings, numbers, comments, operators, and field access consistently
+- [x] Cover multiline strings and OCaml-style block comments in the grammar
+- [x] Add starter snippets for `let main`, `agent`, `skill`, `match`, and type declarations
+- [x] Smoke-test highlighting against the runnable examples in `examples/`
 
 ### Task 5 - Icon and branding
 
-- [ ] Create purple light and dark icon assets for the language contribution
-- [ ] Apply the icon to the VS Code language contribution so `.cml` gets a sensible fallback icon
-- [ ] Verify icon asset provenance before publish
-- [ ] Add a short repo note describing the temporary icon source and replacement plan if needed
+- [x] Create purple light and dark icon assets for the language contribution
+- [x] Apply the icon to the VS Code language contribution so `.cml` gets a sensible fallback icon
+- [x] Verify icon asset provenance before publish
+- [x] Add a short repo note describing the temporary icon source and replacement plan if needed
 
 ### Task 6 - Docs and developer workflow
 
@@ -147,6 +147,15 @@ an optional project-local `camlflow.json`.
 - [ ] Document config precedence and supported fields
 - [ ] Add a minimal sample project that uses `camlflow.json`
 - [ ] Add contributor notes for testing and packaging the VS Code extension locally
+
+### Task 7 - Zed IDE integration
+
+- [ ] Add a dedicated Zed extension package for CamlFlow
+- [ ] Recommended location: `packages/camlflow-zed/`
+- [ ] Associate `.cml` files with CamlFlow inside Zed
+- [ ] Reuse the shared TextMate grammar so syntax highlighting does not drift from VS Code
+- [ ] Reuse the shared `camlflow.json` schema so config validation stays aligned across editors
+- [ ] Add local install and smoke-test instructions for the Zed package
 
 ## Assumptions to confirm before implementation
 
@@ -163,6 +172,7 @@ an optional project-local `camlflow.json`.
 4. Task 4 - syntax highlighting and editing UX
 5. Task 5 - icon and branding
 6. Task 6 - docs and developer workflow
+7. Task 7 - Zed IDE integration
 
 ## Deferred after this first DX slice
 
