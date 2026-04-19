@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://camlflow.dev/schemas/camlflow.schema.json",
+  "title": "CamlFlow project config",
+  "description": "Project-local defaults for CamlFlow CLI commands.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "program": {
+      "$ref": "#/$defs/nonEmptyPath",
+      "description": "Default workflow source file or compiled artifact to run."
+    },
+    "entry": {
+      "type": "string",
+      "description": "Default entrypoint name."
+    },
+    "includePaths": {
+      "$ref": "#/$defs/pathArray",
+      "description": "Additional module search paths resolved from the config directory."
+    },
+    "skillsDir": {
+      "$ref": "#/$defs/nonEmptyPath",
+      "description": "Local skill root resolved from the config directory."
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "codex",
+        "opencode"
+      ],
+      "description": "Provider used for unresolved effects when one is configured."
+    },
+    "model": {
+      "type": "string",
+      "description": "Provider model override."
+    },
+    "reasoning": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "description": "Provider-agnostic reasoning level."
+    },
+    "providerProfile": {
+      "type": "string",
+      "description": "Named provider profile."
+    },
+    "providerConfig": {
+      "type": "object",
+      "description": "String-to-string provider config values, equivalent to repeatable --provider-config key=value.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "sandbox": {
+      "type": "string",
+      "enum": [
+        "read-only",
+        "workspace-write",
+        "danger-full-access"
+      ],
+      "default": "workspace-write",
+      "description": "Sandbox mode for provider execution."
+    },
+    "allowWriteDirs": {
+      "$ref": "#/$defs/pathArray",
+      "description": "Extra writable directories resolved from the config directory."
+    },
+    "traceProvider": {
+      "type": "boolean",
+      "default": false,
+      "description": "Emit provider trace metadata to stderr."
+    }
+  },
+  "$defs": {
+    "nonEmptyPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": ".*\\S.*"
+    },
+    "pathArray": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nonEmptyPath"
+      }
+    }
+  }
+}

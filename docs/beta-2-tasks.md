@@ -98,11 +98,11 @@ an optional project-local `camlflow.json`.
 
 ### Task 2 - Config diagnostics and tests
 
-- [ ] Add tests for valid config decoding and normalization
-- [ ] Add tests for invalid enum values, wrong JSON shapes, and bad path values
-- [ ] Add CLI tests covering `CLI > config > defaults`
-- [ ] Add regression tests for positional program override, provider-setting override, and current input validation
-- [ ] Make config errors include the config path and failing field name
+- [x] Add tests for valid config decoding and normalization
+- [x] Add tests for invalid enum values, wrong JSON shapes, and bad path values
+- [x] Add CLI tests covering `CLI > config > defaults`
+- [x] Add regression tests for positional program override, provider-setting override, and current input validation
+- [x] Make config errors include the config path and failing field name
 
 ### Task 3 - VS Code extension scaffold
 

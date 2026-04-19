@@ -1,0 +1,54 @@
+{
+  "name": "camlflow-vscode",
+  "displayName": "CamlFlow",
+  "version": "0.1.0",
+  "description": "VS Code language support for CamlFlow workflows and camlflow.json",
+  "publisher": "camlflow",
+  "license": "UNLICENSED",
+  "keywords": [
+    "camlflow",
+    "ocaml",
+    "dsl",
+    "workflow",
+    "vscode"
+  ],
+  "categories": [
+    "Programming Languages"
+  ],
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "scripts": {
+    "sync-schema": "node ./scripts/sync-schema.mjs",
+    "package": "npm run sync-schema && npx @vscode/vsce package --allow-missing-repository",
+    "package:dry-run": "npm run sync-schema && npx @vscode/vsce package --allow-missing-repository"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "camlflow",
+        "aliases": [
+          "CamlFlow",
+          "camlflow"
+        ],
+        "extensions": [
+          ".cml"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "camlflow",
+        "scopeName": "source.camlflow",
+        "path": "./syntaxes/camlflow.tmLanguage.json"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": "/camlflow.json",
+        "url": "./generated/camlflow.schema.json"
+      }
+    ]
+  }
+}

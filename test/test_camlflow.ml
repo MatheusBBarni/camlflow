@@ -80,6 +80,14 @@ let load_nearest_project_config working_directory =
   | Ok None -> Alcotest.fail "expected CamlFlow config"
   | Error error -> Alcotest.failf "project config load failed: %s" error
 
+let load_project_config_file path =
+  match Camlflow.Project_config.load_file path with
+  | Ok config -> config
+  | Error error -> Alcotest.failf "project config load failed: %s" error
+
+let write_project_config dir content =
+  write_file (Filename.concat dir Camlflow.Project_config.filename) content
+
 let write_rpc_messages path messages =
   Out_channel.with_open_bin path (fun channel ->
       List.iter
@@ -477,7 +485,7 @@ let test_project_config_loads_nearest_and_resolves_paths () =
   let deep = Filename.concat nested "deep" in
   ensure_dir nested;
   ensure_dir deep;
-  write_file (Filename.concat dir Camlflow.Project_config.filename)
+  write_project_config dir
     {|
 {
   "program": "flows/main.cml",
@@ -532,6 +540,84 @@ let test_project_config_loads_nearest_and_resolves_paths () =
     config.allow_write_dirs;
   Alcotest.(check (option bool)) "trace provider" (Some true)
     config.trace_provider
+
+let test_project_config_load_file_normalizes_relative_and_absolute_paths () =
+  with_temp_dir "camlflow-config-load-file-" @@ fun dir ->
+  let config_path = Filename.concat dir Camlflow.Project_config.filename in
+  let absolute_program = Filename.concat dir "main.cml" in
+  let absolute_include = "/opt/camlflow/lib" in
+  let absolute_skills = "/srv/camlflow/skills" in
+  let absolute_output = "/var/tmp/camlflow-out" in
+  write_project_config dir
+    (Printf.sprintf
+       {|
+{
+  "program": %S,
+  "includePaths": ["relative-lib", %S],
+  "skillsDir": %S,
+  "allowWriteDirs": ["relative-out", %S]
+}
+|}
+       absolute_program absolute_include absolute_skills absolute_output);
+  let config = load_project_config_file config_path in
+  Alcotest.(check (option string)) "absolute program preserved"
+    (Some absolute_program) config.program;
+  Alcotest.(check (option (list string))) "include paths normalized"
+    (Some [ Filename.concat dir "relative-lib"; absolute_include ])
+    config.include_paths;
+  Alcotest.(check (option string)) "absolute skills preserved"
+    (Some absolute_skills) config.skills_dir;
+  Alcotest.(check (option (list string))) "allow write dirs normalized"
+    (Some [ Filename.concat dir "relative-out"; absolute_output ])
+    config.allow_write_dirs
+
+let test_project_config_invalid_enum_includes_path_and_field () =
+  with_temp_dir "camlflow-config-invalid-enum-" @@ fun dir ->
+  let config_path = Filename.concat dir Camlflow.Project_config.filename in
+  write_project_config dir
+    {|
+{
+  "provider": "bogus"
+}
+|};
+  let result = Camlflow.Project_config.load_file config_path in
+  expect_error_contains "invalid enum includes path" config_path result;
+  expect_error_contains "invalid enum includes field" "invalid field provider" result;
+  expect_error_contains "invalid enum includes reason" "unknown provider bogus"
+    result
+
+let test_project_config_wrong_shape_includes_path_and_field () =
+  with_temp_dir "camlflow-config-wrong-shape-" @@ fun dir ->
+  let config_path = Filename.concat dir Camlflow.Project_config.filename in
+  write_project_config dir
+    {|
+{
+  "providerConfig": {
+    "foo": 1
+  }
+}
+|};
+  let result = Camlflow.Project_config.load_file config_path in
+  expect_error_contains "wrong shape includes path" config_path result;
+  expect_error_contains "wrong shape includes nested field"
+    "invalid field providerConfig.foo" result;
+  expect_error_contains "wrong shape includes reason" "expected string" result
+
+let test_project_config_bad_path_value_includes_path_and_field () =
+  with_temp_dir "camlflow-config-bad-path-" @@ fun dir ->
+  let config_path = Filename.concat dir Camlflow.Project_config.filename in
+  write_project_config dir
+    {|
+{
+  "allowWriteDirs": [""]
+}
+|};
+  let result = Camlflow.Project_config.load_file config_path in
+  expect_error_contains "bad path includes path" config_path result;
+  expect_error_contains "bad path includes indexed field"
+    "invalid field allowWriteDirs[0]" result;
+  expect_error_contains "bad path includes reason" "expected non-empty path"
+    result
 
 let sample_project_config ?program ?entry ?include_paths ?skills_dir ?provider
     ?model ?reasoning ?provider_profile ?provider_configs ?sandbox
@@ -659,6 +745,103 @@ let test_cli_explicit_run_flags_override_project_config () =
     parsed.options.provider_options.allow_write_dirs;
   Alcotest.(check bool) "cli trace provider preserved" true
     parsed.options.provider_options.trace_provider
+
+let test_cli_project_config_precedence_cli_config_defaults () =
+  let parsed =
+    parse_cli [ "run"; "--provider"; "opencode"; "--entry"; "cli-entry" ]
+  in
+  let config =
+    sample_project_config ~program:"/tmp/workflow.cml" ~entry:"config-entry"
+      ~include_paths:[ "/tmp/lib" ] ~provider:Camlflow.Provider.Codex
+      ~model:"gpt-5.4-mini" ~reasoning:Camlflow.Provider.Low ()
+  in
+  let parsed = Camlflow.Cli.apply_project_config parsed config in
+  (match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "run validate with precedence failed: %s" error);
+  Alcotest.(check (list string)) "config program fills missing positional"
+    [ "/tmp/workflow.cml" ] parsed.positionals;
+  Alcotest.(check string) "cli entry wins" "cli-entry" parsed.options.entry;
+  Alcotest.(check (list string)) "config include paths win over defaults"
+    [ "/tmp/lib" ] parsed.options.include_paths;
+  Alcotest.(check string) "cli provider wins" "opencode"
+    (match parsed.options.provider_options.provider with
+    | Some provider -> Camlflow.Provider.name_to_string provider
+    | None -> "none");
+  Alcotest.(check (option string)) "config model wins over default"
+    (Some "gpt-5.4-mini") parsed.options.provider_options.model;
+  Alcotest.(check string) "config reasoning wins over default" "low"
+    (match parsed.options.provider_options.reasoning with
+    | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
+    | None -> "none");
+  Alcotest.(check string) "default sandbox remains" "workspace-write"
+    (Camlflow.Provider.sandbox_to_string
+       parsed.options.provider_options.sandbox);
+  Alcotest.(check bool) "default trace provider remains false" false
+    parsed.options.provider_options.trace_provider
+
+let test_cli_explicit_program_overrides_project_config_program () =
+  let parsed = parse_cli [ "compile"; "cli.cml" ] in
+  let config =
+    sample_project_config ~program:"/tmp/workflow.cml"
+      ~include_paths:[ "/tmp/lib" ] ()
+  in
+  let parsed = Camlflow.Cli.apply_project_config parsed config in
+  (match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error ->
+      Alcotest.failf "compile validate with explicit program failed: %s" error);
+  Alcotest.(check (list string)) "explicit positional preserved" [ "cli.cml" ]
+    parsed.positionals;
+  Alcotest.(check (list string)) "config include paths still applied"
+    [ "/tmp/lib" ] parsed.options.include_paths
+
+let test_cli_explicit_provider_setting_overrides_project_config_setting () =
+  let parsed =
+    parse_cli [ "run"; "--provider"; "codex"; "--model"; "cli-model" ]
+  in
+  let config =
+    sample_project_config ~program:"/tmp/workflow.cml" ~model:"config-model"
+      ~reasoning:Camlflow.Provider.Low ~provider_profile:"daily"
+      ~sandbox:Camlflow.Provider.Read_only ~trace_provider:true ()
+  in
+  let parsed = Camlflow.Cli.apply_project_config parsed config in
+  (match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error ->
+      Alcotest.failf "run validate with provider override failed: %s" error);
+  Alcotest.(check (option string)) "cli model preserved" (Some "cli-model")
+    parsed.options.provider_options.model;
+  Alcotest.(check string) "config reasoning still applied" "low"
+    (match parsed.options.provider_options.reasoning with
+    | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
+    | None -> "none");
+  Alcotest.(check (option string)) "config provider profile still applied"
+    (Some "daily") parsed.options.provider_options.provider_profile;
+  Alcotest.(check string) "config sandbox still applied" "read-only"
+    (Camlflow.Provider.sandbox_to_string
+       parsed.options.provider_options.sandbox);
+  Alcotest.(check bool) "config trace provider still applied" true
+    parsed.options.provider_options.trace_provider
+
+let test_cli_project_config_keeps_run_input_validation () =
+  let parsed =
+    parse_cli
+      [
+        "run";
+        "--provider";
+        "codex";
+        "--input";
+        "input.json";
+        "--input-json";
+        "{}";
+      ]
+  in
+  let config = sample_project_config ~program:"/tmp/workflow.cml" () in
+  let parsed = Camlflow.Cli.apply_project_config parsed config in
+  expect_error_contains "config-backed run input validation"
+    "either --input or --input-json"
+    (Camlflow.Cli.validate parsed)
 
 let test_cli_check_uses_project_program_without_run_only_defaults () =
   let parsed = parse_cli [ "check" ] in
@@ -2611,10 +2794,33 @@ let () =
             test_cli_check_rejects_provider_flags;
           Alcotest.test_case "project config loads nearest and resolves paths"
             `Quick test_project_config_loads_nearest_and_resolves_paths;
+          Alcotest.test_case
+            "project config load_file normalizes relative and absolute paths"
+            `Quick
+            test_project_config_load_file_normalizes_relative_and_absolute_paths;
+          Alcotest.test_case
+            "project config invalid enum includes path and field"
+            `Quick test_project_config_invalid_enum_includes_path_and_field;
+          Alcotest.test_case
+            "project config wrong shape includes path and field"
+            `Quick test_project_config_wrong_shape_includes_path_and_field;
+          Alcotest.test_case
+            "project config bad path includes path and field"
+            `Quick test_project_config_bad_path_value_includes_path_and_field;
           Alcotest.test_case "cli run uses project config defaults" `Quick
             test_cli_run_uses_project_config_defaults;
           Alcotest.test_case "cli explicit run flags override project config"
             `Quick test_cli_explicit_run_flags_override_project_config;
+          Alcotest.test_case "cli precedence is cli then config then defaults"
+            `Quick test_cli_project_config_precedence_cli_config_defaults;
+          Alcotest.test_case "cli explicit program overrides config program"
+            `Quick test_cli_explicit_program_overrides_project_config_program;
+          Alcotest.test_case
+            "cli explicit provider setting overrides config setting"
+            `Quick
+            test_cli_explicit_provider_setting_overrides_project_config_setting;
+          Alcotest.test_case "cli config-backed run keeps input validation"
+            `Quick test_cli_project_config_keeps_run_input_validation;
           Alcotest.test_case
             "cli check uses project program without run-only defaults"
             `Quick

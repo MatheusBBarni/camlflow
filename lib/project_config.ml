@@ -26,7 +26,9 @@ let invalid_root path message =
   Printf.sprintf "invalid CamlFlow config %s: %s" path message
 
 let resolve_path ~directory path =
-  if Filename.is_relative path then Filename.concat directory path else path
+  if Filename.is_relative path then
+    if String.equal path "." then directory else Filename.concat directory path
+  else path
 
 let read_text_file path =
   try Ok (In_channel.with_open_bin path In_channel.input_all)
@@ -37,29 +39,15 @@ let decode_string path field = function
   | `String value -> Ok value
   | _ -> Error (invalid_field path field "expected string")
 
+let decode_path_string path field json =
+  let* value = decode_string path field json in
+  if String.trim value = "" then
+    Error (invalid_field path field "expected non-empty path")
+  else Ok value
+
 let decode_bool path field = function
   | `Bool value -> Ok value
   | _ -> Error (invalid_field path field "expected boolean")
-
-let decode_string_list path field = function
-  | `List values ->
-      List.mapi
-        (fun index value ->
-          match value with
-          | `String item -> Ok item
-          | _ ->
-              Error
-                (invalid_field path
-                   (Printf.sprintf "%s[%d]" field index)
-                   "expected string"))
-        values
-      |> List.fold_left
-           (fun acc item ->
-             let* acc = acc in
-             let* item = item in
-             Ok (acc @ [ item ]))
-           (Ok [])
-  | _ -> Error (invalid_field path field "expected array")
 
 let decode_provider path field json =
   let* value = decode_string path field json in
@@ -88,6 +76,20 @@ let decode_provider_configs path field = function
         (Ok []) entries
   | _ -> Error (invalid_field path field "expected object")
 
+let decode_path_list path field = function
+  | `List values ->
+      List.mapi
+        (fun index value ->
+          decode_path_string path (Printf.sprintf "%s[%d]" field index) value)
+        values
+      |> List.fold_left
+           (fun acc item ->
+             let* acc = acc in
+             let* item = item in
+             Ok (acc @ [ item ]))
+           (Ok [])
+  | _ -> Error (invalid_field path field "expected array")
+
 let decode_optional fields path field decoder =
   match List.assoc_opt field fields with
   | None -> Ok None
@@ -97,13 +99,13 @@ let decode_optional fields path field decoder =
 
 let decode_optional_path fields directory path field =
   let* value =
-    decode_optional fields path field decode_string
+    decode_optional fields path field decode_path_string
   in
   Ok (Option.map (resolve_path ~directory) value)
 
 let decode_optional_path_list fields directory path field =
   let* value =
-    decode_optional fields path field decode_string_list
+    decode_optional fields path field decode_path_list
   in
   Ok (Option.map (List.map (resolve_path ~directory)) value)
 
