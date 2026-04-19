@@ -143,19 +143,19 @@ an optional project-local `camlflow.json`.
 
 ### Task 6 - Docs and developer workflow
 
-- [ ] Update README quickstart and CLI examples to show `camlflow.json`-backed runs
-- [ ] Document config precedence and supported fields
-- [ ] Add a minimal sample project that uses `camlflow.json`
-- [ ] Add contributor notes for testing and packaging the VS Code extension locally
+- [x] Update README quickstart and CLI examples to show `camlflow.json`-backed runs
+- [x] Document config precedence and supported fields
+- [x] Add a minimal sample project that uses `camlflow.json`
+- [x] Add contributor notes for testing and packaging the VS Code extension locally
 
 ### Task 7 - Zed IDE integration
 
-- [ ] Add a dedicated Zed extension package for CamlFlow
-- [ ] Recommended location: `packages/camlflow-zed/`
-- [ ] Associate `.cml` files with CamlFlow inside Zed
-- [ ] Reuse the shared TextMate grammar so syntax highlighting does not drift from VS Code
-- [ ] Reuse the shared `camlflow.json` schema so config validation stays aligned across editors
-- [ ] Add local install and smoke-test instructions for the Zed package
+- [x] Add a dedicated Zed extension package for CamlFlow
+- [x] Recommended location: `packages/camlflow-zed/`
+- [x] Associate `.cml` files with CamlFlow inside Zed
+- [x] Reuse the shared TextMate grammar so syntax highlighting does not drift from VS Code
+- [x] Reuse the shared `camlflow.json` schema so config validation stays aligned across editors
+- [x] Add local install and smoke-test instructions for the Zed package
 
 ## Assumptions to confirm before implementation
 

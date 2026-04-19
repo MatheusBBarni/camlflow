@@ -1,0 +1,20 @@
+{
+  // Paste this fragment into your Zed user or workspace settings to bind
+  // camlflow.json to the shared schema artifact in this repository.
+  "lsp": {
+    "json-language-server": {
+      "settings": {
+        "json": {
+          "schemas": [
+            {
+              "fileMatch": [
+                "**/camlflow.json"
+              ],
+              "url": "./schemas/camlflow.schema.json"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

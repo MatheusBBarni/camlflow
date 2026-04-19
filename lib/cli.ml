@@ -158,7 +158,9 @@ let usage_text =
       "  camlflow help run";
       "  camlflow parse examples/basic/main.cml";
       "  camlflow check examples/qualified-imports/main.cml";
+      "  cd examples/project-config && camlflow check";
       "  camlflow compile examples/basic/main.cml -o /tmp/basic.ir.json";
+      "  cd examples/project-config && camlflow run --input input.json";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"'";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider codex --model gpt-5.4-mini";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider opencode --model openai/gpt-5.4-mini";
@@ -202,8 +204,9 @@ let check_help_text =
       "  -h, --help";
       "  -I <dir>";
       "";
-      "Example:";
+      "Examples:";
       "  camlflow check examples/qualified-imports/main.cml";
+      "  cd examples/project-config && camlflow check";
     ]
 
 let compile_help_text =
@@ -224,8 +227,9 @@ let compile_help_text =
       "  -I <dir>";
       "  -o <path>";
       "";
-      "Example:";
+      "Examples:";
       "  camlflow compile examples/basic/main.cml -o /tmp/basic.ir.json";
+      "  cd examples/project-config && camlflow compile -o /tmp/project-config.ir.json";
     ]
 
 let run_help_text =
@@ -265,6 +269,7 @@ let run_help_text =
       "  --trace-provider";
       "";
       "Examples:";
+      "  cd examples/project-config && camlflow run --input input.json";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"'";
       "  camlflow run /tmp/basic.ir.json --input-json '\"Ada\"'";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider codex --model gpt-5.4-mini";
