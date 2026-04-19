@@ -214,20 +214,11 @@ let execute_request ~working_directory ~settings ~step (request : Effect_request
                "codex returned invalid JSON for %s %s: %s (output: %s)"
                trace_kind trace_name message (String.trim last_message))
     in
-    (match wrapped_json with
-    | `Assoc fields -> (
-        match List.assoc_opt "result" fields with
-        | Some result -> Ok result
-        | None ->
-            Error
-              (Printf.sprintf
-                 "codex returned JSON without result field for %s %s: %s"
-                 trace_kind trace_name (Yojson.Safe.to_string wrapped_json)))
-    | _ ->
-        Error
-          (Printf.sprintf
-             "codex returned non-object JSON wrapper for %s %s: %s" trace_kind
-             trace_name (Yojson.Safe.to_string wrapped_json)))
+    (Provider_schema.unwrap_wrapped_response_json wrapped_json
+    |> Result.map_error (fun error ->
+           Printf.sprintf
+             "codex returned invalid model response for %s %s: %s (output: %s)"
+             trace_kind trace_name error (Yojson.Safe.to_string wrapped_json)))
   in
   let elapsed = Unix.gettimeofday () -. started_at in
   trace_end settings ~step

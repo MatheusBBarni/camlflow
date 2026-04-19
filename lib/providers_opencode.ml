@@ -172,20 +172,11 @@ let parse_wrapped_response ~trace_kind ~trace_name text =
              "opencode returned invalid JSON for %s %s: %s (output: %s)"
              trace_kind trace_name message (String.trim text))
   in
-  match wrapped_json with
-  | `Assoc fields -> (
-      match List.assoc_opt "result" fields with
-      | Some result -> Ok result
-      | None ->
-          Error
-            (Printf.sprintf
-               "opencode returned JSON without result field for %s %s: %s"
-               trace_kind trace_name (Yojson.Safe.to_string wrapped_json)))
-  | _ ->
-      Error
-        (Printf.sprintf
-           "opencode returned non-object JSON wrapper for %s %s: %s" trace_kind
-           trace_name (Yojson.Safe.to_string wrapped_json))
+  Provider_schema.unwrap_wrapped_response_json wrapped_json
+  |> Result.map_error (fun error ->
+         Printf.sprintf
+           "opencode returned invalid model response for %s %s: %s (output: %s)"
+           trace_kind trace_name error (Yojson.Safe.to_string wrapped_json))
 
 let run_opencode_exec ~working_directory ~settings ~prompt ~schema:_ ~model =
   let stdout_path = Filename.temp_file "camlflow-opencode-stdout-" ".log" in

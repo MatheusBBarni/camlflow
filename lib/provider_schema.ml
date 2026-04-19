@@ -183,3 +183,27 @@ let wrapped_response_schema schema =
           ("additionalProperties", `Bool false);
         ])
       @ match defs with [] -> [] | defs -> [ ("$defs", `Assoc defs) ]))
+
+let unwrap_wrapped_response_json = function
+  | `Assoc fields ->
+      let result_values, extra_fields =
+        List.fold_left
+          (fun (results, extras) (name, value) ->
+            if String.equal name "result" then (value :: results, extras)
+            else (results, name :: extras))
+          ([], []) fields
+      in
+      let result_values = List.rev result_values in
+      let extra_fields =
+        extra_fields |> List.sort_uniq String.compare
+      in
+      (match (result_values, extra_fields) with
+      | [ result ], [] -> Ok result
+      | [], _ | _ :: _ :: _, _ ->
+          Error "model response wrapper must contain exactly one result field"
+      | [ _ ], extra_fields ->
+          Error
+            (Printf.sprintf
+               "model response wrapper must not contain extra field(s): %s"
+               (String.concat ", " extra_fields)))
+  | _ -> Error "model response wrapper must be a JSON object"

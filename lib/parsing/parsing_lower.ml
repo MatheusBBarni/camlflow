@@ -133,7 +133,7 @@ let fail_at_loc (loc : Loc.t) fmt =
     fmt
 
 let literal_of_constant loc (constant : constant) =
-  match constant.pconst_desc with
+  match constant with
   | Pconst_integer (value, _) -> Syntax.Ast.LInt (int_of_string value)
   | Pconst_float (value, _) -> Syntax.Ast.LFloat (float_of_string value)
   | Pconst_string (value, _, _) -> Syntax.Ast.LString value
@@ -155,16 +155,7 @@ let rec lower_type (typ : core_type) : Syntax.Ast.type_expr =
     | Ptyp_constr ({ txt = lid; _ }, args) ->
         Syntax.Ast.TEConstr
           (Syntax.Ast.qname_of_longident lid, List.map lower_type args)
-    | Ptyp_tuple items ->
-        let items =
-          List.map
-            (fun (label, item) ->
-              match label with
-              | None -> lower_type item
-              | Some _ -> failf item.ptyp_loc "labeled tuple types are unsupported")
-            items
-        in
-        Syntax.Ast.TETuple items
+    | Ptyp_tuple items -> Syntax.Ast.TETuple (List.map lower_type items)
     | Ptyp_arrow (label, lhs, rhs) ->
         let label =
           match label with
@@ -187,13 +178,7 @@ let rec lower_pattern (pattern : pattern) : Syntax.Ast.pattern =
     | Ppat_any -> Syntax.Ast.PWildcard
     | Ppat_var { txt = name; _ } -> Syntax.Ast.PVar name
     | Ppat_constant constant -> Syntax.Ast.PLiteral (literal_of_constant pattern.ppat_loc constant)
-    | Ppat_tuple (items, Closed) ->
-        Syntax.Ast.PTuple
-          (List.map
-             (lower_unlabeled_tuple_item pattern.ppat_loc lower_pattern)
-             items)
-    | Ppat_tuple (_, Open) ->
-        failf pattern.ppat_loc "open tuple patterns are unsupported"
+    | Ppat_tuple items -> Syntax.Ast.PTuple (List.map lower_pattern items)
     | Ppat_record (fields, Closed) ->
         Syntax.Ast.PRecord
           (List.map
@@ -217,22 +202,13 @@ let rec lower_pattern (pattern : pattern) : Syntax.Ast.pattern =
               | None -> []
               | Some
                   ( existentials,
-                    ({ ppat_desc = Ppat_tuple (items, Closed); _ } as inner) ) ->
+                    ({ ppat_desc = Ppat_tuple items; _ } as inner) ) ->
                   let () =
                     match existentials with
                     | [] -> ()
                     | _ -> failf inner.ppat_loc "existential constructor patterns are unsupported"
                   in
-                  List.map
-                    (lower_unlabeled_tuple_item inner.ppat_loc lower_pattern)
-                    items
-              | Some (existentials, ({ ppat_desc = Ppat_tuple (_, Open); _ } as inner)) ->
-                  let () =
-                    match existentials with
-                    | [] -> ()
-                    | _ -> failf inner.ppat_loc "existential constructor patterns are unsupported"
-                  in
-                  failf inner.ppat_loc "open tuple patterns are unsupported"
+                  List.map lower_pattern items
               | Some (existentials, inner) ->
                   let () =
                     match existentials with
@@ -278,36 +254,23 @@ let lower_param ~param_loc label default pattern : Syntax.Ast.param =
   in
   { Syntax.Ast.param_name; param_label; param_annotation; param_loc = loc_of param_loc }
 
-let lower_function_param (param : function_param) : Syntax.Ast.param =
-  match param.pparam_desc with
-  | Pparam_val (label, default, pattern) ->
-      lower_param ~param_loc:param.pparam_loc label default pattern
-  | Pparam_newtype _ ->
-      failf param.pparam_loc "locally abstract type variables are unsupported"
-
-let lower_type_constraint loc = function
-  | None -> None
-  | Some (Pconstraint typ) -> Some (lower_type typ)
-  | Some (Pcoerce _) -> failf loc "value coercions are unsupported"
-
 let split_fun_expr expr =
-  match expr.pexp_desc with
-  | Pexp_function (params, return_constraint, Pfunction_body body) ->
-      let params = List.map lower_function_param params in
-      let body, body_return_constraint =
-        match body.pexp_desc with
-        | Pexp_constraint (inner, typ) -> (inner, Some (lower_type typ))
-        | _ -> (body, None)
-      in
-      let return_constraint =
-        match lower_type_constraint expr.pexp_loc return_constraint with
-        | Some return_constraint -> Some return_constraint
-        | None -> body_return_constraint
-      in
-      (params, body, return_constraint)
-  | Pexp_function (_, _, Pfunction_cases _) ->
-      failf expr.pexp_loc "function shorthand is unsupported in CamlFlow MVP"
-  | _ -> ([], expr, None)
+  let rec collect acc expr =
+    match expr.pexp_desc with
+    | Pexp_fun (label, default, pattern, body) ->
+        let param = lower_param ~param_loc:pattern.ppat_loc label default pattern in
+        collect (acc @ [ param ]) body
+    | Pexp_function _ ->
+        failf expr.pexp_loc "function shorthand is unsupported in CamlFlow MVP"
+    | _ ->
+        let body, body_return_constraint =
+          match expr.pexp_desc with
+          | Pexp_constraint (inner, typ) -> (inner, Some (lower_type typ))
+          | _ -> (expr, None)
+        in
+        (acc, body, body_return_constraint)
+  in
+  collect [] expr
 
 let rebuild_function_annotation (params : Syntax.Ast.param list) (return_type : Syntax.Ast.type_expr) :
     Syntax.Ast.type_expr =
@@ -334,11 +297,7 @@ let rec lower_expr (expr : expression) : Syntax.Ast.expr =
     match expr.pexp_desc with
     | Pexp_constant constant -> Syntax.Ast.ELiteral (literal_of_constant expr.pexp_loc constant)
     | Pexp_ident { txt = lid; _ } -> Syntax.Ast.EVar (Syntax.Ast.qname_of_longident lid)
-    | Pexp_tuple items ->
-        Syntax.Ast.ETuple
-          (List.map
-             (lower_unlabeled_tuple_item expr.pexp_loc lower_expr)
-             items)
+    | Pexp_tuple items -> Syntax.Ast.ETuple (List.map lower_expr items)
     | Pexp_record (fields, None) ->
         Syntax.Ast.ERecord
           (List.map
@@ -353,9 +312,7 @@ let rec lower_expr (expr : expression) : Syntax.Ast.expr =
           match payload with
           | None -> []
           | Some ({ pexp_desc = Pexp_tuple items; _ }) ->
-              List.map
-                (lower_unlabeled_tuple_item expr.pexp_loc lower_expr)
-                items
+              List.map lower_expr items
           | Some inner -> [ lower_expr inner ]
         in
         let bool_or_unit =
@@ -403,10 +360,10 @@ let rec lower_expr (expr : expression) : Syntax.Ast.expr =
             ( { Syntax.Ast.let_star_name; let_star_value = lower_expr binding.pbop_exp; let_star_loc = loc_of binding.pbop_loc },
               lower_expr body )
     | Pexp_letop { ands = _ :: _; _ } -> failf expr.pexp_loc "let* with and* is unsupported"
-    | Pexp_function (_, _, Pfunction_body _) ->
+    | Pexp_fun _ ->
         let params, body, _return_type = split_fun_expr expr in
         Syntax.Ast.ELambda (params, lower_expr body)
-    | Pexp_function (_, _, Pfunction_cases _) ->
+    | Pexp_function _ ->
         failf expr.pexp_loc "function shorthand is unsupported in CamlFlow MVP"
     | Pexp_constraint (inner, _) -> (lower_expr inner).Syntax.Ast.expr_desc
     | _ -> failf expr.pexp_loc "unsupported expression syntax"
@@ -430,7 +387,7 @@ and lower_value_binding rec_flag (value_binding : value_binding) : Syntax.Ast.bi
     let binding_recursive = rec_flag = Recursive in
     let binding_loc = loc_of value_binding.pvb_loc in
     match value_binding.pvb_expr.pexp_desc with
-    | Pexp_function (_, _, Pfunction_body _) ->
+    | Pexp_fun _ ->
         let binding_params, binding_body, return_type =
           split_fun_expr value_binding.pvb_expr
         in
@@ -448,6 +405,9 @@ and lower_value_binding rec_flag (value_binding : value_binding) : Syntax.Ast.bi
           binding_recursive;
           binding_loc;
         }
+    | Pexp_function _ ->
+        failf value_binding.pvb_expr.pexp_loc
+          "function shorthand is unsupported in CamlFlow MVP"
     | _ ->
         if binding_recursive then failf value_binding.pvb_loc "recursive non-function bindings are unsupported"
         else
@@ -486,7 +446,7 @@ let ident_qname (expr : expression) =
 let string_literal (expr : expression) =
   match expr.pexp_desc with
   | Pexp_constant constant -> (
-      match constant.pconst_desc with
+      match constant with
       | Pconst_string (value, _, _) -> Some value
       | _ -> None)
   | _ -> None

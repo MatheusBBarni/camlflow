@@ -2059,6 +2059,12 @@ let test_provider_prompt_for_inline_agent () =
     rendered.requested_model;
   Alcotest.(check (list string)) "unsupported settings" [ "temperature" ]
     rendered.unsupported_settings;
+  if not
+       (contains_substring rendered.prompt
+          "The system prompt only defines task intent; it does not need to restate the response structure.")
+  then
+    Alcotest.failf "missing generated response-contract guidance: %s"
+      rendered.prompt;
   if not (contains_substring rendered.prompt "Inline agent system prompt:") then
     Alcotest.failf "missing inline system prompt section: %s" rendered.prompt;
   if not (contains_substring rendered.prompt "Review tersely") then
@@ -2067,6 +2073,61 @@ let test_provider_prompt_for_inline_agent () =
     Alcotest.failf "missing inline metadata section: %s" rendered.prompt;
   if not (contains_substring rendered.prompt "\"tone\"") then
     Alcotest.failf "missing inline metadata payload: %s" rendered.prompt
+
+let test_provider_prompt_derives_structured_response_contract () =
+  with_temp_dir "camlflow-prompt-contract-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+type action = TEST | RUN
+
+type code_response = {
+  action : action;
+  accuracy : int;
+  description : string;
+}
+
+let main : string = "ok"
+|};
+  let program = check_file main in
+  let response_decl = find_type_decl program "code_response" in
+  let rendered =
+    render_prompt
+      (make_invocation ~kind:Camlflow.Runtime.Context.Inline_agent
+         ~name:"reviewer"
+         ~return_type:(Camlflow.Ir.TRecord response_decl.Camlflow.Ir.type_name)
+         ~types:(Camlflow.Value.type_index_of_program program)
+         ~definition:
+           {
+             Camlflow.Ir.define_model = None;
+             define_temperature = None;
+             define_system_prompt = Some "Review the submitted code.";
+             define_metadata = [];
+             define_loc = Camlflow.Loc.none;
+           }
+         ())
+  in
+  if not (contains_substring rendered.prompt "Declared response contract:") then
+    Alcotest.failf "missing declared response contract section: %s"
+      rendered.prompt;
+  if not
+       (contains_substring rendered.prompt
+          "The system prompt only defines task intent; it does not need to restate the response structure.")
+  then
+    Alcotest.failf "missing task-vs-structure guidance: %s" rendered.prompt;
+  if not
+       (contains_substring rendered.prompt
+          "code_response is encoded as a JSON object with required fields:")
+  then
+    Alcotest.failf "missing record contract details: %s" rendered.prompt;
+  if not (contains_substring rendered.prompt "action: tagged JSON variant")
+  then Alcotest.failf "missing variant field summary: %s" rendered.prompt;
+  if not
+       (contains_substring rendered.prompt {|TEST -> {"tag":"TEST"}|})
+  then Alcotest.failf "missing TEST constructor encoding: %s" rendered.prompt;
+  if not
+       (contains_substring rendered.prompt {|RUN -> {"tag":"RUN"}|})
+  then Alcotest.failf "missing RUN constructor encoding: %s" rendered.prompt
 
 let test_effect_request_for_local_skill () =
   let invocation =
@@ -2245,6 +2306,29 @@ let test_codex_wrapped_response_schema () =
   expect_string_field "type" "string"
     (expect_assoc_field "result" (expect_assoc_field "properties" wrapped))
 
+let test_provider_wrapped_response_json_unwraps_result () =
+  match
+    Camlflow.Provider_schema.unwrap_wrapped_response_json
+      (`Assoc [ ("result", `String "hello") ])
+  with
+  | Ok (`String value) -> Alcotest.(check string) "wrapped result" "hello" value
+  | Ok json ->
+      Alcotest.failf "unexpected wrapped response JSON: %s"
+        (Yojson.Safe.to_string json)
+  | Error error -> Alcotest.failf "wrapped response unwrap failed: %s" error
+
+let test_provider_wrapped_response_json_rejects_extra_fields () =
+  expect_error_contains "wrapped response extra fields"
+    "model response wrapper must not contain extra field(s): debug"
+    (Camlflow.Provider_schema.unwrap_wrapped_response_json
+       (`Assoc [ ("result", `String "hello"); ("debug", `Bool true) ]))
+
+let test_provider_wrapped_response_json_rejects_duplicate_result_fields () =
+  expect_error_contains "wrapped response duplicate result"
+    "model response wrapper must contain exactly one result field"
+    (Camlflow.Provider_schema.unwrap_wrapped_response_json
+       (`Assoc [ ("result", `String "hello"); ("result", `String "again") ]))
+
 let test_codex_inline_temperature_fails_fast () =
   with_temp_dir "camlflow-codex-temp-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
@@ -2352,6 +2436,12 @@ let test_opencode_parse_wrapped_response () =
       Alcotest.failf "unexpected opencode parsed JSON: %s"
         (Yojson.Safe.to_string json)
   | Error error -> Alcotest.failf "opencode parse failed: %s" error
+
+let test_opencode_parse_wrapped_response_rejects_extra_fields () =
+  expect_error_contains "opencode extra fields"
+    "model response wrapper must not contain extra field(s): debug"
+    (Camlflow.Providers_opencode.parse_wrapped_response ~trace_kind:"bound-agent"
+       ~trace_name:"greeter" "{\"result\":\"hello\",\"debug\":true}")
 
 let test_opencode_error_event_message () =
   let events =
@@ -2707,6 +2797,68 @@ let main (name : string) : string =
   Alcotest.(check string) "default provider result" "greeter"
     (get_output_string result.output)
 
+let test_inline_agent_typed_response_branches_with_if_and_match () =
+  with_temp_dir "camlflow-model-response-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+type action = TEST | RUN
+
+type code_response = {
+  action : action;
+  accuracy : int;
+  description : string;
+}
+
+agent reviewer : code:string -> code_response =
+  Agent.define ~system_prompt:"Review the submitted code."
+
+let branch_summary (response : code_response) : string =
+  if response.accuracy < 90 then
+    match response.action with
+    | TEST -> "retry-after-tests: " ^ response.description
+    | RUN -> "retry-after-fix: " ^ response.description
+  else
+    match response.action with
+    | TEST -> "run-tests: " ^ response.description
+    | RUN -> "continue: " ^ response.description
+
+let main (code : string) : string =
+  let* response = reviewer ~code:code in
+  branch_summary response
+|};
+  let program = check_file main in
+  let provider ~name:_ ~definition:_ ~input ~return_type:_ ~types:_ =
+    match input with
+    | `Assoc [ ("code", `String code) ] when contains_substring code "todo" ->
+        Ok
+          (`Assoc
+            [
+              ("action", `Assoc [ ("tag", `String "TEST") ]);
+              ("accuracy", `Int 42);
+              ("description", `String "needs stronger validation");
+            ])
+    | `Assoc [ ("code", `String _code) ] ->
+        Ok
+          (`Assoc
+            [
+              ("action", `Assoc [ ("tag", `String "RUN") ]);
+              ("accuracy", `Int 96);
+              ("description", `String "ready for execution");
+            ])
+    | _ -> Error "unexpected input"
+  in
+  let context =
+    Camlflow.Runtime.Context.with_inline_agent_provider
+      Camlflow.Runtime.Context.empty provider
+  in
+  let low_result = run_program ~context ~input:(`String "todo: add tests") program in
+  Alcotest.(check string) "low accuracy branch" "retry-after-tests: needs stronger validation"
+    (get_output_string low_result.output);
+  let high_result = run_program ~context ~input:(`String "ship it") program in
+  Alcotest.(check string) "high accuracy branch" "continue: ready for execution"
+    (get_output_string high_result.output)
+
 let test_invalid_provider_output_shape () =
   with_temp_dir "camlflow-provider-shape-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
@@ -2926,6 +3078,9 @@ let () =
             test_provider_prompt_for_local_skill;
           Alcotest.test_case "provider prompt for inline agent" `Quick
             test_provider_prompt_for_inline_agent;
+          Alcotest.test_case
+            "provider prompt derives structured response contract" `Quick
+            test_provider_prompt_derives_structured_response_contract;
           Alcotest.test_case "effect request for local skill" `Quick
             test_effect_request_for_local_skill;
           Alcotest.test_case "effect request for inline agent" `Quick
@@ -2940,6 +3095,14 @@ let () =
             test_codex_preflight_validation;
           Alcotest.test_case "codex wrapped response schema" `Quick
             test_codex_wrapped_response_schema;
+          Alcotest.test_case "provider wrapped response unwraps result" `Quick
+            test_provider_wrapped_response_json_unwraps_result;
+          Alcotest.test_case "provider wrapped response rejects extra fields"
+            `Quick test_provider_wrapped_response_json_rejects_extra_fields;
+          Alcotest.test_case
+            "provider wrapped response rejects duplicate result fields"
+            `Quick
+            test_provider_wrapped_response_json_rejects_duplicate_result_fields;
           Alcotest.test_case "codex inline temperature fails fast" `Quick
             test_codex_inline_temperature_fails_fast;
           Alcotest.test_case "opencode build exec args" `Quick
@@ -2948,6 +3111,9 @@ let () =
             test_opencode_preflight_validation;
           Alcotest.test_case "opencode parse wrapped response" `Quick
             test_opencode_parse_wrapped_response;
+          Alcotest.test_case
+            "opencode parse wrapped response rejects extra fields"
+            `Quick test_opencode_parse_wrapped_response_rejects_extra_fields;
           Alcotest.test_case "opencode error event message" `Quick
             test_opencode_error_event_message;
           Alcotest.test_case "opencode inline temperature fails fast" `Quick
@@ -2988,6 +3154,9 @@ let () =
             test_float_operators;
           Alcotest.test_case "default provider hook for bound agent" `Quick
             test_default_provider_hook_for_bound_agent;
+          Alcotest.test_case
+            "inline agent typed response branches with if and match"
+            `Quick test_inline_agent_typed_response_branches_with_if_and_match;
           Alcotest.test_case "invalid provider output shape" `Quick
             test_invalid_provider_output_shape;
           Alcotest.test_case "provider metadata hooks" `Quick
