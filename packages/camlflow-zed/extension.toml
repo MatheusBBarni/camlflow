@@ -1,10 +1,14 @@
 id = "camlflow"
 name = "CamlFlow"
-description = "CamlFlow language support for Zed."
+description = "CamlFlow language support and LSP integration for Zed."
 version = "0.1.0"
 schema_version = 1
 authors = ["CamlFlow contributors"]
 repository = "https://github.com/MatheusBBarni/camlflow"
+
+[language_servers.camlflow-lsp]
+name = "CamlFlow Language Server"
+language = "CamlFlow"
 
 [grammars.ocaml]
 repository = "https://github.com/tree-sitter/tree-sitter-ocaml"

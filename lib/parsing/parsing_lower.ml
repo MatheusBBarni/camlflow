@@ -10,6 +10,33 @@ let failf loc fmt =
 
 let loc_of (loc : Location.t) = Loc.of_location loc
 
+type constant_view =
+  | Const_integer of string * char option
+  | Const_float of string * char option
+  | Const_string of string * Location.t * string option
+  | Const_char of char
+
+let constant_view (constant : constant) =
+  let repr = Obj.repr constant in
+  let desc =
+    (* OCaml 5.4 wraps constants in a record with pconst_desc/pconst_loc,
+       while earlier compilers expose the descriptor variant directly. *)
+    if Obj.is_block repr && Obj.tag repr = 0 && Obj.size repr = 2 then
+      let maybe_loc = Obj.field repr 1 in
+      if Obj.is_block maybe_loc && Obj.tag maybe_loc = 0 && Obj.size maybe_loc >= 3
+      then Obj.field repr 0
+      else repr
+    else repr
+  in
+  match (Obj.tag desc, Obj.size desc) with
+  | 0, 2 -> Const_integer (Obj.obj (Obj.field desc 0), Obj.obj (Obj.field desc 1))
+  | 1, 1 -> Const_char (Obj.obj (Obj.field desc 0))
+  | 2, 3 ->
+      Const_string
+        (Obj.obj (Obj.field desc 0), Obj.obj (Obj.field desc 1), Obj.obj (Obj.field desc 2))
+  | 3, 2 -> Const_float (Obj.obj (Obj.field desc 0), Obj.obj (Obj.field desc 1))
+  | _ -> failwith "unsupported Parsetree.constant representation"
+
 let is_horizontal_space = function ' ' | '\t' -> true | _ -> false
 let is_line_break = function '\n' | '\r' -> true | _ -> false
 
@@ -133,20 +160,56 @@ let fail_at_loc (loc : Loc.t) fmt =
     fmt
 
 let literal_of_constant loc (constant : constant) =
-  match constant.pconst_desc with
-  | Pconst_integer (value, _) -> Syntax.Ast.LInt (int_of_string value)
-  | Pconst_float (value, _) -> Syntax.Ast.LFloat (float_of_string value)
-  | Pconst_string (value, _, _) -> Syntax.Ast.LString value
-  | Pconst_char _ -> failf loc "char literals are unsupported"
-
-let lower_unlabeled_tuple_item loc lower_item = function
-  | None, item -> lower_item item
-  | Some _, _ -> failf loc "labeled tuples are unsupported"
+  match constant_view constant with
+  | Const_integer (value, _) -> Syntax.Ast.LInt (int_of_string value)
+  | Const_float (value, _) -> Syntax.Ast.LFloat (float_of_string value)
+  | Const_string (value, _, _) -> Syntax.Ast.LString value
+  | Const_char _ -> failf loc "char literals are unsupported"
 
 let last_ident loc lid =
   match Syntax.Ast.qname_of_longident lid with
   | [] -> failf loc "invalid longident"
   | parts -> List.hd (List.rev parts)
+
+let tuple_component_type loc item =
+  let repr = Obj.repr item in
+  let is_labeled_tuple_component =
+    Obj.is_block repr
+    && Obj.tag repr = 0
+    && Obj.size repr = 2
+    &&
+    let first = Obj.field repr 0 in
+    let second = Obj.field repr 1 in
+    (Obj.is_int first
+    || (Obj.is_block first && Obj.tag first = 0 && Obj.size first = 1))
+    && Obj.is_block second
+  in
+  if is_labeled_tuple_component then
+    let label = Obj.field repr 0 in
+    if Obj.is_int label then Obj.obj (Obj.field repr 1)
+    else failf loc "labeled tuple types are unsupported"
+  else Obj.obj repr
+
+let tuple_pattern_items loc (desc : pattern_desc) =
+  let repr = Obj.repr desc in
+  if Obj.is_block repr && Obj.tag repr = 4 then
+    match Obj.size repr with
+    | 1 -> Some ((Obj.obj (Obj.field repr 0) : pattern list))
+    | 2 ->
+        let closed_flag : closed_flag = Obj.obj (Obj.field repr 1) in
+        let items : (string option * pattern) list = Obj.obj (Obj.field repr 0) in
+        (match closed_flag with
+        | Open -> failf loc "open tuple patterns are unsupported"
+        | Closed ->
+            Some
+              (List.map
+                 (fun (label, item) ->
+                   match label with
+                   | None -> item
+                   | Some _ -> failf loc "labeled tuple patterns are unsupported")
+                 items))
+    | _ -> None
+  else None
 
 let rec lower_type (typ : core_type) : Syntax.Ast.type_expr =
   let type_loc = loc_of typ.ptyp_loc in
@@ -156,15 +219,8 @@ let rec lower_type (typ : core_type) : Syntax.Ast.type_expr =
         Syntax.Ast.TEConstr
           (Syntax.Ast.qname_of_longident lid, List.map lower_type args)
     | Ptyp_tuple items ->
-        let items =
-          List.map
-            (fun (label, item) ->
-              match label with
-              | None -> lower_type item
-              | Some _ -> failf item.ptyp_loc "labeled tuple types are unsupported")
-            items
-        in
-        Syntax.Ast.TETuple items
+        Syntax.Ast.TETuple
+          (List.map (fun item -> lower_type (tuple_component_type typ.ptyp_loc item)) items)
     | Ptyp_arrow (label, lhs, rhs) ->
         let label =
           match label with
@@ -187,13 +243,6 @@ let rec lower_pattern (pattern : pattern) : Syntax.Ast.pattern =
     | Ppat_any -> Syntax.Ast.PWildcard
     | Ppat_var { txt = name; _ } -> Syntax.Ast.PVar name
     | Ppat_constant constant -> Syntax.Ast.PLiteral (literal_of_constant pattern.ppat_loc constant)
-    | Ppat_tuple (items, Closed) ->
-        Syntax.Ast.PTuple
-          (List.map
-             (lower_unlabeled_tuple_item pattern.ppat_loc lower_pattern)
-             items)
-    | Ppat_tuple (_, Open) ->
-        failf pattern.ppat_loc "open tuple patterns are unsupported"
     | Ppat_record (fields, Closed) ->
         Syntax.Ast.PRecord
           (List.map
@@ -215,35 +264,22 @@ let rec lower_pattern (pattern : pattern) : Syntax.Ast.pattern =
             let args =
               match payload with
               | None -> []
-              | Some
-                  ( existentials,
-                    ({ ppat_desc = Ppat_tuple (items, Closed); _ } as inner) ) ->
+              | Some (existentials, inner) -> (
                   let () =
                     match existentials with
                     | [] -> ()
                     | _ -> failf inner.ppat_loc "existential constructor patterns are unsupported"
                   in
-                  List.map
-                    (lower_unlabeled_tuple_item inner.ppat_loc lower_pattern)
-                    items
-              | Some (existentials, ({ ppat_desc = Ppat_tuple (_, Open); _ } as inner)) ->
-                  let () =
-                    match existentials with
-                    | [] -> ()
-                    | _ -> failf inner.ppat_loc "existential constructor patterns are unsupported"
-                  in
-                  failf inner.ppat_loc "open tuple patterns are unsupported"
-              | Some (existentials, inner) ->
-                  let () =
-                    match existentials with
-                    | [] -> ()
-                    | _ -> failf inner.ppat_loc "existential constructor patterns are unsupported"
-                  in
-                  [ lower_pattern inner ]
+                  match tuple_pattern_items inner.ppat_loc inner.ppat_desc with
+                  | Some items -> List.map lower_pattern items
+                  | None -> [ lower_pattern inner ])
             in
             Syntax.Ast.PConstruct (name, args))
     | Ppat_constraint (inner, _) -> (lower_pattern inner).pattern_desc
-    | _ -> failf pattern.ppat_loc "unsupported pattern syntax"
+    | _ -> (
+        match tuple_pattern_items pattern.ppat_loc pattern.ppat_desc with
+        | Some items -> Syntax.Ast.PTuple (List.map lower_pattern items)
+        | None -> failf pattern.ppat_loc "unsupported pattern syntax")
   in
   { Syntax.Ast.pattern_loc; pattern_desc }
 
@@ -278,36 +314,23 @@ let lower_param ~param_loc label default pattern : Syntax.Ast.param =
   in
   { Syntax.Ast.param_name; param_label; param_annotation; param_loc = loc_of param_loc }
 
-let lower_function_param (param : function_param) : Syntax.Ast.param =
-  match param.pparam_desc with
-  | Pparam_val (label, default, pattern) ->
-      lower_param ~param_loc:param.pparam_loc label default pattern
-  | Pparam_newtype _ ->
-      failf param.pparam_loc "locally abstract type variables are unsupported"
-
-let lower_type_constraint loc = function
-  | None -> None
-  | Some (Pconstraint typ) -> Some (lower_type typ)
-  | Some (Pcoerce _) -> failf loc "value coercions are unsupported"
-
 let split_fun_expr expr =
-  match expr.pexp_desc with
-  | Pexp_function (params, return_constraint, Pfunction_body body) ->
-      let params = List.map lower_function_param params in
-      let body, body_return_constraint =
-        match body.pexp_desc with
-        | Pexp_constraint (inner, typ) -> (inner, Some (lower_type typ))
-        | _ -> (body, None)
-      in
-      let return_constraint =
-        match lower_type_constraint expr.pexp_loc return_constraint with
-        | Some return_constraint -> Some return_constraint
-        | None -> body_return_constraint
-      in
-      (params, body, return_constraint)
-  | Pexp_function (_, _, Pfunction_cases _) ->
-      failf expr.pexp_loc "function shorthand is unsupported in CamlFlow MVP"
-  | _ -> ([], expr, None)
+  let rec collect acc expr =
+    match expr.pexp_desc with
+    | Pexp_fun (label, default, pattern, body) ->
+        let param = lower_param ~param_loc:expr.pexp_loc label default pattern in
+        collect (acc @ [ param ]) body
+    | Pexp_function _ ->
+        failf expr.pexp_loc "function shorthand is unsupported in CamlFlow MVP"
+    | _ -> (acc, expr)
+  in
+  let params, body = collect [] expr in
+  let body, return_constraint =
+    match body.pexp_desc with
+    | Pexp_constraint (inner, typ) -> (inner, Some (lower_type typ))
+    | _ -> (body, None)
+  in
+  (params, body, return_constraint)
 
 let rebuild_function_annotation (params : Syntax.Ast.param list) (return_type : Syntax.Ast.type_expr) :
     Syntax.Ast.type_expr =
@@ -334,11 +357,7 @@ let rec lower_expr (expr : expression) : Syntax.Ast.expr =
     match expr.pexp_desc with
     | Pexp_constant constant -> Syntax.Ast.ELiteral (literal_of_constant expr.pexp_loc constant)
     | Pexp_ident { txt = lid; _ } -> Syntax.Ast.EVar (Syntax.Ast.qname_of_longident lid)
-    | Pexp_tuple items ->
-        Syntax.Ast.ETuple
-          (List.map
-             (lower_unlabeled_tuple_item expr.pexp_loc lower_expr)
-             items)
+    | Pexp_tuple items -> Syntax.Ast.ETuple (List.map lower_expr items)
     | Pexp_record (fields, None) ->
         Syntax.Ast.ERecord
           (List.map
@@ -352,10 +371,7 @@ let rec lower_expr (expr : expression) : Syntax.Ast.expr =
         let args =
           match payload with
           | None -> []
-          | Some ({ pexp_desc = Pexp_tuple items; _ }) ->
-              List.map
-                (lower_unlabeled_tuple_item expr.pexp_loc lower_expr)
-                items
+          | Some ({ pexp_desc = Pexp_tuple items; _ }) -> List.map lower_expr items
           | Some inner -> [ lower_expr inner ]
         in
         let bool_or_unit =
@@ -403,10 +419,10 @@ let rec lower_expr (expr : expression) : Syntax.Ast.expr =
             ( { Syntax.Ast.let_star_name; let_star_value = lower_expr binding.pbop_exp; let_star_loc = loc_of binding.pbop_loc },
               lower_expr body )
     | Pexp_letop { ands = _ :: _; _ } -> failf expr.pexp_loc "let* with and* is unsupported"
-    | Pexp_function (_, _, Pfunction_body _) ->
+    | Pexp_fun _ ->
         let params, body, _return_type = split_fun_expr expr in
         Syntax.Ast.ELambda (params, lower_expr body)
-    | Pexp_function (_, _, Pfunction_cases _) ->
+    | Pexp_function _ ->
         failf expr.pexp_loc "function shorthand is unsupported in CamlFlow MVP"
     | Pexp_constraint (inner, _) -> (lower_expr inner).Syntax.Ast.expr_desc
     | _ -> failf expr.pexp_loc "unsupported expression syntax"
@@ -430,7 +446,7 @@ and lower_value_binding rec_flag (value_binding : value_binding) : Syntax.Ast.bi
     let binding_recursive = rec_flag = Recursive in
     let binding_loc = loc_of value_binding.pvb_loc in
     match value_binding.pvb_expr.pexp_desc with
-    | Pexp_function (_, _, Pfunction_body _) ->
+    | Pexp_fun _ ->
         let binding_params, binding_body, return_type =
           split_fun_expr value_binding.pvb_expr
         in
@@ -486,8 +502,8 @@ let ident_qname (expr : expression) =
 let string_literal (expr : expression) =
   match expr.pexp_desc with
   | Pexp_constant constant -> (
-      match constant.pconst_desc with
-      | Pconst_string (value, _, _) -> Some value
+      match constant_view constant with
+      | Const_string (value, _, _) -> Some value
       | _ -> None)
   | _ -> None
 

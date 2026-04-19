@@ -1,18 +1,22 @@
 # CamlFlow VS Code Extension
 
-This package contains the first declarative VS Code support for CamlFlow:
+This package contains VS Code support for CamlFlow:
 
 - language id: `camlflow`
 - file association: `.cml`
 - block comments, bracket pairs, auto-closing pairs, indentation rules, and region folding markers
-- a baseline TextMate grammar for CamlFlow syntax
+- a TextMate grammar for CamlFlow syntax
 - light and dark fallback file icons for `.cml` through the language contribution
 - JSON schema validation for `camlflow.json`
+- a language client that launches `camlflow lsp`
+- semantic editor features from the LSP:
+  diagnostics, hover, go-to-definition, references, rename, and document outline
 
 ## Layout
 
 - `language-configuration.json`: editor behavior for `.cml`
 - `syntaxes/camlflow.tmLanguage.json`: TextMate grammar
+- `extension.js`: VS Code language client bootstrap
 - `icons/camlflow-light.svg` and `icons/camlflow-dark.svg`: language-mode fallback icons for `.cml`
 - `../../schemas/camlflow.schema.json`: canonical project-config schema
 - `generated/camlflow.schema.json`: packaged copy used by the extension
@@ -34,6 +38,12 @@ npm run package
 `npm test` runs the TextMate smoke highlighter against the checked-in examples.
 `npm run package` syncs the shared `camlflow.json` schema and emits a `.vsix`
 file in `packages/camlflow-vscode/`.
+
+The extension expects `camlflow` to be on your `PATH` and launches the server
+with `camlflow lsp` by default. You can override that from VS Code with:
+
+- `camlflow.lsp.command`
+- `camlflow.lsp.args`
 
 For a quick editor smoke test without packaging, launch VS Code against this
 directory as an extension development target:

@@ -5,6 +5,7 @@ type command =
   | Compile
   | Run
   | Serve
+  | Lsp
   | Completion
 
 type shell = Bash | Zsh | Fish
@@ -94,12 +95,13 @@ let command_name = function
   | Compile -> "compile"
   | Run -> "run"
   | Serve -> "serve"
+  | Lsp -> "lsp"
   | Completion -> "completion"
 
 let shell_name = function Bash -> "bash" | Zsh -> "zsh" | Fish -> "fish"
 
-let all_commands = [ Help; Parse; Check; Compile; Run; Serve; Completion ]
-let public_commands = [ Parse; Check; Compile; Run; Serve; Completion ]
+let all_commands = [ Help; Parse; Check; Compile; Run; Serve; Lsp; Completion ]
+let public_commands = [ Parse; Check; Compile; Run; Serve; Lsp; Completion ]
 let public_command_names = List.map command_name public_commands
 let shell_names = [ "bash"; "zsh"; "fish" ]
 let provider_names_text = String.concat ", " Provider.available_provider_names
@@ -123,6 +125,7 @@ let usage_text =
       "               [--provider-profile name] [--provider-config key=value]...";
       "               [--sandbox mode] [--allow-write-dir dir]... [--trace-provider]";
       "  camlflow serve --stdio";
+      "  camlflow lsp";
       "  camlflow completion <bash|zsh|fish>";
       "";
       "Commands:";
@@ -131,6 +134,7 @@ let usage_text =
       "  compile      Type-check and emit JSON IR";
       "  run          Execute from source or compiled JSON IR";
       "  serve        Start the JSON-RPC stdio server";
+      "  lsp          Start the Language Server Protocol server";
       "  completion   Emit a shell completion script";
       "";
       "Common options:";
@@ -165,6 +169,7 @@ let usage_text =
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider codex --model gpt-5.4-mini";
       "  camlflow run examples/basic/main.cml --input-json '\"Ada\"' --provider opencode --model openai/gpt-5.4-mini";
       "  camlflow serve --stdio";
+      "  camlflow lsp";
       "  camlflow completion bash > /tmp/camlflow.bash";
     ]
 
@@ -295,6 +300,24 @@ let serve_help_text =
       "  camlflow serve --stdio";
     ]
 
+let lsp_help_text =
+  String.concat "\n"
+    [
+      "Command: lsp";
+      "";
+      "Usage:";
+      "  camlflow lsp";
+      "";
+      "Description:";
+      "  Start the CamlFlow Language Server Protocol server over stdio.";
+      "";
+      "Accepted flags:";
+      "  -h, --help";
+      "";
+      "Example:";
+      "  camlflow lsp";
+    ]
+
 let completion_help_text =
   String.concat "\n"
     [
@@ -319,6 +342,7 @@ let help_text = function
   | Some Compile -> compile_help_text
   | Some Run -> run_help_text
   | Some Serve -> serve_help_text
+  | Some Lsp -> lsp_help_text
   | Some Completion -> completion_help_text
 
 let command_of_string = function
@@ -328,6 +352,7 @@ let command_of_string = function
   | "compile" -> Ok Compile
   | "run" -> Ok Run
   | "serve" -> Ok Serve
+  | "lsp" -> Ok Lsp
   | "completion" -> Ok Completion
   | other -> Error (Printf.sprintf "unknown command: %s" other)
 
@@ -803,6 +828,25 @@ let validate (parsed : parsed) =
         @ provider_disallowed_flags options.provider_options
       in
       ensure_no_flags "serve" disallowed
+  | Lsp ->
+      let* () =
+        match parsed.positionals with
+        | [] -> Ok ()
+        | _ -> Error "lsp does not accept positional arguments"
+      in
+      let disallowed =
+        [
+          (match options.include_paths with [] -> None | _ -> Some "-I");
+          Option.map (Fun.const "-o") options.output;
+          (if options.entry = "main" then None else Some "--entry");
+          Option.map (Fun.const "--input") options.input_file;
+          Option.map (Fun.const "--input-json") options.input_json;
+          Option.map (Fun.const "--skills") options.skills_dir;
+          (if options.rpc_stdio then Some "--stdio" else None);
+        ]
+        @ provider_disallowed_flags options.provider_options
+      in
+      ensure_no_flags "lsp" disallowed
 
 let bash_completion_script =
   String.concat "\n"
@@ -825,15 +869,17 @@ let bash_completion_script =
       "  esac";
       "";
       "  if [[ ${COMP_CWORD} -eq 1 ]]; then";
-      "    COMPREPLY=( $(compgen -W \"help parse check compile run serve completion\" -- \"$cur\") )";
+      "    COMPREPLY=( $(compgen -W \"help parse check compile run serve lsp completion\" -- \"$cur\") )";
       "    return 0";
       "  fi";
       "";
       "  case \"$cmd\" in";
       "    help)";
-      "      COMPREPLY=( $(compgen -W \"parse check compile run serve completion\" -- \"$cur\") ) ;;";
+      "      COMPREPLY=( $(compgen -W \"parse check compile run serve lsp completion\" -- \"$cur\") ) ;;";
       "    serve)";
       "      COMPREPLY=( $(compgen -W \"-h --help --stdio\" -- \"$cur\") ) ;;";
+      "    lsp)";
+      "      COMPREPLY=( $(compgen -W \"-h --help\" -- \"$cur\") ) ;;";
       "    completion)";
       "      COMPREPLY=( $(compgen -W \"bash zsh fish\" -- \"$cur\") ) ;;";
       "    parse)";
@@ -863,6 +909,7 @@ let zsh_completion_script =
       "  'compile:compile to JSON IR'";
       "  'run:run a source file or artifact'";
       "  'serve:start the JSON-RPC stdio server'";
+      "  'lsp:start the Language Server Protocol server'";
       "  'completion:emit shell completion script'";
       ")";
       "";
@@ -872,8 +919,9 @@ let zsh_completion_script =
       "fi";
       "";
       "case $words[2] in";
-      "  help) _values 'command' parse check compile run serve completion ;;";
+      "  help) _values 'command' parse check compile run serve lsp completion ;;";
       "  serve) _arguments '-h[show help]' '--help[show help]' '--stdio[use stdio transport]' ;;";
+      "  lsp) _arguments '-h[show help]' '--help[show help]' ;;";
       "  completion) _values 'shell' bash zsh fish ;;";
       "  parse) _arguments '-h[show help]' '--help[show help]' '*:file:_files' ;;";
       "  check) _arguments '-h[show help]' '--help[show help]' '-I+[include path]:dir:_files -/' '*:file:_files' ;;";
@@ -894,12 +942,13 @@ let fish_completion_script =
       "complete -c camlflow -n '__fish_use_subcommand' -a compile -d 'Compile to JSON IR'";
       "complete -c camlflow -n '__fish_use_subcommand' -a run -d 'Run a source file or artifact'";
       "complete -c camlflow -n '__fish_use_subcommand' -a serve -d 'Start the JSON-RPC stdio server'";
+      "complete -c camlflow -n '__fish_use_subcommand' -a lsp -d 'Start the Language Server Protocol server'";
       "complete -c camlflow -n '__fish_use_subcommand' -a completion -d 'Emit shell completion script'";
       "";
-      "complete -c camlflow -n '__fish_seen_subcommand_from help' -a parse check compile run serve completion";
+      "complete -c camlflow -n '__fish_seen_subcommand_from help' -a parse check compile run serve lsp completion";
       "complete -c camlflow -n '__fish_seen_subcommand_from completion' -a bash zsh fish";
       "";
-      "complete -c camlflow -n '__fish_seen_subcommand_from parse check compile run serve' -s h -l help -d 'Show help'";
+      "complete -c camlflow -n '__fish_seen_subcommand_from parse check compile run serve lsp' -s h -l help -d 'Show help'";
       "complete -c camlflow -n '__fish_seen_subcommand_from check compile run' -s I -d 'Add include path' -r -a '(__fish_complete_directories)'";
       "complete -c camlflow -n '__fish_seen_subcommand_from compile' -s o -d 'Write artifact to file' -r";
       "complete -c camlflow -n '__fish_seen_subcommand_from run' -l entry -d 'Entrypoint name' -r";
