@@ -121,6 +121,20 @@ let run_rpc_server_with_messages messages =
       | Ok () -> read_rpc_messages output_path
       | Error error -> Alcotest.failf "rpc server run failed: %s" error)
 
+let run_lsp_server_with_messages messages =
+  with_temp_dir "camlflow-lsp-" @@ fun dir ->
+  let input_path = Filename.concat dir "input.rpc" in
+  let output_path = Filename.concat dir "output.rpc" in
+  write_rpc_messages input_path messages;
+  let input = In_channel.open_bin input_path in
+  let output = Out_channel.open_bin output_path in
+  Fun.protect
+    ~finally:(fun () -> In_channel.close input; Out_channel.close output)
+    (fun () ->
+      match Camlflow.Lsp_server.run ~input ~output with
+      | Ok () -> read_rpc_messages output_path
+      | Error error -> Alcotest.failf "lsp server run failed: %s" error)
+
 let schema_for_type ?(types = Camlflow.Value.StringMap.empty) typ =
   match Camlflow.Provider_schema.of_type ~types typ with
   | Ok schema -> schema
@@ -213,6 +227,18 @@ let find_rpc_response_without_id messages =
   | Some json ->
       (match rpc_response_message json with Some response -> response | None -> assert false)
   | None -> Alcotest.fail "rpc response without id not found"
+
+let substring_index text needle =
+  let text_len = String.length text in
+  let needle_len = String.length needle in
+  let rec loop index =
+    if needle_len = 0 then 0
+    else if index + needle_len > text_len then
+      Alcotest.failf "substring %S not found in %S" needle text
+    else if String.sub text index needle_len = needle then index
+    else loop (index + 1)
+  in
+  loop 0
 
 let find_type_decl program local_name =
   let rec find_in_decls = function
@@ -357,7 +383,7 @@ let test_cli_completion_command () =
 
 let test_cli_completion_script_mentions_commands () =
   let script = Camlflow.Cli.completion_script Camlflow.Cli.Bash in
-  if not (contains_substring script "parse check compile run serve completion") then
+  if not (contains_substring script "parse check compile run serve lsp completion") then
     Alcotest.failf "unexpected completion script: %s" script;
   if not (contains_substring script "--provider --model --reasoning") then
     Alcotest.failf "provider flags missing from completion script: %s" script;
@@ -2784,6 +2810,214 @@ let main (prompt : string) : string =
         (Option.is_some inline_invocation.invocation_definition)
   | _ -> Alcotest.fail "expected exactly two observed invocations"
 
+let test_cli_lsp_command () =
+  let parsed = parse_cli [ "lsp" ] in
+  (match parsed.Camlflow.Cli.command with
+  | Camlflow.Cli.Lsp -> ()
+  | _ -> Alcotest.fail "expected lsp command");
+  match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "lsp validate failed: %s" error
+
+let test_lsp_definition_hover_and_rename () =
+  with_temp_dir "camlflow-lsp-feature-" @@ fun dir ->
+  let helpers = Filename.concat dir "helpers.cml" in
+  let main = Filename.concat dir "main.cml" in
+  let helpers_text =
+    {|
+type payload = { name : string }
+
+let make (name : string) : payload =
+  { name = name }
+|}
+  in
+  let main_text =
+    {|
+let main (name : string) : string =
+  let payload : Helpers.payload = Helpers.make name in
+  payload.name
+|}
+  in
+  write_file helpers helpers_text;
+  write_file main main_text;
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let helper_uri = Camlflow.Lsp_analysis.uri_of_path helpers in
+  let lines = String.split_on_char '\n' main_text in
+  let make_line = List.nth lines 2 in
+  let payload_line = List.nth lines 3 in
+  let make_character = substring_index make_line "Helpers.make" + 8 in
+  let payload_character = substring_index payload_line "payload" + 1 in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+              [
+                ( "textDocument",
+                  `Assoc
+                    [
+                      ("uri", `String main_uri);
+                      ("version", `Int 1);
+                      ("text", `String main_text);
+                    ] );
+              ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+          "textDocument/definition"
+          ~params:
+            (`Assoc
+              [
+                ( "textDocument",
+                  `Assoc [ ("uri", `String main_uri) ] );
+                ( "position",
+                  `Assoc
+                    [ ("line", `Int 2); ("character", `Int make_character) ]
+                );
+              ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 3)
+          "textDocument/hover"
+          ~params:
+            (`Assoc
+              [
+                ( "textDocument",
+                  `Assoc [ ("uri", `String main_uri) ] );
+                ( "position",
+                  `Assoc
+                    [ ("line", `Int 2); ("character", `Int make_character) ]
+                );
+              ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 4)
+          "textDocument/prepareRename"
+          ~params:
+            (`Assoc
+              [
+                ( "textDocument",
+                  `Assoc [ ("uri", `String main_uri) ] );
+                ( "position",
+                  `Assoc
+                    [ ("line", `Int 3); ("character", `Int payload_character) ]
+                );
+              ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 5)
+          "textDocument/rename"
+          ~params:
+            (`Assoc
+              [
+                ( "textDocument",
+                  `Assoc [ ("uri", `String main_uri) ] );
+                ( "position",
+                  `Assoc
+                    [ ("line", `Int 3); ("character", `Int payload_character) ]
+                );
+                ("newName", `String "result");
+              ]);
+      ]
+  in
+  let definition = find_rpc_response_by_id "2" messages in
+  let definition_json =
+    match definition.Camlflow.Rpc_protocol.response_result with
+    | Some json -> json
+    | None -> Alcotest.fail "missing definition result"
+  in
+  expect_string_field "uri" helper_uri definition_json;
+  let hover = find_rpc_response_by_id "3" messages in
+  let hover_json =
+    match hover.Camlflow.Rpc_protocol.response_result with
+    | Some json -> json
+    | None -> Alcotest.fail "missing hover result"
+  in
+  let contents = expect_assoc_field "contents" hover_json in
+  let hover_value =
+    match expect_assoc_field "value" contents with
+    | `String value -> value
+    | other ->
+        Alcotest.failf "unexpected hover payload %s"
+          (Yojson.Safe.to_string other)
+  in
+  Alcotest.(check bool) "hover non-empty" true
+    (String.length hover_value > 0);
+  let prepare = find_rpc_response_by_id "4" messages in
+  let prepare_json =
+    match prepare.Camlflow.Rpc_protocol.response_result with
+    | Some json -> json
+    | None -> Alcotest.fail "missing prepareRename result"
+  in
+  expect_string_field "placeholder" "payload" prepare_json;
+  let rename = find_rpc_response_by_id "5" messages in
+  let rename_json =
+    match rename.Camlflow.Rpc_protocol.response_result with
+    | Some json -> json
+    | None -> Alcotest.fail "missing rename result"
+  in
+  match expect_assoc_field "changes" rename_json with
+  | `Assoc changes -> (
+      match List.assoc_opt main_uri changes with
+      | Some (`List edits) ->
+          Alcotest.(check int) "rename edit count" 2 (List.length edits);
+          List.iter
+            (fun edit -> expect_string_field "newText" "result" edit)
+            edits
+      | _ -> Alcotest.fail "rename did not include main file edits")
+  | other ->
+      Alcotest.failf "unexpected rename payload %s"
+        (Yojson.Safe.to_string other)
+
+let test_lsp_diagnostics_for_unbound_value () =
+  with_temp_dir "camlflow-lsp-diagnostics-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  let main_text = {|
+let main : string =
+  missing
+|} in
+  write_file main main_text;
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+              [
+                ( "textDocument",
+                  `Assoc
+                    [
+                      ("uri", `String main_uri);
+                      ("version", `Int 1);
+                      ("text", `String main_text);
+                    ] );
+              ]);
+      ]
+  in
+  let diagnostics = find_rpc_request "textDocument/publishDiagnostics" messages in
+  let params =
+    match diagnostics.Camlflow.Rpc_protocol.request_params with
+    | Some params -> params
+    | None -> Alcotest.fail "missing diagnostics params"
+  in
+  expect_string_field "uri" main_uri params;
+  match expect_assoc_field "diagnostics" params with
+  | `List diagnostics ->
+      Alcotest.(check bool) "diagnostics emitted" true (diagnostics <> []);
+      let messages =
+        List.map
+          (fun diagnostic ->
+            match expect_assoc_field "message" diagnostic with
+            | `String value -> value
+            | other ->
+                Alcotest.failf "unexpected diagnostic payload %s"
+                  (Yojson.Safe.to_string other))
+          diagnostics
+      in
+      Alcotest.(check bool) "diagnostic mentions missing" true
+        (List.exists (fun message -> contains_substring message "missing") messages)
+  | other ->
+      Alcotest.failf "unexpected diagnostics payload %s"
+        (Yojson.Safe.to_string other)
+
 let () =
   Alcotest.run "camlflow"
     [
@@ -2813,6 +3047,7 @@ let () =
             test_cli_serve_stdio_parse;
           Alcotest.test_case "cli serve requires stdio" `Quick
             test_cli_serve_requires_stdio;
+          Alcotest.test_case "cli lsp command" `Quick test_cli_lsp_command;
           Alcotest.test_case "cli run provider flags parse" `Quick
             test_cli_run_provider_flags_parse;
           Alcotest.test_case "cli provider flags require provider" `Quick
@@ -2898,6 +3133,10 @@ let () =
             test_rpc_server_invalid_request_error;
           Alcotest.test_case "rpc server method not found error" `Quick
             test_rpc_server_method_not_found_error;
+          Alcotest.test_case "lsp definition hover and rename" `Quick
+            test_lsp_definition_hover_and_rename;
+          Alcotest.test_case "lsp diagnostics for unbound value" `Quick
+            test_lsp_diagnostics_for_unbound_value;
           Alcotest.test_case "rpc server check failure error" `Quick
             test_rpc_server_check_failure_error;
           Alcotest.test_case "rpc server compile failure error" `Quick
