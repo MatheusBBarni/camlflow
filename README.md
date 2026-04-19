@@ -514,6 +514,7 @@ runtime hooks.
 - `examples/inline-agent/` — executable `Agent.define`
 - `examples/model-response-validation/` — typed model response plus branching with `if` and `match`
 - `examples/model-response-retry/` — typed model response validation plus recursive retry
+- `examples/dev-workflow/` — real end-to-end software workflow harness with approval gating
 - `examples/provider-hooks/` — embedded OCaml host using runtime provider hooks
 - `examples/json-rpc-host/` — dependency-free Node host speaking CamlFlow JSON-RPC over stdio
 - `examples/json-rpc-problem-coach/` — dependency-free Node host running the structured problem-coach workflow over JSON-RPC
@@ -544,6 +545,7 @@ runtime hooks.
 - `examples/codex/README.md` — runnable Codex provider example
 - `examples/model-response-validation/README.md` — runnable typed model-response branching example
 - `examples/model-response-retry/README.md` — runnable typed model-response retry example
+- `examples/dev-workflow/README.md` — runnable end-to-end dev-workflow harness example
 - `examples/swe-leetcode/README.md` — runnable swe-leetcode example
 - `examples/problem-coach/README.md` — runnable problem-coach example
 - `examples/repo-triage/README.md` — runnable repo-triage example aimed at `pi-mono` host testing
@@ -567,6 +569,7 @@ make run-variants-match
 make run-inline-agent
 make run-model-response-validation
 make run-model-response-retry
+make run-dev-workflow
 make run-provider-hooks
 ```
 

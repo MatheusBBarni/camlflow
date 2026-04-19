@@ -156,6 +156,21 @@ let expect_bool_field name expected json =
       Alcotest.failf "expected field %s to be a bool, got %s" name
         (Yojson.Safe.to_string other)
 
+let tagged tag = `Assoc [ ("tag", `String tag) ]
+
+let tagged_value tag value =
+  `Assoc [ ("tag", `String tag); ("value", value) ]
+
+let repo_path path =
+  let rec find dir depth =
+    let candidate = Filename.concat dir path in
+    if Sys.file_exists candidate || depth = 0 then candidate
+    else
+      let parent = Filename.dirname dir in
+      if String.equal parent dir then candidate else find parent (depth - 1)
+  in
+  find (Sys.getcwd ()) 6
+
 let rpc_request_message = function
   | `Assoc fields as json when List.mem_assoc "method" fields -> (
       match Camlflow.Rpc_protocol.request_of_yojson json with
@@ -2977,6 +2992,268 @@ let main (code : string) : string =
   then
     Alcotest.failf "missing retry guidance in second attempt: %s" second_input
 
+let test_dev_workflow_example_awaits_clarification () =
+  let main = repo_path "examples/dev-workflow/main.cml" in
+  let skills_dir = repo_path "examples/dev-workflow/skills" in
+  let input = Yojson.Safe.from_file (repo_path "examples/dev-workflow/input-approved.json") in
+  let program = check_file main in
+  let requirements_document =
+    `Assoc
+      [
+        ("summary", `String "Feature flag dashboard for internal operators.");
+        ("user_stories", `List [ `String "As an operator, I can inspect rollout state." ]);
+        ("acceptance_criteria", `List [ `String "Dashboard lists flags and environments." ]);
+        ("technical_requirements", `List [ `String "Read-only v1." ]);
+        ("data_requirements", `List [ `String "Expose flag metadata and audit history." ]);
+        ("performance_requirements", `List [ `String "Keep table responses fast." ]);
+        ("maintainability_requirements", `List [ `String "Reuse existing admin UI patterns." ]);
+        ("test_requirements", `List [ `String "Cover empty states and pagination." ]);
+        ("deployment_requirements", `List [ `String "Roll out behind an internal flag." ]);
+      ]
+  in
+  let prompt_skill_provider ~name ~markdown:_ ~input:_ ~return_type:_ ~types:_ =
+    match name with
+    | "grill-me" ->
+        Ok
+          (`Assoc
+            [
+              ("readiness", tagged "NeedsUserAnswers");
+              ("requirements_document", requirements_document);
+              ( "open_questions",
+                `List
+                  [
+                    `String "Who can edit rollout metadata in later phases?";
+                    `String "What pagination size should the default table use?";
+                  ] );
+              ("approval_summary", `String "Not ready for approval yet.");
+            ])
+    | "caveman" -> Alcotest.fail "caveman should not run before clarification"
+    | other -> Alcotest.failf "unexpected prompt skill %s" other
+  in
+  let inline_agent_provider ~name ~definition:_ ~input:_ ~return_type:_ ~types:_ =
+    Alcotest.failf "inline agent %s should not run before clarification" name
+  in
+  let context =
+    Camlflow.Runtime.Context.empty
+    |> fun context ->
+    Camlflow.Runtime.Context.with_skills_directory context skills_dir
+    |> fun context ->
+    Camlflow.Runtime.Context.with_prompt_skill_provider context prompt_skill_provider
+    |> fun context ->
+    Camlflow.Runtime.Context.with_inline_agent_provider context inline_agent_provider
+  in
+  let result = run_program ~context ~input program in
+  Alcotest.(check int) "clarification step count" 1 result.steps_run;
+  Alcotest.(check string) "clarification step kind" "local-skill"
+    (List.hd result.effect_steps).step_kind;
+  let output =
+    match result.output with Some json -> json | None -> Alcotest.fail "expected output"
+  in
+  expect_string_field "tag" "NeedsClarification" output;
+  let packet = expect_assoc_field "value" output in
+  expect_string_field "next_step" "Answer the open questions and rerun the harness." packet;
+  (match expect_assoc_field "open_questions" packet with
+  | `List [ `String first; `String second ] ->
+      Alcotest.(check string) "first clarification question"
+        "Who can edit rollout metadata in later phases?" first;
+      Alcotest.(check string) "second clarification question"
+        "What pagination size should the default table use?" second
+  | other ->
+      Alcotest.failf "unexpected open_questions payload: %s"
+        (Yojson.Safe.to_string other))
+
+let test_dev_workflow_example_waits_for_approval () =
+  let main = repo_path "examples/dev-workflow/main.cml" in
+  let skills_dir = repo_path "examples/dev-workflow/skills" in
+  let input = Yojson.Safe.from_file (repo_path "examples/dev-workflow/input-pending.json") in
+  let program = check_file main in
+  let prompt_skill_provider ~name ~markdown:_ ~input:_ ~return_type:_ ~types:_ =
+    match name with
+    | "grill-me" ->
+        Ok
+          (`Assoc
+            [
+              ("readiness", tagged "ReadyForApproval");
+              ( "requirements_document",
+                `Assoc
+                  [
+                    ("summary", `String "Approved-ready dashboard plan.");
+                    ("user_stories", `List [ `String "Inspect flags by environment." ]);
+                    ("acceptance_criteria", `List [ `String "Show audit history." ]);
+                    ("technical_requirements", `List [ `String "Read-only scope." ]);
+                    ("data_requirements", `List [ `String "Need flag and audit tables." ]);
+                    ("performance_requirements", `List [ `String "Paginate large tables." ]);
+                    ("maintainability_requirements", `List [ `String "Reuse admin table components." ]);
+                    ("test_requirements", `List [ `String "Cover empty states." ]);
+                    ("deployment_requirements", `List [ `String "Roll out to staff only." ]);
+                  ] );
+              ("open_questions", `List []);
+              ("approval_summary", `String "Requirements ready for sign-off.");
+            ])
+    | "caveman" -> Alcotest.fail "caveman should not run before approval"
+    | other -> Alcotest.failf "unexpected prompt skill %s" other
+  in
+  let inline_agent_provider ~name ~definition:_ ~input:_ ~return_type:_ ~types:_ =
+    Alcotest.failf "inline agent %s should not run before approval" name
+  in
+  let context =
+    Camlflow.Runtime.Context.empty
+    |> fun context ->
+    Camlflow.Runtime.Context.with_skills_directory context skills_dir
+    |> fun context ->
+    Camlflow.Runtime.Context.with_prompt_skill_provider context prompt_skill_provider
+    |> fun context ->
+    Camlflow.Runtime.Context.with_inline_agent_provider context inline_agent_provider
+  in
+  let result = run_program ~context ~input program in
+  Alcotest.(check int) "approval step count" 1 result.steps_run;
+  let output =
+    match result.output with Some json -> json | None -> Alcotest.fail "expected output"
+  in
+  expect_string_field "tag" "NeedsApproval" output;
+  let packet = expect_assoc_field "value" output in
+  expect_string_field "approval_summary" "Requirements ready for sign-off." packet;
+  expect_string_field "next_step"
+    "Review the requirements document, approve it, and rerun with ApprovalGranted."
+    packet
+
+let test_dev_workflow_example_completes_after_approval () =
+  let main = repo_path "examples/dev-workflow/main.cml" in
+  let skills_dir = repo_path "examples/dev-workflow/skills" in
+  let input = Yojson.Safe.from_file (repo_path "examples/dev-workflow/input-approved.json") in
+  let program = check_file main in
+  let prompt_skill_provider ~name ~markdown:_ ~input:_ ~return_type:_ ~types:_ =
+    match name with
+    | "grill-me" ->
+        Ok
+          (`Assoc
+            [
+              ("readiness", tagged "ReadyForApproval");
+              ( "requirements_document",
+                `Assoc
+                  [
+                    ("summary", `String "Feature flag dashboard v1 for internal operators.");
+                    ("user_stories", `List [ `String "Inspect flags by environment." ]);
+                    ("acceptance_criteria", `List [ `String "Show audit history and search." ]);
+                    ("technical_requirements", `List [ `String "Read-only dashboard." ]);
+                    ("data_requirements", `List [ `String "Use feature flag metadata and audit records." ]);
+                    ("performance_requirements", `List [ `String "Page large result sets." ]);
+                    ("maintainability_requirements", `List [ `String "Stay aligned with admin UI conventions." ]);
+                    ("test_requirements", `List [ `String "Add UI and API coverage." ]);
+                    ("deployment_requirements", `List [ `String "Release behind an internal flag." ]);
+                  ] );
+              ("open_questions", `List []);
+              ("approval_summary", `String "Plan covers scope, tests, and rollout constraints.");
+            ])
+    | "caveman" -> Ok (`String "flag dashboard plan, terse")
+    | other -> Alcotest.failf "unexpected prompt skill %s" other
+  in
+  let inline_agent_provider ~name ~definition:_ ~input:_ ~return_type:_ ~types:_ =
+    match name with
+    | "the_engineer" ->
+        Ok
+          (`Assoc
+            [
+              ("summary", `String "Implemented dashboard read path.");
+              ( "implemented_files",
+                `List
+                  [
+                    `Assoc
+                      [
+                        ("path", `String "web/src/flags/dashboard.tsx");
+                        ("change_summary", `String "Added searchable read-only dashboard.");
+                      ];
+                    `Assoc
+                      [
+                        ("path", `String "server/routes/flags.ts");
+                        ("change_summary", `String "Added paginated flag listing endpoint.");
+                      ];
+                  ] );
+              ( "technical_decisions",
+                `List
+                  [
+                    `Assoc
+                      [
+                        ("title", `String "Reuse admin table primitives");
+                        ("rationale", `String "Keeps the first release maintainable.");
+                      ];
+                  ] );
+              ( "added_dependencies",
+                `List
+                  [
+                    `Assoc
+                      [
+                        ("name", `String "none");
+                        ("reason", `String "Used existing repo dependencies only.");
+                      ];
+                  ] );
+            ])
+    | "code_reviewer" ->
+        Ok
+          (`Assoc
+            [
+              ("status", tagged "ReviewApproved");
+              ("summary", `String "Implementation matches the approved scope.");
+              ( "issues_found",
+                `List
+                  [
+                    `Assoc
+                      [
+                        ("severity", tagged "Low");
+                        ("message", `String "Consider adding rate-limit coverage later.");
+                        ("file_hint", tagged_value "Some" (`String "server/routes/flags.ts"));
+                      ];
+                  ] );
+              ( "suggestions",
+                `List
+                  [
+                    `String "Add screenshots to the rollout ticket.";
+                    `String "Monitor slow queries after release.";
+                  ] );
+            ])
+    | other -> Alcotest.failf "unexpected inline agent %s" other
+  in
+  let context =
+    Camlflow.Runtime.Context.empty
+    |> fun context ->
+    Camlflow.Runtime.Context.with_skills_directory context skills_dir
+    |> fun context ->
+    Camlflow.Runtime.Context.with_prompt_skill_provider context prompt_skill_provider
+    |> fun context ->
+    Camlflow.Runtime.Context.with_inline_agent_provider context inline_agent_provider
+  in
+  let result = run_program ~context ~input program in
+  Alcotest.(check int) "approved dev workflow steps" 4 result.steps_run;
+  Alcotest.(check string) "first step kind" "local-skill"
+    (List.nth result.effect_steps 0).step_kind;
+  Alcotest.(check string) "second step name" "caveman"
+    (List.nth result.effect_steps 1).step_name;
+  Alcotest.(check string) "third step name" "the_engineer"
+    (List.nth result.effect_steps 2).step_name;
+  Alcotest.(check string) "fourth step name" "code_reviewer"
+    (List.nth result.effect_steps 3).step_name;
+  let output =
+    match result.output with Some json -> json | None -> Alcotest.fail "expected output"
+  in
+  expect_string_field "tag" "Completed" output;
+  let report = expect_assoc_field "value" output in
+  let review = expect_assoc_field "review_report" report in
+  expect_string_field "summary" "Implementation matches the approved scope." review;
+  let status = expect_assoc_field "status" review in
+  expect_string_field "tag" "ReviewApproved" status;
+  (match expect_assoc_field "next_steps" report with
+  | `List [ `String first; `String second; `String third ] ->
+      Alcotest.(check string) "first next step"
+        "Share the requirements, code package, and review report with the team."
+        first;
+      Alcotest.(check string) "second next step"
+        "Merge or ship the approved change." second;
+      Alcotest.(check string) "third next step"
+        "Monitor validation signals after rollout." third
+  | other ->
+      Alcotest.failf "unexpected next_steps payload: %s"
+        (Yojson.Safe.to_string other))
+
 let test_invalid_provider_output_shape () =
   with_temp_dir "camlflow-provider-shape-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
@@ -3280,6 +3557,15 @@ let () =
           Alcotest.test_case
             "inline agent typed response retries recursively" `Quick
             test_inline_agent_typed_response_retries_recursively;
+          Alcotest.test_case
+            "dev workflow example awaits clarification" `Quick
+            test_dev_workflow_example_awaits_clarification;
+          Alcotest.test_case
+            "dev workflow example waits for approval" `Quick
+            test_dev_workflow_example_waits_for_approval;
+          Alcotest.test_case
+            "dev workflow example completes after approval" `Quick
+            test_dev_workflow_example_completes_after_approval;
           Alcotest.test_case "invalid provider output shape" `Quick
             test_invalid_provider_output_shape;
           Alcotest.test_case "provider metadata hooks" `Quick

@@ -1,0 +1,62 @@
+open Types
+
+skill grill_me :
+  description:string -> prd_text:string option -> spec_text:string option ->
+  prior_answers:string list -> approval_feedback:string option -> planning_result =
+  Skill.bind "grill-me"
+
+skill caveman : prompt:string -> string = Skill.bind "caveman"
+
+agent the_engineer :
+  brief:string -> requirements:requirements_document -> code_package =
+  Agent.define
+    ~name:"TheEngineer"
+    ~system_prompt:"Implement the approved requirements. Return only the structured code package."
+
+agent code_reviewer :
+  task_brief:string -> requirements:requirements_document -> code:code_package -> review_report =
+  Agent.define
+    ~name:"CodeReviewer"
+    ~system_prompt:"Review the code package against the approved requirements. Return only the structured review report."
+
+let main (request : workflow_request) : workflow_output =
+  let feedback = Helpers.approval_feedback request.approval in
+  let* planning =
+    grill_me ~description:request.description ~prd_text:request.prd_text
+      ~spec_text:request.spec_text ~prior_answers:request.prior_answers
+      ~approval_feedback:feedback
+  in
+  match planning.readiness with
+  | NeedsUserAnswers ->
+      NeedsClarification
+        {
+          requirements_document = planning.requirements_document;
+          open_questions = planning.open_questions;
+          next_step = "Answer the open questions and rerun the harness.";
+        }
+  | ReadyForApproval ->
+      if Helpers.approval_granted request.approval then
+        let caveman_prompt = Helpers.render_caveman_prompt planning in
+        let* terse_requirements = caveman ~prompt:caveman_prompt in
+        let* code_package =
+          the_engineer ~brief:terse_requirements
+            ~requirements:planning.requirements_document
+        in
+        let* review =
+          code_reviewer ~task_brief:terse_requirements
+            ~requirements:planning.requirements_document ~code:code_package
+        in
+        Completed
+          {
+            requirements_document = planning.requirements_document;
+            code_package = code_package;
+            review_report = review;
+            next_steps = Helpers.completion_next_steps review;
+          }
+      else
+        NeedsApproval
+          {
+            requirements_document = planning.requirements_document;
+            approval_summary = planning.approval_summary;
+            next_step = Helpers.approval_next_step feedback;
+          }

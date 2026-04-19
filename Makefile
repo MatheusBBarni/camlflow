@@ -1,4 +1,4 @@
-.PHONY: help build test clean cli-help completion-bash completion-zsh completion-fish parse-basic check-basic compile-basic run run-basic run-local-skill run-qualified run-recursion run-variants-match run-inline-agent run-model-response-validation run-model-response-retry run-provider-hooks all
+.PHONY: help build test clean cli-help completion-bash completion-zsh completion-fish parse-basic check-basic compile-basic run run-basic run-local-skill run-qualified run-recursion run-variants-match run-inline-agent run-model-response-validation run-model-response-retry run-dev-workflow run-provider-hooks all
 
 DUNE ?= dune
 BINARY ?= ./bin/main.exe
@@ -12,6 +12,7 @@ BASIC_INPUT ?= "Ada"
 RECURSION_INPUT ?= 4
 LOCAL_SKILL_INPUT ?= "hello"
 INLINE_AGENT_INPUT ?= "code"
+DEV_WORKFLOW_INPUT ?= examples/dev-workflow/input-approved.json
 
 help:
 	@printf "CamlFlow Make targets\n\n"
@@ -30,6 +31,7 @@ help:
 	@printf "  make run-inline-agent     Run examples/inline-agent/main.cml\n"
 	@printf "  make run-model-response-validation  Run examples/model-response-validation/main.cml\n"
 	@printf "  make run-model-response-retry  Run examples/model-response-retry/main.cml\n"
+	@printf "  make run-dev-workflow     Run examples/dev-workflow/main.cml\n"
 	@printf "  make run-provider-hooks   Run embedded OCaml provider-hooks host example\n"
 	@printf "  make clean                Clean dune build artifacts\n\n"
 	@printf "Generic run variables:\n"
@@ -112,6 +114,9 @@ run-model-response-validation:
 
 run-model-response-retry:
 	$(DUNE) exec $(BINARY) -- run examples/model-response-retry/main.cml --input-json '$(INLINE_AGENT_INPUT)'
+
+run-dev-workflow:
+	$(DUNE) exec $(BINARY) -- run examples/dev-workflow/main.cml --skills examples/dev-workflow/skills --input $(DEV_WORKFLOW_INPUT)
 
 run-provider-hooks:
 	$(DUNE) exec examples/provider-hooks/host.exe
