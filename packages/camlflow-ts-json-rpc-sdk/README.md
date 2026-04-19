@@ -145,6 +145,40 @@ They now cover:
 - optional progress callbacks through `camlflow/progress`
 - advisory output-chunk callbacks through `camlflow/outputChunk`
 
+## `pi-mono` harness scaffold
+
+The package now also includes a small Node-based harness for automating the
+`pi-mono` host checks described in the repository docs.
+
+From `packages/camlflow-ts-json-rpc-sdk/`:
+
+```sh
+npm run doctor:pi-mono
+npm run test:pi-mono:launchers
+CAMLFLOW_PI_MONO_E2E=1 npm run test:pi-mono
+```
+
+The split is intentional:
+
+- `doctor:pi-mono` reports whether the local `pi-mono` checkout, wrapper
+  scripts, required build artifacts, and current `camlflow` checkout are ready
+- `test:pi-mono:launchers` validates the shell-wrapper contract without needing
+  a working `pi-mono` build
+- `test:pi-mono` runs the real host checks through `pi --print`
+
+Model-backed host tests are opt-in and require:
+
+```sh
+CAMLFLOW_PI_MONO_E2E=1 \
+CAMLFLOW_PI_MONO_MODEL_E2E=1 \
+CAMLFLOW_PI_MONO_PROVIDER=<provider> \
+CAMLFLOW_PI_MONO_MODEL=<model> \
+npm run test:pi-mono
+```
+
+The slower repo-triage E2E case is additionally gated by
+`CAMLFLOW_PI_MONO_DEEP_E2E=1`.
+
 ## Session notification preferences
 
 `initialize(...)` accepts optional notification preferences:

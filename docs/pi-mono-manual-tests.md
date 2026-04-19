@@ -12,6 +12,46 @@ Related docs:
 - `docs/pi-mono-host-integration-plan.md`
 - `docs/pi-mono-implementation-checklist.md`
 - `docs/pi-mono-integration-testing.md`
+- `packages/camlflow-ts-json-rpc-sdk/test/pi-mono-harness.js`
+
+---
+
+## Automation scaffold
+
+There is now a TypeScript automation scaffold in
+`packages/camlflow-ts-json-rpc-sdk/test/` for these checks.
+
+Useful commands from `packages/camlflow-ts-json-rpc-sdk/`:
+
+```sh
+npm run doctor:pi-mono
+npm run test:pi-mono:launchers
+CAMLFLOW_PI_MONO_E2E=1 npm run test:pi-mono
+```
+
+Notes:
+
+- `doctor:pi-mono` prints a JSON preflight report for the local `pi-mono`
+  setup and, by default, checks whether the current `camlflow` checkout can run
+  the CLI
+- `test:pi-mono:launchers` is the cheap layer; it validates that the shell
+  wrappers build the expected `/camlflow-run ...` commands without requiring a
+  working `pi-mono` build
+- `test:pi-mono` is the real host layer; it runs `pi` in `--print` mode and is
+  opt-in on purpose
+- model-backed host tests are further gated behind:
+  - `CAMLFLOW_PI_MONO_MODEL_E2E=1`
+  - `CAMLFLOW_PI_MONO_PROVIDER=<provider>`
+  - `CAMLFLOW_PI_MONO_MODEL=<model>`
+- the slower repo-triage test is additionally gated behind
+  `CAMLFLOW_PI_MONO_DEEP_E2E=1`
+
+This split is deliberate:
+
+- cheap wrapper checks should be runnable in CI or during local shell-script
+  edits
+- real host tests should only run when the `pi-mono` checkout, build artifacts,
+  and current `camlflow` repo are all ready
 
 ---
 
