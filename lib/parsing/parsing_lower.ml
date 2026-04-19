@@ -190,6 +190,27 @@ let tuple_component_type loc item =
     else failf loc "labeled tuple types are unsupported"
   else Obj.obj repr
 
+let tuple_pattern_items loc (desc : pattern_desc) =
+  let repr = Obj.repr desc in
+  if Obj.is_block repr && Obj.tag repr = 4 then
+    match Obj.size repr with
+    | 1 -> Some ((Obj.obj (Obj.field repr 0) : pattern list))
+    | 2 ->
+        let closed_flag : closed_flag = Obj.obj (Obj.field repr 1) in
+        let items : (string option * pattern) list = Obj.obj (Obj.field repr 0) in
+        (match closed_flag with
+        | Open -> failf loc "open tuple patterns are unsupported"
+        | Closed ->
+            Some
+              (List.map
+                 (fun (label, item) ->
+                   match label with
+                   | None -> item
+                   | Some _ -> failf loc "labeled tuple patterns are unsupported")
+                 items))
+    | _ -> None
+  else None
+
 let rec lower_type (typ : core_type) : Syntax.Ast.type_expr =
   let type_loc = loc_of typ.ptyp_loc in
   let type_desc =
@@ -222,7 +243,6 @@ let rec lower_pattern (pattern : pattern) : Syntax.Ast.pattern =
     | Ppat_any -> Syntax.Ast.PWildcard
     | Ppat_var { txt = name; _ } -> Syntax.Ast.PVar name
     | Ppat_constant constant -> Syntax.Ast.PLiteral (literal_of_constant pattern.ppat_loc constant)
-    | Ppat_tuple items -> Syntax.Ast.PTuple (List.map lower_pattern items)
     | Ppat_record (fields, Closed) ->
         Syntax.Ast.PRecord
           (List.map
@@ -244,25 +264,22 @@ let rec lower_pattern (pattern : pattern) : Syntax.Ast.pattern =
             let args =
               match payload with
               | None -> []
-              | Some
-                  (existentials, ({ ppat_desc = Ppat_tuple items; _ } as inner)) ->
+              | Some (existentials, inner) -> (
                   let () =
                     match existentials with
                     | [] -> ()
                     | _ -> failf inner.ppat_loc "existential constructor patterns are unsupported"
                   in
-                  List.map lower_pattern items
-              | Some (existentials, inner) ->
-                  let () =
-                    match existentials with
-                    | [] -> ()
-                    | _ -> failf inner.ppat_loc "existential constructor patterns are unsupported"
-                  in
-                  [ lower_pattern inner ]
+                  match tuple_pattern_items inner.ppat_loc inner.ppat_desc with
+                  | Some items -> List.map lower_pattern items
+                  | None -> [ lower_pattern inner ])
             in
             Syntax.Ast.PConstruct (name, args))
     | Ppat_constraint (inner, _) -> (lower_pattern inner).pattern_desc
-    | _ -> failf pattern.ppat_loc "unsupported pattern syntax"
+    | _ -> (
+        match tuple_pattern_items pattern.ppat_loc pattern.ppat_desc with
+        | Some items -> Syntax.Ast.PTuple (List.map lower_pattern items)
+        | None -> failf pattern.ppat_loc "unsupported pattern syntax")
   in
   { Syntax.Ast.pattern_loc; pattern_desc }
 
