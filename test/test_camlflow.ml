@@ -603,6 +603,24 @@ let test_project_config_wrong_shape_includes_path_and_field () =
     "invalid field providerConfig.foo" result;
   expect_error_contains "wrong shape includes reason" "expected string" result
 
+let test_project_config_invalid_provider_config_key_rejected () =
+  with_temp_dir "camlflow-config-provider-key-" @@ fun dir ->
+  let config_path = Filename.concat dir Camlflow.Project_config.filename in
+  write_project_config dir
+    {|
+{
+  "providerConfig": {
+    "": "x"
+  }
+}
+|};
+  let result = Camlflow.Project_config.load_file config_path in
+  expect_error_contains "provider config key includes path" config_path result;
+  expect_error_contains "provider config key includes field"
+    "invalid field providerConfig" result;
+  expect_error_contains "provider config key includes reason"
+    "provider config key cannot be empty" result
+
 let test_project_config_bad_path_value_includes_path_and_field () =
   with_temp_dir "camlflow-config-bad-path-" @@ fun dir ->
   let config_path = Filename.concat dir Camlflow.Project_config.filename in
@@ -618,6 +636,21 @@ let test_project_config_bad_path_value_includes_path_and_field () =
     "invalid field allowWriteDirs[0]" result;
   expect_error_contains "bad path includes reason" "expected non-empty path"
     result
+
+let test_project_config_unknown_field_rejected () =
+  with_temp_dir "camlflow-config-unknown-field-" @@ fun dir ->
+  let config_path = Filename.concat dir Camlflow.Project_config.filename in
+  write_project_config dir
+    {|
+{
+  "includePath": ["lib"]
+}
+|};
+  let result = Camlflow.Project_config.load_file config_path in
+  expect_error_contains "unknown field includes path" config_path result;
+  expect_error_contains "unknown field includes field"
+    "invalid field includePath" result;
+  expect_error_contains "unknown field includes reason" "unknown field" result
 
 let sample_project_config ?program ?entry ?include_paths ?skills_dir ?provider
     ?model ?reasoning ?provider_profile ?provider_configs ?sandbox
@@ -2804,9 +2837,13 @@ let () =
           Alcotest.test_case
             "project config wrong shape includes path and field"
             `Quick test_project_config_wrong_shape_includes_path_and_field;
+          Alcotest.test_case "project config invalid provider config key rejected"
+            `Quick test_project_config_invalid_provider_config_key_rejected;
           Alcotest.test_case
             "project config bad path includes path and field"
             `Quick test_project_config_bad_path_value_includes_path_and_field;
+          Alcotest.test_case "project config unknown field rejected" `Quick
+            test_project_config_unknown_field_rejected;
           Alcotest.test_case "cli run uses project config defaults" `Quick
             test_cli_run_uses_project_config_defaults;
           Alcotest.test_case "cli explicit run flags override project config"

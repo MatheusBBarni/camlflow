@@ -52,12 +52,15 @@ jobs:
         working-directory: packages/camlflow-ts-json-rpc-sdk
         run: npm install
 
+      - name: Build CamlFlow binary
+        run: opam exec -- dune build
+
       - name: Run SDK smoke tests
         working-directory: packages/camlflow-ts-json-rpc-sdk
-        run: npm test
+        run: opam exec -- npm test
 
       - name: Run JSON-RPC host example
-        run: node examples/json-rpc-host/host.js
+        run: opam exec -- node examples/json-rpc-host/host.js
 
       - name: Run JSON-RPC problem-coach example
-        run: node examples/json-rpc-problem-coach/host.js
+        run: opam exec -- node examples/json-rpc-problem-coach/host.js

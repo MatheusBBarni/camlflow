@@ -25,6 +25,22 @@ let invalid_field path field message =
 let invalid_root path message =
   Printf.sprintf "invalid CamlFlow config %s: %s" path message
 
+let known_fields =
+  [
+    "program";
+    "entry";
+    "includePaths";
+    "skillsDir";
+    "provider";
+    "model";
+    "reasoning";
+    "providerProfile";
+    "providerConfig";
+    "sandbox";
+    "allowWriteDirs";
+    "traceProvider";
+  ]
+
 let resolve_path ~directory path =
   if Filename.is_relative path then
     if String.equal path "." then directory else Filename.concat directory path
@@ -64,15 +80,30 @@ let decode_sandbox path field json =
   Provider.sandbox_of_string value
   |> Result.map_error (fun message -> invalid_field path field message)
 
+let validate_known_fields path fields =
+  match
+    List.find_opt (fun (field, _) -> not (List.mem field known_fields)) fields
+  with
+  | Some (field, _) -> Error (invalid_field path field "unknown field")
+  | None -> Ok ()
+
+let provider_config_field field key =
+  if String.equal key "" then field else Printf.sprintf "%s.%s" field key
+
 let decode_provider_configs path field = function
   | `Assoc entries ->
       List.fold_left
         (fun acc (key, value) ->
           let* acc = acc in
+          let item_field = provider_config_field field key in
           let* value =
-            decode_string path (Printf.sprintf "%s.%s" field key) value
+            decode_string path item_field value
           in
-          Ok (acc @ [ { Provider.key = key; value } ]))
+          let* config =
+            Provider.config_of_parts key value
+            |> Result.map_error (fun message -> invalid_field path item_field message)
+          in
+          Ok (acc @ [ config ]))
         (Ok []) entries
   | _ -> Error (invalid_field path field "expected object")
 
@@ -111,6 +142,7 @@ let decode_optional_path_list fields directory path field =
 
 let of_yojson ~path ~directory = function
   | `Assoc fields ->
+      let* () = validate_known_fields path fields in
       let* program =
         decode_optional_path fields directory path "program"
       in
