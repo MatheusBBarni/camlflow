@@ -7,10 +7,7 @@ type literal =
   | LFloat of float
   | LUnit
 
-type type_expr = {
-  type_loc : Loc.t;
-  type_desc : type_expr_desc;
-}
+type type_expr = { type_loc : Loc.t; type_desc : type_expr_desc }
 
 and type_expr_desc =
   | TEConstr of qname * type_expr list
@@ -53,10 +50,7 @@ type param = {
   param_loc : Loc.t;
 }
 
-type pattern = {
-  pattern_loc : Loc.t;
-  pattern_desc : pattern_desc;
-}
+type pattern = { pattern_loc : Loc.t; pattern_desc : pattern_desc }
 
 and pattern_desc =
   | PWildcard
@@ -66,10 +60,7 @@ and pattern_desc =
   | PRecord of (string * pattern) list
   | PConstruct of qname * pattern list
 
-and expr = {
-  expr_loc : Loc.t;
-  expr_desc : expr_desc;
-}
+and expr = { expr_loc : Loc.t; expr_desc : expr_desc }
 
 and expr_desc =
   | ELiteral of literal
@@ -85,11 +76,7 @@ and expr_desc =
   | EApply of expr * argument list
   | ELambda of param list * expr
 
-and argument = {
-  arg_label : string option;
-  arg_value : expr;
-  arg_loc : Loc.t;
-}
+and argument = { arg_label : string option; arg_value : expr; arg_loc : Loc.t }
 
 and let_star = {
   let_star_name : string;
@@ -97,11 +84,7 @@ and let_star = {
   let_star_loc : Loc.t;
 }
 
-and case = {
-  case_pattern : pattern;
-  case_body : expr;
-  case_loc : Loc.t;
-}
+and case = { case_pattern : pattern; case_body : expr; case_loc : Loc.t }
 
 and binding = {
   binding_name : string;
@@ -122,9 +105,7 @@ type agent_definition = {
   define_loc : Loc.t;
 }
 
-type callable_body =
-  | Bind_target of string
-  | Inline_agent of agent_definition
+type callable_body = Bind_target of string | Inline_agent of agent_definition
 
 type callable_decl = {
   callable_name : string;
@@ -149,17 +130,17 @@ type module_ = {
   module_loc : Loc.t;
 }
 
-type program = {
-  root_module : qname;
-  modules : module_ list;
-}
+type program = { root_module : qname; modules : module_ list }
 
 let empty : program = { root_module = [ "Main" ]; modules = [] }
 
 let qname_of_longident (lid : Longident.t) : qname =
-  try Longident.flatten lid with Invalid_argument _ -> invalid_arg "applicative longidents are unsupported"
+  try Longident.flatten lid
+  with Invalid_argument _ ->
+    invalid_arg "applicative longidents are unsupported"
 
 let string_of_qname (name : qname) : string = String.concat "." name
 
 let qname_of_string (value : string) : qname =
-  value |> String.split_on_char '.' |> List.filter (fun part -> String.length part > 0)
+  value |> String.split_on_char '.'
+  |> List.filter (fun part -> String.length part > 0)

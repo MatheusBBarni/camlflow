@@ -667,9 +667,10 @@ Delivered:
 
 Remaining Beta 2 follow-up:
 
-- [ ] Add LSP support for CamlFlow
-- [ ] Layer semantic editor features on top of the baseline extensions
-- [ ] Add go-to-definition, rename, hover, outline, diagnostics, formatting, and code actions
+- [x] Add LSP support for CamlFlow
+- [x] Layer semantic editor features on top of the baseline extensions
+- [x] Add go-to-definition, rename, hover, outline, and diagnostics
+- [ ] Add formatting and code actions
 
 ### Beta 3 — multi-provider CLI foundation partially delivered
 

@@ -4,9 +4,7 @@ let die message =
   prerr_endline ("error: " ^ message);
   exit 1
 
-let or_die = function
-  | Ok value -> value
-  | Error message -> die message
+let or_die = function Ok value -> value | Error message -> die message
 
 let help_text topic =
   Printf.sprintf "camlflow %s\n%s\n\n%s" Camlflow.version Camlflow.about
@@ -31,8 +29,8 @@ let ensure_source_file label path =
   let* () = ensure_file label path in
   if Filename.check_suffix path ".json" then
     Error
-      (Printf.sprintf "%s expects a CamlFlow source file, not a JSON artifact: %s"
-         label path)
+      (Printf.sprintf
+         "%s expects a CamlFlow source file, not a JSON artifact: %s" label path)
   else Ok ()
 
 let read_text_file label path =
@@ -43,25 +41,29 @@ let read_text_file label path =
 
 let write_text_file path content =
   try
-    Out_channel.with_open_bin path (fun channel -> output_string channel content);
+    Out_channel.with_open_bin path (fun channel ->
+        output_string channel content);
     Ok ()
   with Sys_error message ->
     Error (Printf.sprintf "failed to write output file %s: %s" path message)
 
 let read_json_source = function
-  | Some path, None ->
+  | Some path, None -> (
       let* source = read_text_file "JSON input file" path in
-      (try Ok (Some (Yojson.Safe.from_string source)) with
-      | Yojson.Json_error message ->
-          Error
-            (Printf.sprintf "failed to decode JSON input from %s: %s" path message))
+      try Ok (Some (Yojson.Safe.from_string source))
+      with Yojson.Json_error message ->
+        Error
+          (Printf.sprintf "failed to decode JSON input from %s: %s" path message)
+      )
   | None, Some json -> (
-      try Ok (Some (Yojson.Safe.from_string json)) with
-      | Yojson.Json_error message ->
-          Error
-            (Printf.sprintf "failed to decode inline JSON passed to --input-json: %s" message))
+      try Ok (Some (Yojson.Safe.from_string json))
+      with Yojson.Json_error message ->
+        Error
+          (Printf.sprintf
+             "failed to decode inline JSON passed to --input-json: %s" message))
   | None, None -> Ok None
-  | Some _, Some _ -> Error "run accepts either --input or --input-json, not both"
+  | Some _, Some _ ->
+      Error "run accepts either --input or --input-json, not both"
 
 let load_program include_paths path =
   let* () = ensure_file "program path" path in
@@ -69,29 +71,29 @@ let load_program include_paths path =
     let* source = read_text_file "JSON IR artifact" path in
     Camlflow.Ir.of_json_string source
     |> Result.map_error (fun error ->
-           Printf.sprintf "failed to decode JSON IR artifact %s: %s" path error)
+        Printf.sprintf "failed to decode JSON IR artifact %s: %s" path error)
   else
     Camlflow.Typing.check_file ~include_paths path
     |> Result.map_error (fun error ->
-           Printf.sprintf "failed to type-check source program %s: %s" path error)
+        Printf.sprintf "failed to type-check source program %s: %s" path error)
 
 let parse_source_file path =
   let* () = ensure_source_file "parse" path in
   Camlflow.Parsing.parse_file path
   |> Result.map_error (fun error ->
-         Printf.sprintf "failed to parse source file %s: %s" path error)
+      Printf.sprintf "failed to parse source file %s: %s" path error)
 
 let check_source_file include_paths path =
   let* () = ensure_source_file "check" path in
   Camlflow.Typing.check_file ~include_paths path
   |> Result.map_error (fun error ->
-         Printf.sprintf "failed to check source file %s: %s" path error)
+      Printf.sprintf "failed to check source file %s: %s" path error)
 
 let compile_source_file include_paths path =
   let* () = ensure_source_file "compile" path in
   Camlflow.Typing.check_file ~include_paths path
   |> Result.map_error (fun error ->
-         Printf.sprintf "failed to compile source file %s: %s" path error)
+      Printf.sprintf "failed to compile source file %s: %s" path error)
 
 let print_parse path =
   let module_ = or_die (parse_source_file path) in
@@ -101,23 +103,26 @@ let print_parse path =
 
 let print_check include_paths path =
   let program = or_die (check_source_file include_paths path) in
-  Printf.printf "checked %d module(s)\n" (List.length program.Camlflow.Ir.modules)
+  Printf.printf "checked %d module(s)\n"
+    (List.length program.Camlflow.Ir.modules)
 
 let print_compile include_paths output path =
   let program = or_die (compile_source_file include_paths path) in
   let json = Camlflow.Ir.to_json_string program in
-  (match output with
+  match output with
   | Some output_path ->
       or_die (write_text_file output_path json);
       Printf.printf "compiled %d module(s) to %s\n"
-        (List.length program.Camlflow.Ir.modules) output_path
+        (List.length program.Camlflow.Ir.modules)
+        output_path
   | None ->
       print_endline json;
       Printf.printf "compiled %d module(s)\n"
-        (List.length program.Camlflow.Ir.modules))
+        (List.length program.Camlflow.Ir.modules)
 
 let resolve_path ~working_directory path =
-  if Filename.is_relative path then Filename.concat working_directory path else path
+  if Filename.is_relative path then Filename.concat working_directory path
+  else path
 
 let print_run (options : Camlflow.Cli.options) path =
   let working_directory = Sys.getcwd () in
@@ -151,7 +156,8 @@ let print_run (options : Camlflow.Cli.options) path =
         let adapter = Camlflow.Providers.find provider in
         let () =
           or_die
-            (adapter.preflight ~working_directory ~settings:options.provider_options)
+            (adapter.preflight ~working_directory
+               ~settings:options.provider_options)
         in
         or_die
           (adapter.build_runtime_context ~working_directory
@@ -160,10 +166,12 @@ let print_run (options : Camlflow.Cli.options) path =
   let input =
     or_die (read_json_source (options.input_file, options.input_json))
   in
-  match Camlflow.Runtime.execute ~context ~entry:options.entry ?input program with
-  | Ok result ->
+  match
+    Camlflow.Runtime.execute ~context ~entry:options.entry ?input program
+  with
+  | Ok result -> (
       Printf.printf "steps: %d\n" result.Camlflow.Runtime.steps_run;
-      (match result.Camlflow.Runtime.output with
+      match result.Camlflow.Runtime.output with
       | Some json -> print_endline (Yojson.Safe.pretty_to_string json)
       | None -> print_endline "null")
   | Error error -> die (Printf.sprintf "run failed for %s: %s" path error)
@@ -171,9 +179,7 @@ let print_run (options : Camlflow.Cli.options) path =
 let load_project_config_defaults ~working_directory parsed =
   match parsed.Camlflow.Cli.command with
   | Camlflow.Cli.Check | Camlflow.Cli.Compile | Camlflow.Cli.Run ->
-      let* config =
-        Camlflow.Project_config.load_nearest ~working_directory
-      in
+      let* config = Camlflow.Project_config.load_nearest ~working_directory in
       Ok
         (match config with
         | Some config -> Camlflow.Cli.apply_project_config parsed config
@@ -190,10 +196,11 @@ let dispatch (parsed : Camlflow.Cli.parsed) =
         | None -> die "internal CLI dispatch error: missing completion shell"
       in
       print_endline (Camlflow.Cli.completion_script shell)
-  | Camlflow.Cli.Serve, [] ->
-      or_die (Camlflow.Rpc_server.run_stdio ())
+  | Camlflow.Cli.Serve, [] -> or_die (Camlflow.Rpc_server.run_stdio ())
+  | Camlflow.Cli.Lsp, [] -> or_die (Camlflow.Lsp_server.run_stdio ())
   | Camlflow.Cli.Parse, [ path ] -> print_parse path
-  | Camlflow.Cli.Check, [ path ] -> print_check parsed.options.include_paths path
+  | Camlflow.Cli.Check, [ path ] ->
+      print_check parsed.options.include_paths path
   | Camlflow.Cli.Compile, [ path ] ->
       print_compile parsed.options.include_paths parsed.options.output path
   | Camlflow.Cli.Run, [ path ] -> print_run parsed.options path
@@ -206,6 +213,8 @@ let () =
   let argv = Array.to_list Sys.argv |> List.tl in
   let parsed = or_die (Camlflow.Cli.parse_argv argv) in
   let working_directory = Sys.getcwd () in
-  let parsed = or_die (load_project_config_defaults ~working_directory parsed) in
+  let parsed =
+    or_die (load_project_config_defaults ~working_directory parsed)
+  in
   let () = or_die (Camlflow.Cli.validate parsed) in
   dispatch parsed

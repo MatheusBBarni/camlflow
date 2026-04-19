@@ -1,7 +1,6 @@
 module Context = Runtime.Context
 
 let ( let* ) = Result.bind
-
 let protocol_version = "0.1.0"
 let effect_method = "camlflow/executeEffect"
 let trace_method = "camlflow/trace"
@@ -69,7 +68,8 @@ type run_error = Run_failed of string | Run_cancelled of string
 let id_matches left right =
   match (left, right) with
   | Rpc_protocol.Int left, Rpc_protocol.Int right -> left = right
-  | Rpc_protocol.String left, Rpc_protocol.String right -> String.equal left right
+  | Rpc_protocol.String left, Rpc_protocol.String right ->
+      String.equal left right
   | _ -> false
 
 let string_field fields name =
@@ -216,11 +216,11 @@ let load_program include_paths path =
     let* source = read_text_file "JSON IR artifact" path in
     Ir.of_json_string source
     |> Result.map_error (fun error ->
-           Printf.sprintf "failed to decode JSON IR artifact %s: %s" path error)
+        Printf.sprintf "failed to decode JSON IR artifact %s: %s" path error)
   else
     Typing.check_file ~include_paths path
     |> Result.map_error (fun error ->
-           Printf.sprintf "failed to type-check source program %s: %s" path error)
+        Printf.sprintf "failed to type-check source program %s: %s" path error)
 
 let ensure_directory label path =
   if not (Sys.file_exists path) then
@@ -229,7 +229,8 @@ let ensure_directory label path =
   else Error (Printf.sprintf "%s must be a directory, got file: %s" label path)
 
 let resolve_path ~working_directory path =
-  if Filename.is_relative path then Filename.concat working_directory path else path
+  if Filename.is_relative path then Filename.concat working_directory path
+  else path
 
 let initialized_result () =
   `Assoc
@@ -269,7 +270,11 @@ let check_result program =
     ]
 
 let compile_result program =
-  `Assoc [ ("irVersion", `String Ir.ir_version); ("artifact", Ir.program_to_yojson program) ]
+  `Assoc
+    [
+      ("irVersion", `String Ir.ir_version);
+      ("artifact", Ir.program_to_yojson program);
+    ]
 
 let run_result run_id (result : Runtime.execution_result) =
   `Assoc
@@ -308,12 +313,18 @@ let effect_summary_field = function
 
 let trace_payload ?run_id ?step ?request ?details event =
   `Assoc
-    ([ ("event", `String event); string_option_field "runId" run_id; int_option_field "step" step; effect_summary_field request ]
+    ([
+       ("event", `String event);
+       string_option_field "runId" run_id;
+       int_option_field "step" step;
+       effect_summary_field request;
+     ]
     @ match details with None -> [] | Some details -> [ ("details", details) ])
 
 let send_trace (server : server) ?run_id ?step ?request ?details event =
   if server.trace_enabled then
-    notify server trace_method (trace_payload ?run_id ?step ?request ?details event)
+    notify server trace_method
+      (trace_payload ?run_id ?step ?request ?details event)
   else Ok ()
 
 let progress_payload ?run_id ?step ?message ?completed_steps ?known_steps
@@ -329,8 +340,8 @@ let progress_payload ?run_id ?step ?message ?completed_steps ?known_steps
       bool_option_field "cancellable" cancellable;
     ]
 
-let send_progress (server : server) ?run_id ?step ?message ?completed_steps ?known_steps
-    ?cancellable stage =
+let send_progress (server : server) ?run_id ?step ?message ?completed_steps
+    ?known_steps ?cancellable stage =
   if server.progress_enabled then
     notify server progress_method
       (progress_payload ?run_id ?step ?message ?completed_steps ?known_steps
@@ -376,14 +387,17 @@ let reply_success_message server request_id json =
 
 let reply_error_message server request_id ?data ~code message =
   match request_id with
-  | Some id -> write_json server (Rpc_protocol.error ~id ?data ~code ~message ())
+  | Some id ->
+      write_json server (Rpc_protocol.error ~id ?data ~code ~message ())
   | None -> Ok ()
 
 let progress_message_for_effect action (request : Effect_request.t) =
   Printf.sprintf "%s %s %s" action
-    (Effect_request.kind_to_string request.kind) request.name
+    (Effect_request.kind_to_string request.kind)
+    request.name
 
-let output_chunk_matches_request (request : Effect_request.t) (chunk : output_chunk) =
+let output_chunk_matches_request (request : Effect_request.t)
+    (chunk : output_chunk) =
   request.Effect_request.run_id = chunk.output_chunk_run_id
   && request.Effect_request.step_index = chunk.output_chunk_step
 
@@ -428,7 +442,9 @@ let request_cancellation server request_id =
 let emit_cancellation server active ?step ?request () =
   if active.cancellation_emitted then Ok ()
   else
-    let cancellation_step = match step with Some step -> Some step | None -> active.current_step in
+    let cancellation_step =
+      match step with Some step -> Some step | None -> active.current_step
+    in
     let* () =
       send_trace server ?run_id:active.run_id ?step:cancellation_step ?request
         ~details:(`Assoc [ ("reason", `String "host-cancelled") ])
@@ -458,19 +474,18 @@ let read_json server =
   | Some message ->
       server.pending_message <- None;
       Ok message
-  | None ->
+  | None -> (
       let* message = Rpc_stdio.read_message server.input in
       match message with
       | Some message -> Ok message
-      | None -> Error "unexpected EOF while waiting for JSON-RPC message"
+      | None -> Error "unexpected EOF while waiting for JSON-RPC message")
 
 let input_has_pending_message server =
   match server.pending_message with
   | Some _ -> true
-  | None ->
+  | None -> (
       let fd = Unix.descr_of_in_channel server.input in
-      match Unix.select [ fd ] [] [] 0.0 with
-      | ready, _, _ -> ready <> []
+      match Unix.select [ fd ] [] [] 0.0 with ready, _, _ -> ready <> [])
 
 let handle_in_run_cancel_request server request =
   let params =
@@ -485,8 +500,8 @@ let handle_in_run_cancel_request server request =
   | Error error ->
       let* () = send_diagnostic server ~method_:request.request_method error in
       let* () =
-        reply_error_message server request.Rpc_protocol.request_id ~code:(-32600)
-          error
+        reply_error_message server request.Rpc_protocol.request_id
+          ~code:(-32600) error
       in
       Ok ()
 
@@ -495,12 +510,14 @@ let rec drain_in_run_control_messages server =
   else
     match read_json server with
     | Error error
-      when String.equal error "unexpected EOF while waiting for JSON-RPC message" ->
+      when String.equal error
+             "unexpected EOF while waiting for JSON-RPC message" ->
         Ok ()
     | Error error -> Error error
     | Ok message -> (
         match Rpc_protocol.request_of_yojson message with
-        | Ok request when String.equal request.Rpc_protocol.request_method cancel_method ->
+        | Ok request
+          when String.equal request.Rpc_protocol.request_method cancel_method ->
             let* () = handle_in_run_cancel_request server request in
             if
               match server.active_run with
@@ -515,10 +532,12 @@ let rec drain_in_run_control_messages server =
               Printf.sprintf "request is not accepted while a run is active: %s"
                 request.Rpc_protocol.request_method
             in
-            let* () = send_diagnostic server ~method_:request.request_method message in
             let* () =
-              reply_error_message server request.Rpc_protocol.request_id ~code:(-32600)
-                message
+              send_diagnostic server ~method_:request.request_method message
+            in
+            let* () =
+              reply_error_message server request.Rpc_protocol.request_id
+                ~code:(-32600) message
             in
             drain_in_run_control_messages server
         | Error _ -> (
@@ -528,7 +547,8 @@ let rec drain_in_run_control_messages server =
                 Ok ()
             | Error error ->
                 let* () =
-                  send_diagnostic server ~method_:"(invalid-in-run-message)" error
+                  send_diagnostic server ~method_:"(invalid-in-run-message)"
+                    error
                 in
                 drain_in_run_control_messages server))
 
@@ -540,7 +560,9 @@ let send_effect_request server (request : Effect_request.t) =
   let request_id =
     Rpc_protocol.String
       (Printf.sprintf "effect-%d"
-         (match request.Effect_request.step_index with Some step -> step | None -> 0))
+         (match request.Effect_request.step_index with
+         | Some step -> step
+         | None -> 0))
   in
   (match server.active_run with
   | Some active -> active.waiting_effect_id <- Some request_id
@@ -563,19 +585,21 @@ let send_effect_request server (request : Effect_request.t) =
   let rec wait_for_response () =
     let* message = read_json server in
     match Rpc_protocol.response_of_yojson message with
-    | Ok response ->
+    | Ok response -> (
         let* () =
           match response.Rpc_protocol.response_id with
           | Some id when id_matches id request_id -> Ok ()
           | Some id ->
               Error
                 (Printf.sprintf
-                   "unexpected JSON-RPC response id while waiting for effect response: %s"
+                   "unexpected JSON-RPC response id while waiting for effect \
+                    response: %s"
                    (Rpc_protocol.string_of_id id))
           | None -> Error "missing JSON-RPC response id for effect response"
         in
-        (match response.Rpc_protocol.response_error with
-        | Some error when error.Rpc_protocol.error_code = request_cancelled_code ->
+        match response.Rpc_protocol.response_error with
+        | Some error when error.Rpc_protocol.error_code = request_cancelled_code
+          ->
             (match server.active_run with
             | Some active -> active.cancellation_requested <- true
             | None -> ());
@@ -591,12 +615,15 @@ let send_effect_request server (request : Effect_request.t) =
             | Some (`Assoc fields) -> (
                 match List.assoc_opt "output" fields with
                 | Some json -> Ok json
-                | None -> Error "effect response result must contain output field")
+                | None ->
+                    Error "effect response result must contain output field")
             | Some _ -> Error "effect response result must be an object"
             | None -> Error "effect response missing result payload"))
     | Error _ -> (
         match Rpc_protocol.request_of_yojson message with
-        | Ok incoming when String.equal incoming.Rpc_protocol.request_method cancel_method ->
+        | Ok incoming
+          when String.equal incoming.Rpc_protocol.request_method cancel_method
+          ->
             let cancel_params =
               match incoming.Rpc_protocol.request_params with
               | Some params -> params
@@ -610,26 +637,31 @@ let send_effect_request server (request : Effect_request.t) =
             in
             wait_for_response ()
         | Ok incoming
-          when String.equal incoming.Rpc_protocol.request_method output_chunk_method
+          when String.equal incoming.Rpc_protocol.request_method
+                 output_chunk_method
                && Option.is_none incoming.Rpc_protocol.request_id ->
             let output_chunk_params =
               match incoming.Rpc_protocol.request_params with
               | Some params -> params
               | None -> `Assoc []
             in
-            let* () = handle_in_run_output_chunk server request output_chunk_params in
+            let* () =
+              handle_in_run_output_chunk server request output_chunk_params
+            in
             wait_for_response ()
         | Ok incoming when Option.is_none incoming.Rpc_protocol.request_id ->
             wait_for_response ()
         | Ok incoming ->
             Error
               (Printf.sprintf
-                 "unexpected JSON-RPC request while waiting for effect response: %s"
+                 "unexpected JSON-RPC request while waiting for effect \
+                  response: %s"
                  incoming.Rpc_protocol.request_method)
         | Error error ->
             Error
               (Printf.sprintf
-                 "unexpected JSON-RPC message while waiting for effect response: %s"
+                 "unexpected JSON-RPC message while waiting for effect \
+                  response: %s"
                  error))
   in
   Fun.protect
@@ -639,7 +671,8 @@ let send_effect_request server (request : Effect_request.t) =
       | None -> ())
     (fun () ->
       let* () =
-        write_json server (Rpc_protocol.request ~id:request_id ~params effect_method)
+        write_json server
+          (Rpc_protocol.request ~id:request_id ~params effect_method)
       in
       wait_for_response ())
 
@@ -652,20 +685,25 @@ let build_host_context server ~working_directory ~skills_dir run_id =
     | Some active -> active.current_step <- Some step
     | None -> ());
     let* () = drain_and_ensure_run_not_cancelled server ~step () in
-    let* request = Effect_request.of_invocation ~step_index:step ~run_id invocation in
+    let* request =
+      Effect_request.of_invocation ~step_index:step ~run_id invocation
+    in
     let* () = drain_and_ensure_run_not_cancelled server ~step ~request () in
     let completed_steps =
-      match server.active_run with Some active -> active.completed_steps | None -> step - 1
+      match server.active_run with
+      | Some active -> active.completed_steps
+      | None -> step - 1
     in
     let* () =
       send_progress server ~run_id ~step
         ~message:(progress_message_for_effect "Executing" request)
-        ~completed_steps:completed_steps ?known_steps:None ~cancellable:true
-        "effect-start"
+        ~completed_steps ?known_steps:None ~cancellable:true "effect-start"
     in
     let* () = send_trace server ~run_id ~step ~request "effect-request" in
     let execution_result =
-      Effect_bridge.execute_request ~executor:(send_effect_request server) request
+      Effect_bridge.execute_request
+        ~executor:(send_effect_request server)
+        request
     in
     let* execution =
       match execution_result with
@@ -687,18 +725,22 @@ let build_host_context server ~working_directory ~skills_dir run_id =
     let* () =
       match validation with
       | Ok _ ->
-          let* () = drain_and_ensure_run_not_cancelled server ~step ~request () in
+          let* () =
+            drain_and_ensure_run_not_cancelled server ~step ~request ()
+          in
           (match server.active_run with
           | Some active -> active.completed_steps <- step
           | None -> ());
           let completed_steps =
-            match server.active_run with Some active -> active.completed_steps | None -> step
+            match server.active_run with
+            | Some active -> active.completed_steps
+            | None -> step
           in
           let* () =
             send_progress server ~run_id ~step
               ~message:(progress_message_for_effect "Finished" request)
-              ~completed_steps:completed_steps ?known_steps:None
-              ~cancellable:true "effect-finish"
+              ~completed_steps ?known_steps:None ~cancellable:true
+              "effect-finish"
           in
           send_trace server ~run_id ~step ~request
             ~details:(`Assoc [ ("status", `String "ok") ])
@@ -714,9 +756,13 @@ let build_host_context server ~working_directory ~skills_dir run_id =
     let* _ = validation in
     Ok execution.Effect_bridge.output_json
   in
-  let context = Context.with_working_directory Context.empty working_directory in
   let context =
-    match skills_dir with Some dir -> Context.with_skills_directory context dir | None -> context
+    Context.with_working_directory Context.empty working_directory
+  in
+  let context =
+    match skills_dir with
+    | Some dir -> Context.with_skills_directory context dir
+    | None -> context
   in
   let context =
     Context.with_cancellation_check context (fun () ->
@@ -795,10 +841,10 @@ let handle_run server params =
       (send_trace server ~run_id
          ~details:
            (`Assoc
-             [
-               ("programPath", `String request.run_program.program_path);
-               ("entry", `String request.run_entry);
-             ])
+              [
+                ("programPath", `String request.run_program.program_path);
+                ("entry", `String request.run_entry);
+              ])
          "run-start")
   in
   let* () =
@@ -861,7 +907,9 @@ let handle_run server params =
         Error (Run_cancelled error)
     | Error (Run_failed error) ->
         let completed_steps =
-          match server.active_run with Some active -> active.completed_steps | None -> 0
+          match server.active_run with
+          | Some active -> active.completed_steps
+          | None -> 0
         in
         let* () =
           lift
@@ -872,10 +920,11 @@ let handle_run server params =
         let* () =
           lift
             (send_progress server ~run_id ?step:None ~message:error
-               ~completed_steps:completed_steps ?known_steps:None
-               ~cancellable:false "run-error")
+               ~completed_steps ?known_steps:None ~cancellable:false "run-error")
         in
-        let* () = lift (send_diagnostic server ~run_id ~method_:"camlflow/run" error) in
+        let* () =
+          lift (send_diagnostic server ~run_id ~method_:"camlflow/run" error)
+        in
         Error (Run_failed error)
   in
   Ok (run_result run_id result)
@@ -895,9 +944,16 @@ let handle_request server (request : Rpc_protocol.request_message) =
     write_json server
       (Rpc_protocol.error ?id:request_id ?data ~code ~message ())
   in
-  let params = match request.Rpc_protocol.request_params with Some params -> params | None -> `Assoc [] in
+  let params =
+    match request.Rpc_protocol.request_params with
+    | Some params -> params
+    | None -> `Assoc []
+  in
   if method_requires_init request.request_method && not server.initialized then
-    let* () = send_diagnostic server ~method_:request.request_method "server not initialized" in
+    let* () =
+      send_diagnostic server ~method_:request.request_method
+        "server not initialized"
+    in
     let* () = reply_error ~code:(-32002) "server not initialized" in
     Ok Continue
   else
@@ -913,7 +969,9 @@ let handle_request server (request : Rpc_protocol.request_message) =
               server.progress_enabled <- preferences.progress_enabled;
               reply_success (initialized_result ())
           | Error error ->
-              let* () = send_diagnostic server ~method_:request.request_method error in
+              let* () =
+                send_diagnostic server ~method_:request.request_method error
+              in
               reply_error ~code:(-32600) error
         in
         Ok Continue
@@ -931,7 +989,9 @@ let handle_request server (request : Rpc_protocol.request_message) =
           match result with
           | Ok _ -> reply_success `Null
           | Error error ->
-              let* () = send_diagnostic server ~method_:request.request_method error in
+              let* () =
+                send_diagnostic server ~method_:request.request_method error
+              in
               reply_error ~code:(-32600) error
         in
         Ok Continue
@@ -941,17 +1001,20 @@ let handle_request server (request : Rpc_protocol.request_message) =
           | None -> Ok ()
           | Some _ ->
               let message =
-                "camlflow/outputChunk is only accepted as a notification during effect execution"
+                "camlflow/outputChunk is only accepted as a notification \
+                 during effect execution"
               in
-              let* () = send_diagnostic server ~method_:request.request_method message in
+              let* () =
+                send_diagnostic server ~method_:request.request_method message
+              in
               reply_error ~code:(-32600) message
         in
         Ok Continue
     | "camlflow/check" ->
         let* () =
-          send_progress server ?run_id:None ?step:None ~message:"Checking program"
-            ~completed_steps:0 ?known_steps:None ~cancellable:false
-            "check-start"
+          send_progress server ?run_id:None ?step:None
+            ~message:"Checking program" ~completed_steps:0 ?known_steps:None
+            ~cancellable:false "check-start"
         in
         let result = handle_check params in
         let* () =
@@ -964,15 +1027,17 @@ let handle_request server (request : Rpc_protocol.request_message) =
               in
               reply_success json
           | Error error ->
-              let* () = send_diagnostic server ~method_:request.request_method error in
+              let* () =
+                send_diagnostic server ~method_:request.request_method error
+              in
               reply_error ~code:(-32010) error
         in
         Ok Continue
     | "camlflow/compile" ->
         let* () =
-          send_progress server ?run_id:None ?step:None ~message:"Compiling program"
-            ~completed_steps:0 ?known_steps:None ~cancellable:false
-            "compile-start"
+          send_progress server ?run_id:None ?step:None
+            ~message:"Compiling program" ~completed_steps:0 ?known_steps:None
+            ~cancellable:false "compile-start"
         in
         let result = handle_compile params in
         let* () =
@@ -985,7 +1050,9 @@ let handle_request server (request : Rpc_protocol.request_message) =
               in
               reply_success json
           | Error error ->
-              let* () = send_diagnostic server ~method_:request.request_method error in
+              let* () =
+                send_diagnostic server ~method_:request.request_method error
+              in
               reply_error ~code:(-32011) error
         in
         Ok Continue
@@ -1011,12 +1078,14 @@ let handle_request server (request : Rpc_protocol.request_message) =
           | Ok json -> reply_success json
           | Error (Run_cancelled error) ->
               reply_error ~code:request_cancelled_code error
-          | Error (Run_failed error) ->
-              reply_error ~code:(-32012) error
+          | Error (Run_failed error) -> reply_error ~code:(-32012) error
         in
         Ok Continue
     | _ ->
-        let* () = send_diagnostic server ~method_:request.request_method "method not found" in
+        let* () =
+          send_diagnostic server ~method_:request.request_method
+            "method not found"
+        in
         let* () = reply_error ~code:(-32601) "method not found" in
         Ok Continue
 
@@ -1039,7 +1108,7 @@ let run ~input ~output =
     let* message = Rpc_stdio.read_message server.input in
     match message with
     | None -> Ok ()
-    | Some message ->
+    | Some message -> (
         let parsed = Rpc_protocol.request_of_yojson message in
         let* control =
           match parsed with
@@ -1048,14 +1117,16 @@ let run ~input ~output =
               match Rpc_protocol.response_of_yojson message with
               | Ok _ -> Ok Continue
               | Error _ ->
-                  let* () = send_diagnostic server ~method_:"(invalid-request)" error in
+                  let* () =
+                    send_diagnostic server ~method_:"(invalid-request)" error
+                  in
                   let* () =
                     write_json server
                       (Rpc_protocol.error ~code:(-32600) ~message:error ())
                   in
                   Ok Continue)
         in
-        match control with Continue -> loop () | Stop -> Ok ()
+        match control with Continue -> loop () | Stop -> Ok ())
   in
   loop ()
 

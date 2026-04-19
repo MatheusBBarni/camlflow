@@ -96,12 +96,11 @@ let decode_provider_configs path field = function
         (fun acc (key, value) ->
           let* acc = acc in
           let item_field = provider_config_field field key in
-          let* value =
-            decode_string path item_field value
-          in
+          let* value = decode_string path item_field value in
           let* config =
             Provider.config_of_parts key value
-            |> Result.map_error (fun message -> invalid_field path item_field message)
+            |> Result.map_error (fun message ->
+                invalid_field path item_field message)
           in
           Ok (acc @ [ config ]))
         (Ok []) entries
@@ -129,23 +128,17 @@ let decode_optional fields path field decoder =
       Ok (Some value)
 
 let decode_optional_path fields directory path field =
-  let* value =
-    decode_optional fields path field decode_path_string
-  in
+  let* value = decode_optional fields path field decode_path_string in
   Ok (Option.map (resolve_path ~directory) value)
 
 let decode_optional_path_list fields directory path field =
-  let* value =
-    decode_optional fields path field decode_path_list
-  in
+  let* value = decode_optional fields path field decode_path_list in
   Ok (Option.map (List.map (resolve_path ~directory)) value)
 
 let of_yojson ~path ~directory = function
   | `Assoc fields ->
       let* () = validate_known_fields path fields in
-      let* program =
-        decode_optional_path fields directory path "program"
-      in
+      let* program = decode_optional_path fields directory path "program" in
       let* entry = decode_optional fields path "entry" decode_string in
       let* include_paths =
         decode_optional_path_list fields directory path "includePaths"
@@ -193,10 +186,10 @@ let of_yojson ~path ~directory = function
 let load_file path =
   let* source = read_text_file path in
   let* json =
-    try Ok (Yojson.Safe.from_string source) with
-    | Yojson.Json_error message ->
-        Error
-          (Printf.sprintf "failed to decode CamlFlow config %s: %s" path message)
+    try Ok (Yojson.Safe.from_string source)
+    with Yojson.Json_error message ->
+      Error
+        (Printf.sprintf "failed to decode CamlFlow config %s: %s" path message)
   in
   of_yojson ~path ~directory:(Filename.dirname path) json
 

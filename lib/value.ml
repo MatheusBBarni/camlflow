@@ -14,7 +14,6 @@ type t =
 type type_index = Ir.type_decl StringMap.t
 
 let ( let* ) = Result.bind
-
 let type_key = Syntax.Ast.string_of_qname
 
 let type_index_of_program (program : Ir.program) : type_index =
@@ -23,7 +22,8 @@ let type_index_of_program (program : Ir.program) : type_index =
       List.fold_left
         (fun acc decl ->
           match decl with
-          | Ir.TypeDecl decl -> StringMap.add (type_key decl.Ir.type_name) decl acc
+          | Ir.TypeDecl decl ->
+              StringMap.add (type_key decl.Ir.type_name) decl acc
           | _ -> acc)
         acc module_.Ir.module_decls)
     StringMap.empty program.Ir.modules
@@ -52,9 +52,9 @@ let rec default_value types = function
   | Ir.TTuple items ->
       let* items = all (List.map (default_value types) items) in
       Ok (VTuple items)
-  | Ir.TRecord name ->
+  | Ir.TRecord name -> (
       let* decl = find_type types name in
-      (match decl.Ir.type_kind with
+      match decl.Ir.type_kind with
       | Ir.Record fields ->
           let* fields =
             all
@@ -66,13 +66,17 @@ let rec default_value types = function
           in
           Ok (VRecord fields)
       | _ -> Error (Printf.sprintf "%s is not a record type" (type_key name)))
-  | Ir.TVariant name ->
+  | Ir.TVariant name -> (
       let* decl = find_type types name in
-      (match decl.Ir.type_kind with
+      match decl.Ir.type_kind with
       | Ir.Variant (ctor :: _) ->
-          let* values = all (List.map (default_value types) ctor.Ir.ctor_args) in
+          let* values =
+            all (List.map (default_value types) ctor.Ir.ctor_args)
+          in
           Ok (VVariant (ctor.Ir.ctor_name, values))
-      | Ir.Variant [] -> Error (Printf.sprintf "variant %s has no constructors" (type_key name))
+      | Ir.Variant [] ->
+          Error
+            (Printf.sprintf "variant %s has no constructors" (type_key name))
       | _ -> Error (Printf.sprintf "%s is not a variant type" (type_key name)))
   | Ir.TFunc _ -> Error "cannot synthesize function values"
 
@@ -87,13 +91,14 @@ let rec to_json types typ value =
       let* items = all (List.map (to_json types inner) items) in
       Ok (`List items)
   | Ir.TTuple types_list, VTuple values ->
-      if List.length types_list <> List.length values then Error "tuple arity mismatch"
+      if List.length types_list <> List.length values then
+        Error "tuple arity mismatch"
       else
         let* items = all (List.map2 (to_json types) types_list values) in
         Ok (`List items)
-  | Ir.TRecord name, VRecord fields ->
+  | Ir.TRecord name, VRecord fields -> (
       let* decl = find_type types name in
-      (match decl.Ir.type_kind with
+      match decl.Ir.type_kind with
       | Ir.Record expected_fields ->
           let* encoded =
             all
@@ -103,32 +108,47 @@ let rec to_json types typ value =
                    | Some value ->
                        let* json = to_json types field.Ir.field_typ value in
                        Ok (field.Ir.field_name, json)
-                   | None -> Error (Printf.sprintf "missing record field %s" field.Ir.field_name))
+                   | None ->
+                       Error
+                         (Printf.sprintf "missing record field %s"
+                            field.Ir.field_name))
                  expected_fields)
           in
           Ok (`Assoc encoded)
       | _ -> Error (Printf.sprintf "%s is not a record type" (type_key name)))
-  | Ir.TOption inner, VVariant ("None", []) -> Ok (`Assoc [ ("tag", `String "None") ])
+  | Ir.TOption inner, VVariant ("None", []) ->
+      Ok (`Assoc [ ("tag", `String "None") ])
   | Ir.TOption inner, VVariant ("Some", [ value ]) ->
       let* json = to_json types inner value in
       Ok (`Assoc [ ("tag", `String "Some"); ("value", json) ])
   | Ir.TOption _, VVariant _ -> Error "invalid option value"
-  | Ir.TVariant name, VVariant (ctor_name, values) ->
+  | Ir.TVariant name, VVariant (ctor_name, values) -> (
       let* decl = find_type types name in
-      (match decl.Ir.type_kind with
-      | Ir.Variant ctors ->
+      match decl.Ir.type_kind with
+      | Ir.Variant ctors -> (
           let* ctor =
-            match List.find_opt (fun ctor -> String.equal ctor.Ir.ctor_name ctor_name) ctors with
+            match
+              List.find_opt
+                (fun ctor -> String.equal ctor.Ir.ctor_name ctor_name)
+                ctors
+            with
             | Some ctor -> Ok ctor
             | None -> Error (Printf.sprintf "unknown constructor %s" ctor_name)
           in
-          if List.length ctor.Ir.ctor_args <> List.length values then Error "constructor arity mismatch"
+          if List.length ctor.Ir.ctor_args <> List.length values then
+            Error "constructor arity mismatch"
           else
-            let* payload = all (List.map2 (to_json types) ctor.Ir.ctor_args values) in
-            (match payload with
+            let* payload =
+              all (List.map2 (to_json types) ctor.Ir.ctor_args values)
+            in
+            match payload with
             | [] -> Ok (`Assoc [ ("tag", `String ctor_name) ])
-            | [ value ] -> Ok (`Assoc [ ("tag", `String ctor_name); ("value", value) ])
-            | values -> Ok (`Assoc [ ("tag", `String ctor_name); ("values", `List values) ]))
+            | [ value ] ->
+                Ok (`Assoc [ ("tag", `String ctor_name); ("value", value) ])
+            | values ->
+                Ok
+                  (`Assoc
+                     [ ("tag", `String ctor_name); ("values", `List values) ]))
       | _ -> Error (Printf.sprintf "%s is not a variant type" (type_key name)))
   | _ -> Error "value does not match declared type"
 
@@ -144,13 +164,14 @@ let rec of_json types typ json =
       let* items = all (List.map (of_json types inner) items) in
       Ok (VList items)
   | Ir.TTuple types_list, `List items ->
-      if List.length types_list <> List.length items then Error "tuple JSON arity mismatch"
+      if List.length types_list <> List.length items then
+        Error "tuple JSON arity mismatch"
       else
         let* values = all (List.map2 (of_json types) types_list items) in
         Ok (VTuple values)
-  | Ir.TRecord name, `Assoc fields ->
+  | Ir.TRecord name, `Assoc fields -> (
       let* decl = find_type types name in
-      (match decl.Ir.type_kind with
+      match decl.Ir.type_kind with
       | Ir.Record expected_fields ->
           let* values =
             all
@@ -160,14 +181,17 @@ let rec of_json types typ json =
                    | Some json ->
                        let* value = of_json types field.Ir.field_typ json in
                        Ok (field.Ir.field_name, value)
-                   | None -> Error (Printf.sprintf "missing JSON field %s" field.Ir.field_name))
+                   | None ->
+                       Error
+                         (Printf.sprintf "missing JSON field %s"
+                            field.Ir.field_name))
                  expected_fields)
           in
           Ok (VRecord values)
       | _ -> Error (Printf.sprintf "%s is not a record type" (type_key name)))
-  | Ir.TOption inner, `Assoc fields ->
+  | Ir.TOption inner, `Assoc fields -> (
       let tag = List.assoc_opt "tag" fields in
-      (match tag with
+      match tag with
       | Some (`String "None") -> Ok (VVariant ("None", []))
       | Some (`String "Some") ->
           let* json =
@@ -178,32 +202,44 @@ let rec of_json types typ json =
           let* value = of_json types inner json in
           Ok (VVariant ("Some", [ value ]))
       | _ -> Error "invalid option JSON encoding")
-  | Ir.TVariant name, `Assoc fields ->
+  | Ir.TVariant name, `Assoc fields -> (
       let* ctor_name =
         match List.assoc_opt "tag" fields with
         | Some (`String tag) -> Ok tag
         | _ -> Error "variant JSON requires a tag field"
       in
       let* decl = find_type types name in
-      (match decl.Ir.type_kind with
+      match decl.Ir.type_kind with
       | Ir.Variant ctors ->
           let* ctor =
-            match List.find_opt (fun ctor -> String.equal ctor.Ir.ctor_name ctor_name) ctors with
+            match
+              List.find_opt
+                (fun ctor -> String.equal ctor.Ir.ctor_name ctor_name)
+                ctors
+            with
             | Some ctor -> Ok ctor
             | None -> Error (Printf.sprintf "unknown constructor %s" ctor_name)
           in
           let payload_jsons =
-            match (ctor.Ir.ctor_args, List.assoc_opt "value" fields, List.assoc_opt "values" fields) with
+            match
+              ( ctor.Ir.ctor_args,
+                List.assoc_opt "value" fields,
+                List.assoc_opt "values" fields )
+            with
             | [], _, _ -> Ok []
             | [ _ ], Some json, _ -> Ok [ json ]
             | _ :: _ :: _, _, Some (`List values) -> Ok values
             | [ _ ], None, _ -> Error "constructor payload missing value field"
-            | _ :: _ :: _, _, _ -> Error "constructor payload missing values field"
+            | _ :: _ :: _, _, _ ->
+                Error "constructor payload missing values field"
           in
           let* payload_jsons = payload_jsons in
-          if List.length payload_jsons <> List.length ctor.Ir.ctor_args then Error "constructor payload arity mismatch"
+          if List.length payload_jsons <> List.length ctor.Ir.ctor_args then
+            Error "constructor payload arity mismatch"
           else
-            let* payload = all (List.map2 (of_json types) ctor.Ir.ctor_args payload_jsons) in
+            let* payload =
+              all (List.map2 (of_json types) ctor.Ir.ctor_args payload_jsons)
+            in
             Ok (VVariant (ctor_name, payload))
       | _ -> Error (Printf.sprintf "%s is not a variant type" (type_key name)))
   | _ -> Error "JSON value does not match declared type"

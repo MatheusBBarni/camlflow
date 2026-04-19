@@ -14,27 +14,31 @@ let with_temp_dir prefix f =
   Unix.mkdir path 0o755;
   Fun.protect ~finally:(fun () -> rm_rf path) (fun () -> f path)
 
-let ensure_dir path =
-  if Sys.file_exists path then ()
-  else Unix.mkdir path 0o755
+let ensure_dir path = if Sys.file_exists path then () else Unix.mkdir path 0o755
 
 let write_file path content =
   Out_channel.with_open_bin path (fun channel -> output_string channel content)
 
 let get_output_string = function
   | Some (`String value) -> value
-  | Some json -> Alcotest.failf "expected JSON string output, got %s" (Yojson.Safe.to_string json)
+  | Some json ->
+      Alcotest.failf "expected JSON string output, got %s"
+        (Yojson.Safe.to_string json)
   | None -> Alcotest.fail "expected output"
 
 let get_output_int = function
   | Some (`Int value) -> value
-  | Some json -> Alcotest.failf "expected JSON int output, got %s" (Yojson.Safe.to_string json)
+  | Some json ->
+      Alcotest.failf "expected JSON int output, got %s"
+        (Yojson.Safe.to_string json)
   | None -> Alcotest.fail "expected output"
 
 let get_output_float = function
   | Some (`Float value) -> value
   | Some (`Int value) -> float_of_int value
-  | Some json -> Alcotest.failf "expected JSON float output, got %s" (Yojson.Safe.to_string json)
+  | Some json ->
+      Alcotest.failf "expected JSON float output, got %s"
+        (Yojson.Safe.to_string json)
   | None -> Alcotest.fail "expected output"
 
 let parse_program source =
@@ -115,11 +119,29 @@ let run_rpc_server_with_messages messages =
   let input = In_channel.open_bin input_path in
   let output = Out_channel.open_bin output_path in
   Fun.protect
-    ~finally:(fun () -> In_channel.close input; Out_channel.close output)
+    ~finally:(fun () ->
+      In_channel.close input;
+      Out_channel.close output)
     (fun () ->
       match Camlflow.Rpc_server.run ~input ~output with
       | Ok () -> read_rpc_messages output_path
       | Error error -> Alcotest.failf "rpc server run failed: %s" error)
+
+let run_lsp_server_with_messages messages =
+  with_temp_dir "camlflow-lsp-" @@ fun dir ->
+  let input_path = Filename.concat dir "input.rpc" in
+  let output_path = Filename.concat dir "output.rpc" in
+  write_rpc_messages input_path messages;
+  let input = In_channel.open_bin input_path in
+  let output = Out_channel.open_bin output_path in
+  Fun.protect
+    ~finally:(fun () ->
+      In_channel.close input;
+      Out_channel.close output)
+    (fun () ->
+      match Camlflow.Lsp_server.run ~input ~output with
+      | Ok () -> read_rpc_messages output_path
+      | Error error -> Alcotest.failf "lsp server run failed: %s" error)
 
 let schema_for_type ?(types = Camlflow.Value.StringMap.empty) typ =
   match Camlflow.Provider_schema.of_type ~types typ with
@@ -133,7 +155,9 @@ let assoc_field name = function
 let expect_assoc_field name json =
   match assoc_field name json with
   | Some value -> value
-  | None -> Alcotest.failf "missing JSON field %s in %s" name (Yojson.Safe.to_string json)
+  | None ->
+      Alcotest.failf "missing JSON field %s in %s" name
+        (Yojson.Safe.to_string json)
 
 let expect_string_field name expected json =
   match expect_assoc_field name json with
@@ -157,9 +181,7 @@ let expect_bool_field name expected json =
         (Yojson.Safe.to_string other)
 
 let tagged tag = `Assoc [ ("tag", `String tag) ]
-
-let tagged_value tag value =
-  `Assoc [ ("tag", `String tag); ("value", value) ]
+let tagged_value tag value = `Assoc [ ("tag", `String tag); ("value", value) ]
 
 let repo_path path =
   let rec find dir depth =
@@ -190,7 +212,8 @@ let find_rpc_requests method_ messages =
     (fun json ->
       match rpc_request_message json with
       | Some request
-        when String.equal request.Camlflow.Rpc_protocol.request_method method_ ->
+        when String.equal request.Camlflow.Rpc_protocol.request_method method_
+        ->
           Some request
       | _ -> None)
     messages
@@ -205,15 +228,18 @@ let find_rpc_response_by_id expected_id messages =
     List.find_opt
       (fun json ->
         match rpc_response_message json with
-        | Some response ->
-            (match response.Camlflow.Rpc_protocol.response_id with
-            | Some id -> String.equal (Camlflow.Rpc_protocol.string_of_id id) expected_id
+        | Some response -> (
+            match response.Camlflow.Rpc_protocol.response_id with
+            | Some id ->
+                String.equal (Camlflow.Rpc_protocol.string_of_id id) expected_id
             | None -> false)
         | None -> false)
       messages
   with
-  | Some json ->
-      (match rpc_response_message json with Some response -> response | None -> assert false)
+  | Some json -> (
+      match rpc_response_message json with
+      | Some response -> response
+      | None -> assert false)
   | None -> Alcotest.failf "rpc response %s not found" expected_id
 
 let find_rpc_response_without_id messages =
@@ -221,13 +247,28 @@ let find_rpc_response_without_id messages =
     List.find_opt
       (fun json ->
         match rpc_response_message json with
-        | Some response -> Option.is_none response.Camlflow.Rpc_protocol.response_id
+        | Some response ->
+            Option.is_none response.Camlflow.Rpc_protocol.response_id
         | None -> false)
       messages
   with
-  | Some json ->
-      (match rpc_response_message json with Some response -> response | None -> assert false)
+  | Some json -> (
+      match rpc_response_message json with
+      | Some response -> response
+      | None -> assert false)
   | None -> Alcotest.fail "rpc response without id not found"
+
+let substring_index text needle =
+  let text_len = String.length text in
+  let needle_len = String.length needle in
+  let rec loop index =
+    if needle_len = 0 then 0
+    else if index + needle_len > text_len then
+      Alcotest.failf "substring %S not found in %S" needle text
+    else if String.sub text index needle_len = needle then index
+    else loop (index + 1)
+  in
+  loop 0
 
 let find_type_decl program local_name =
   let rec find_in_decls = function
@@ -275,7 +316,9 @@ let render_prompt (invocation : Camlflow.Runtime.Context.invocation) =
 
 let build_effect_request ?step_index ?run_id
     (invocation : Camlflow.Runtime.Context.invocation) =
-  match Camlflow.Effect_request.of_invocation ?step_index ?run_id invocation with
+  match
+    Camlflow.Effect_request.of_invocation ?step_index ?run_id invocation
+  with
   | Ok request -> request
   | Error error -> Alcotest.failf "effect request failed: %s" error
 
@@ -303,45 +346,45 @@ let main = "ok"
 let test_multiline_quoted_strings_preserve_agent_skill_text () =
   with_temp_dir "camlflow-quoted-string-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
-  write_file main
-    "let main : string = {|\nagent hello\nskill bye\n|}\n";
+  write_file main "let main : string = {|\nagent hello\nskill bye\n|}\n";
   let program = check_file main in
   let result = run_program program in
-  Alcotest.(check string) "quoted string preserved"
-    "\nagent hello\nskill bye\n"
+  Alcotest.(check string)
+    "quoted string preserved" "\nagent hello\nskill bye\n"
     (get_output_string result.output)
 
 let test_return_annotated_function_without_param_annotations_fails_cleanly () =
   with_temp_dir "camlflow-return-annotation-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
-  write_file main
-    {|
+  write_file main {|
 let identity x : int = x
 |};
-  expect_error_contains
-    "return annotation without parameter annotations"
-    "function parameters require type annotations when using a return type annotation"
+  expect_error_contains "return annotation without parameter annotations"
+    "function parameters require type annotations when using a return type \
+     annotation"
     (Camlflow.Typing.check_file ~include_paths:[] main)
 
 let test_cli_help_alias () =
   let parsed = parse_cli [ "parse"; "--help" ] in
-  Alcotest.(check string) "help command" "help"
+  Alcotest.(check string)
+    "help command" "help"
     (Camlflow.Cli.command_name parsed.command);
-  Alcotest.(check string) "help topic" "parse"
+  Alcotest.(check string)
+    "help topic" "parse"
     (match parsed.help_topic with
     | Some command -> Camlflow.Cli.command_name command
     | None -> "none")
 
 let test_cli_help_subcommand () =
   let parsed = parse_cli [ "help"; "run" ] in
-  Alcotest.(check string) "help subcommand" "run"
+  Alcotest.(check string)
+    "help subcommand" "run"
     (match parsed.help_topic with
     | Some command -> Camlflow.Cli.command_name command
     | None -> "none")
 
 let test_cli_missing_flag_value () =
-  expect_error_contains "missing -o"
-    "missing value for flag -o"
+  expect_error_contains "missing -o" "missing value for flag -o"
     (Camlflow.Cli.parse_argv [ "compile"; "-o" ])
 
 let test_cli_run_rejects_conflicting_inputs () =
@@ -360,20 +403,24 @@ let test_cli_check_rejects_run_flags () =
 
 let test_cli_completion_command () =
   let parsed = parse_cli [ "completion"; "bash" ] in
-  Alcotest.(check string) "completion command" "completion"
+  Alcotest.(check string)
+    "completion command" "completion"
     (Camlflow.Cli.command_name parsed.command);
-  Alcotest.(check string) "completion shell" "bash"
+  Alcotest.(check string)
+    "completion shell" "bash"
     (match parsed.completion_shell with
     | Some shell -> Camlflow.Cli.shell_name shell
     | None -> "none");
-  (match Camlflow.Cli.validate parsed with
+  match Camlflow.Cli.validate parsed with
   | Ok () -> ()
-  | Error error -> Alcotest.failf "completion validate failed: %s" error)
+  | Error error -> Alcotest.failf "completion validate failed: %s" error
 
 let test_cli_completion_script_mentions_commands () =
   let script = Camlflow.Cli.completion_script Camlflow.Cli.Bash in
-  if not (contains_substring script "parse check compile run serve completion") then
-    Alcotest.failf "unexpected completion script: %s" script;
+  if
+    not
+      (contains_substring script "parse check compile run serve lsp completion")
+  then Alcotest.failf "unexpected completion script: %s" script;
   if not (contains_substring script "--provider --model --reasoning") then
     Alcotest.failf "provider flags missing from completion script: %s" script;
   if not (contains_substring script "codex opencode") then
@@ -383,12 +430,13 @@ let test_cli_completion_script_mentions_commands () =
 
 let test_cli_serve_stdio_parse () =
   let parsed = parse_cli [ "serve"; "--stdio" ] in
-  Alcotest.(check string) "serve command" "serve"
+  Alcotest.(check string)
+    "serve command" "serve"
     (Camlflow.Cli.command_name parsed.command);
   Alcotest.(check bool) "serve stdio flag" true parsed.options.rpc_stdio;
-  (match Camlflow.Cli.validate parsed with
+  match Camlflow.Cli.validate parsed with
   | Ok () -> ()
-  | Error error -> Alcotest.failf "serve validate failed: %s" error)
+  | Error error -> Alcotest.failf "serve validate failed: %s" error
 
 let test_cli_serve_requires_stdio () =
   let parsed = parse_cli [ "serve" ] in
@@ -422,30 +470,34 @@ let test_cli_run_provider_flags_parse () =
   | Ok () -> ()
   | Error error -> Alcotest.failf "run validate failed: %s" error);
   let settings = parsed.options.provider_options in
-  Alcotest.(check string) "provider" "codex"
+  Alcotest.(check string)
+    "provider" "codex"
     (match settings.provider with
     | Some provider -> Camlflow.Provider.name_to_string provider
     | None -> "none");
-  Alcotest.(check string) "model" "gpt-5.4-mini"
-    (match settings.model with
-    | Some model -> model
-    | None -> "none");
-  Alcotest.(check string) "reasoning" "high"
+  Alcotest.(check string)
+    "model" "gpt-5.4-mini"
+    (match settings.model with Some model -> model | None -> "none");
+  Alcotest.(check string)
+    "reasoning" "high"
     (match settings.reasoning with
     | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
     | None -> "none");
-  Alcotest.(check string) "provider profile" "daily"
+  Alcotest.(check string)
+    "provider profile" "daily"
     (match settings.provider_profile with
     | Some profile -> profile
     | None -> "none");
-  Alcotest.(check string) "provider config" "foo=bar"
+  Alcotest.(check string)
+    "provider config" "foo=bar"
     (match settings.provider_configs with
     | [ config ] -> Camlflow.Provider.config_to_string config
     | _ -> "unexpected");
-  Alcotest.(check string) "sandbox" "read-only"
+  Alcotest.(check string)
+    "sandbox" "read-only"
     (Camlflow.Provider.sandbox_to_string settings.sandbox);
-  Alcotest.(check (list string)) "write dirs" [ "tmp" ]
-    settings.allow_write_dirs;
+  Alcotest.(check (list string))
+    "write dirs" [ "tmp" ] settings.allow_write_dirs;
   Alcotest.(check bool) "trace provider" true settings.trace_provider
 
 let test_cli_run_opencode_provider_parse () =
@@ -466,14 +518,14 @@ let test_cli_run_opencode_provider_parse () =
   | Ok () -> ()
   | Error error -> Alcotest.failf "run validate failed: %s" error);
   let settings = parsed.options.provider_options in
-  Alcotest.(check string) "provider" "opencode"
+  Alcotest.(check string)
+    "provider" "opencode"
     (match settings.provider with
     | Some provider -> Camlflow.Provider.name_to_string provider
     | None -> "none");
-  Alcotest.(check string) "model" "openai/gpt-5.4-mini"
-    (match settings.model with
-    | Some model -> model
-    | None -> "none")
+  Alcotest.(check string)
+    "model" "openai/gpt-5.4-mini"
+    (match settings.model with Some model -> model | None -> "none")
 
 let test_cli_provider_flags_require_provider () =
   let parsed = parse_cli [ "run"; "main.cml"; "--model"; "gpt-5.4-mini" ] in
@@ -520,41 +572,48 @@ let test_project_config_loads_nearest_and_resolves_paths () =
 }
 |};
   let config = load_nearest_project_config deep in
-  Alcotest.(check (option string)) "program"
+  Alcotest.(check (option string))
+    "program"
     (Some (Filename.concat dir "flows/main.cml"))
     config.Camlflow.Project_config.program;
   Alcotest.(check (option string)) "entry" (Some "workflow") config.entry;
-  Alcotest.(check (option (list string))) "include paths"
+  Alcotest.(check (option (list string)))
+    "include paths"
     (Some [ dir; Filename.concat dir "lib" ])
     config.include_paths;
-  Alcotest.(check (option string)) "skills dir"
+  Alcotest.(check (option string))
+    "skills dir"
     (Some (Filename.concat dir "skills"))
     config.skills_dir;
-  Alcotest.(check string) "provider" "codex"
+  Alcotest.(check string)
+    "provider" "codex"
     (match config.provider with
     | Some provider -> Camlflow.Provider.name_to_string provider
     | None -> "none");
   Alcotest.(check (option string)) "model" (Some "gpt-5.4-mini") config.model;
-  Alcotest.(check string) "reasoning" "low"
+  Alcotest.(check string)
+    "reasoning" "low"
     (match config.reasoning with
     | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
     | None -> "none");
-  Alcotest.(check (option string)) "provider profile" (Some "daily")
-    config.provider_profile;
-  Alcotest.(check (option string)) "provider config"
-    (Some "foo=bar")
+  Alcotest.(check (option string))
+    "provider profile" (Some "daily") config.provider_profile;
+  Alcotest.(check (option string))
+    "provider config" (Some "foo=bar")
     (match config.provider_configs with
     | Some [ item ] -> Some (Camlflow.Provider.config_to_string item)
     | _ -> None);
-  Alcotest.(check string) "sandbox" "read-only"
+  Alcotest.(check string)
+    "sandbox" "read-only"
     (match config.sandbox with
     | Some sandbox -> Camlflow.Provider.sandbox_to_string sandbox
     | None -> "none");
-  Alcotest.(check (option (list string))) "allow write dirs"
+  Alcotest.(check (option (list string)))
+    "allow write dirs"
     (Some [ Filename.concat dir "tmp" ])
     config.allow_write_dirs;
-  Alcotest.(check (option bool)) "trace provider" (Some true)
-    config.trace_provider
+  Alcotest.(check (option bool))
+    "trace provider" (Some true) config.trace_provider
 
 let test_project_config_load_file_normalizes_relative_and_absolute_paths () =
   with_temp_dir "camlflow-config-load-file-" @@ fun dir ->
@@ -575,37 +634,38 @@ let test_project_config_load_file_normalizes_relative_and_absolute_paths () =
 |}
        absolute_program absolute_include absolute_skills absolute_output);
   let config = load_project_config_file config_path in
-  Alcotest.(check (option string)) "absolute program preserved"
-    (Some absolute_program) config.program;
-  Alcotest.(check (option (list string))) "include paths normalized"
+  Alcotest.(check (option string))
+    "absolute program preserved" (Some absolute_program) config.program;
+  Alcotest.(check (option (list string)))
+    "include paths normalized"
     (Some [ Filename.concat dir "relative-lib"; absolute_include ])
     config.include_paths;
-  Alcotest.(check (option string)) "absolute skills preserved"
-    (Some absolute_skills) config.skills_dir;
-  Alcotest.(check (option (list string))) "allow write dirs normalized"
+  Alcotest.(check (option string))
+    "absolute skills preserved" (Some absolute_skills) config.skills_dir;
+  Alcotest.(check (option (list string)))
+    "allow write dirs normalized"
     (Some [ Filename.concat dir "relative-out"; absolute_output ])
     config.allow_write_dirs
 
 let test_project_config_invalid_enum_includes_path_and_field () =
   with_temp_dir "camlflow-config-invalid-enum-" @@ fun dir ->
   let config_path = Filename.concat dir Camlflow.Project_config.filename in
-  write_project_config dir
-    {|
+  write_project_config dir {|
 {
   "provider": "bogus"
 }
 |};
   let result = Camlflow.Project_config.load_file config_path in
   expect_error_contains "invalid enum includes path" config_path result;
-  expect_error_contains "invalid enum includes field" "invalid field provider" result;
+  expect_error_contains "invalid enum includes field" "invalid field provider"
+    result;
   expect_error_contains "invalid enum includes reason" "unknown provider bogus"
     result
 
 let test_project_config_wrong_shape_includes_path_and_field () =
   with_temp_dir "camlflow-config-wrong-shape-" @@ fun dir ->
   let config_path = Filename.concat dir Camlflow.Project_config.filename in
-  write_project_config dir
-    {|
+  write_project_config dir {|
 {
   "providerConfig": {
     "foo": 1
@@ -621,8 +681,7 @@ let test_project_config_wrong_shape_includes_path_and_field () =
 let test_project_config_invalid_provider_config_key_rejected () =
   with_temp_dir "camlflow-config-provider-key-" @@ fun dir ->
   let config_path = Filename.concat dir Camlflow.Project_config.filename in
-  write_project_config dir
-    {|
+  write_project_config dir {|
 {
   "providerConfig": {
     "": "x"
@@ -639,8 +698,7 @@ let test_project_config_invalid_provider_config_key_rejected () =
 let test_project_config_bad_path_value_includes_path_and_field () =
   with_temp_dir "camlflow-config-bad-path-" @@ fun dir ->
   let config_path = Filename.concat dir Camlflow.Project_config.filename in
-  write_project_config dir
-    {|
+  write_project_config dir {|
 {
   "allowWriteDirs": [""]
 }
@@ -655,8 +713,7 @@ let test_project_config_bad_path_value_includes_path_and_field () =
 let test_project_config_unknown_field_rejected () =
   with_temp_dir "camlflow-config-unknown-field-" @@ fun dir ->
   let config_path = Filename.concat dir Camlflow.Project_config.filename in
-  write_project_config dir
-    {|
+  write_project_config dir {|
 {
   "includePath": ["lib"]
 }
@@ -695,36 +752,41 @@ let test_cli_run_uses_project_config_defaults () =
       ~provider:Camlflow.Provider.Codex ~model:"gpt-5.4-mini"
       ~reasoning:Camlflow.Provider.Low ~provider_profile:"daily"
       ~provider_configs:[ { Camlflow.Provider.key = "foo"; value = "bar" } ]
-      ~sandbox:Camlflow.Provider.Read_only
-      ~allow_write_dirs:[ "/tmp/out" ] ~trace_provider:true ()
+      ~sandbox:Camlflow.Provider.Read_only ~allow_write_dirs:[ "/tmp/out" ]
+      ~trace_provider:true ()
   in
   let parsed = Camlflow.Cli.apply_project_config parsed config in
   (match Camlflow.Cli.validate parsed with
   | Ok () -> ()
   | Error error -> Alcotest.failf "run validate with config failed: %s" error);
-  Alcotest.(check (list string)) "config program applied" [ "/tmp/workflow.cml" ]
-    parsed.positionals;
-  Alcotest.(check string) "config entry applied" "workflow"
-    parsed.options.entry;
-  Alcotest.(check (list string)) "config include paths applied" [ "/tmp/lib" ]
-    parsed.options.include_paths;
-  Alcotest.(check (option string)) "config skills dir applied"
-    (Some "/tmp/skills") parsed.options.skills_dir;
-  Alcotest.(check string) "config provider applied" "codex"
+  Alcotest.(check (list string))
+    "config program applied" [ "/tmp/workflow.cml" ] parsed.positionals;
+  Alcotest.(check string) "config entry applied" "workflow" parsed.options.entry;
+  Alcotest.(check (list string))
+    "config include paths applied" [ "/tmp/lib" ] parsed.options.include_paths;
+  Alcotest.(check (option string))
+    "config skills dir applied" (Some "/tmp/skills") parsed.options.skills_dir;
+  Alcotest.(check string)
+    "config provider applied" "codex"
     (match parsed.options.provider_options.provider with
     | Some provider -> Camlflow.Provider.name_to_string provider
     | None -> "none");
-  Alcotest.(check (option string)) "config model applied"
-    (Some "gpt-5.4-mini") parsed.options.provider_options.model;
-  Alcotest.(check string) "config reasoning applied" "low"
+  Alcotest.(check (option string))
+    "config model applied" (Some "gpt-5.4-mini")
+    parsed.options.provider_options.model;
+  Alcotest.(check string)
+    "config reasoning applied" "low"
     (match parsed.options.provider_options.reasoning with
     | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
     | None -> "none");
-  Alcotest.(check (option string)) "config provider profile applied"
-    (Some "daily") parsed.options.provider_options.provider_profile;
-  Alcotest.(check (list string)) "config allow write dirs applied"
-    [ "/tmp/out" ] parsed.options.provider_options.allow_write_dirs;
-  Alcotest.(check bool) "config trace provider applied" true
+  Alcotest.(check (option string))
+    "config provider profile applied" (Some "daily")
+    parsed.options.provider_options.provider_profile;
+  Alcotest.(check (list string))
+    "config allow write dirs applied" [ "/tmp/out" ]
+    parsed.options.provider_options.allow_write_dirs;
+  Alcotest.(check bool)
+    "config trace provider applied" true
     parsed.options.provider_options.trace_provider
 
 let test_cli_explicit_run_flags_override_project_config () =
@@ -760,38 +822,44 @@ let test_cli_explicit_run_flags_override_project_config () =
       ~model:"gpt-5.4-mini" ~reasoning:Camlflow.Provider.Low
       ~provider_profile:"daily"
       ~provider_configs:[ { Camlflow.Provider.key = "foo"; value = "bar" } ]
-      ~sandbox:Camlflow.Provider.Read_only
-      ~allow_write_dirs:[ "/tmp/out" ] ~trace_provider:false ()
+      ~sandbox:Camlflow.Provider.Read_only ~allow_write_dirs:[ "/tmp/out" ]
+      ~trace_provider:false ()
   in
   let parsed = Camlflow.Cli.apply_project_config parsed config in
-  Alcotest.(check (list string)) "cli program preserved" [ "cli.cml" ]
-    parsed.positionals;
+  Alcotest.(check (list string))
+    "cli program preserved" [ "cli.cml" ] parsed.positionals;
   Alcotest.(check string) "cli entry preserved" "main" parsed.options.entry;
-  Alcotest.(check (option string)) "cli skills preserved" (Some "cli-skills")
-    parsed.options.skills_dir;
-  Alcotest.(check string) "cli provider preserved" "opencode"
+  Alcotest.(check (option string))
+    "cli skills preserved" (Some "cli-skills") parsed.options.skills_dir;
+  Alcotest.(check string)
+    "cli provider preserved" "opencode"
     (match parsed.options.provider_options.provider with
     | Some provider -> Camlflow.Provider.name_to_string provider
     | None -> "none");
-  Alcotest.(check (option string)) "cli model preserved"
-    (Some "openai/gpt-5.4-mini") parsed.options.provider_options.model;
-  Alcotest.(check string) "cli reasoning preserved" "high"
+  Alcotest.(check (option string))
+    "cli model preserved" (Some "openai/gpt-5.4-mini")
+    parsed.options.provider_options.model;
+  Alcotest.(check string)
+    "cli reasoning preserved" "high"
     (match parsed.options.provider_options.reasoning with
     | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
     | None -> "none");
-  Alcotest.(check (option string)) "cli provider profile preserved"
-    (Some "cli-profile") parsed.options.provider_options.provider_profile;
-  Alcotest.(check (option string)) "cli provider config preserved"
-    (Some "alpha=beta")
+  Alcotest.(check (option string))
+    "cli provider profile preserved" (Some "cli-profile")
+    parsed.options.provider_options.provider_profile;
+  Alcotest.(check (option string))
+    "cli provider config preserved" (Some "alpha=beta")
     (match parsed.options.provider_options.provider_configs with
     | [ item ] -> Some (Camlflow.Provider.config_to_string item)
     | _ -> None);
-  Alcotest.(check string) "cli sandbox preserved" "danger-full-access"
-    (Camlflow.Provider.sandbox_to_string
-       parsed.options.provider_options.sandbox);
-  Alcotest.(check (list string)) "cli allow write dirs preserved" [ "cli-out" ]
+  Alcotest.(check string)
+    "cli sandbox preserved" "danger-full-access"
+    (Camlflow.Provider.sandbox_to_string parsed.options.provider_options.sandbox);
+  Alcotest.(check (list string))
+    "cli allow write dirs preserved" [ "cli-out" ]
     parsed.options.provider_options.allow_write_dirs;
-  Alcotest.(check bool) "cli trace provider preserved" true
+  Alcotest.(check bool)
+    "cli trace provider preserved" true
     parsed.options.provider_options.trace_provider
 
 let test_cli_project_config_precedence_cli_config_defaults () =
@@ -806,26 +874,33 @@ let test_cli_project_config_precedence_cli_config_defaults () =
   let parsed = Camlflow.Cli.apply_project_config parsed config in
   (match Camlflow.Cli.validate parsed with
   | Ok () -> ()
-  | Error error -> Alcotest.failf "run validate with precedence failed: %s" error);
-  Alcotest.(check (list string)) "config program fills missing positional"
-    [ "/tmp/workflow.cml" ] parsed.positionals;
+  | Error error ->
+      Alcotest.failf "run validate with precedence failed: %s" error);
+  Alcotest.(check (list string))
+    "config program fills missing positional" [ "/tmp/workflow.cml" ]
+    parsed.positionals;
   Alcotest.(check string) "cli entry wins" "cli-entry" parsed.options.entry;
-  Alcotest.(check (list string)) "config include paths win over defaults"
-    [ "/tmp/lib" ] parsed.options.include_paths;
-  Alcotest.(check string) "cli provider wins" "opencode"
+  Alcotest.(check (list string))
+    "config include paths win over defaults" [ "/tmp/lib" ]
+    parsed.options.include_paths;
+  Alcotest.(check string)
+    "cli provider wins" "opencode"
     (match parsed.options.provider_options.provider with
     | Some provider -> Camlflow.Provider.name_to_string provider
     | None -> "none");
-  Alcotest.(check (option string)) "config model wins over default"
-    (Some "gpt-5.4-mini") parsed.options.provider_options.model;
-  Alcotest.(check string) "config reasoning wins over default" "low"
+  Alcotest.(check (option string))
+    "config model wins over default" (Some "gpt-5.4-mini")
+    parsed.options.provider_options.model;
+  Alcotest.(check string)
+    "config reasoning wins over default" "low"
     (match parsed.options.provider_options.reasoning with
     | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
     | None -> "none");
-  Alcotest.(check string) "default sandbox remains" "workspace-write"
-    (Camlflow.Provider.sandbox_to_string
-       parsed.options.provider_options.sandbox);
-  Alcotest.(check bool) "default trace provider remains false" false
+  Alcotest.(check string)
+    "default sandbox remains" "workspace-write"
+    (Camlflow.Provider.sandbox_to_string parsed.options.provider_options.sandbox);
+  Alcotest.(check bool)
+    "default trace provider remains false" false
     parsed.options.provider_options.trace_provider
 
 let test_cli_explicit_program_overrides_project_config_program () =
@@ -839,10 +914,11 @@ let test_cli_explicit_program_overrides_project_config_program () =
   | Ok () -> ()
   | Error error ->
       Alcotest.failf "compile validate with explicit program failed: %s" error);
-  Alcotest.(check (list string)) "explicit positional preserved" [ "cli.cml" ]
-    parsed.positionals;
-  Alcotest.(check (list string)) "config include paths still applied"
-    [ "/tmp/lib" ] parsed.options.include_paths
+  Alcotest.(check (list string))
+    "explicit positional preserved" [ "cli.cml" ] parsed.positionals;
+  Alcotest.(check (list string))
+    "config include paths still applied" [ "/tmp/lib" ]
+    parsed.options.include_paths
 
 let test_cli_explicit_provider_setting_overrides_project_config_setting () =
   let parsed =
@@ -858,18 +934,22 @@ let test_cli_explicit_provider_setting_overrides_project_config_setting () =
   | Ok () -> ()
   | Error error ->
       Alcotest.failf "run validate with provider override failed: %s" error);
-  Alcotest.(check (option string)) "cli model preserved" (Some "cli-model")
+  Alcotest.(check (option string))
+    "cli model preserved" (Some "cli-model")
     parsed.options.provider_options.model;
-  Alcotest.(check string) "config reasoning still applied" "low"
+  Alcotest.(check string)
+    "config reasoning still applied" "low"
     (match parsed.options.provider_options.reasoning with
     | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
     | None -> "none");
-  Alcotest.(check (option string)) "config provider profile still applied"
-    (Some "daily") parsed.options.provider_options.provider_profile;
-  Alcotest.(check string) "config sandbox still applied" "read-only"
-    (Camlflow.Provider.sandbox_to_string
-       parsed.options.provider_options.sandbox);
-  Alcotest.(check bool) "config trace provider still applied" true
+  Alcotest.(check (option string))
+    "config provider profile still applied" (Some "daily")
+    parsed.options.provider_options.provider_profile;
+  Alcotest.(check string)
+    "config sandbox still applied" "read-only"
+    (Camlflow.Provider.sandbox_to_string parsed.options.provider_options.sandbox);
+  Alcotest.(check bool)
+    "config trace provider still applied" true
     parsed.options.provider_options.trace_provider
 
 let test_cli_project_config_keeps_run_input_validation () =
@@ -903,29 +983,32 @@ let test_cli_check_uses_project_program_without_run_only_defaults () =
   (match Camlflow.Cli.validate parsed with
   | Ok () -> ()
   | Error error -> Alcotest.failf "check validate with config failed: %s" error);
-  Alcotest.(check (list string)) "check config program applied"
-    [ "/tmp/workflow.cml" ] parsed.positionals;
-  Alcotest.(check (list string)) "check include paths applied" [ "/tmp/lib" ]
-    parsed.options.include_paths;
+  Alcotest.(check (list string))
+    "check config program applied" [ "/tmp/workflow.cml" ] parsed.positionals;
+  Alcotest.(check (list string))
+    "check include paths applied" [ "/tmp/lib" ] parsed.options.include_paths;
   Alcotest.(check string) "check entry unchanged" "main" parsed.options.entry;
-  Alcotest.(check (option string)) "check skills ignored" None
-    parsed.options.skills_dir;
-  Alcotest.(check string) "check provider ignored" "none"
+  Alcotest.(check (option string))
+    "check skills ignored" None parsed.options.skills_dir;
+  Alcotest.(check string)
+    "check provider ignored" "none"
     (match parsed.options.provider_options.provider with
     | Some provider -> Camlflow.Provider.name_to_string provider
     | None -> "none")
 
 let test_rpc_protocol_request_roundtrip () =
   let json =
-    Camlflow.Rpc_protocol.request
-      ~id:(Camlflow.Rpc_protocol.String "1") ~params:(`Assoc [ ("x", `Int 1) ])
+    Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.String "1")
+      ~params:(`Assoc [ ("x", `Int 1) ])
       "camlflow/check"
   in
   match Camlflow.Rpc_protocol.request_of_yojson json with
   | Ok request ->
-      Alcotest.(check string) "rpc method" "camlflow/check"
+      Alcotest.(check string)
+        "rpc method" "camlflow/check"
         request.Camlflow.Rpc_protocol.request_method;
-      Alcotest.(check string) "rpc id" "1"
+      Alcotest.(check string)
+        "rpc id" "1"
         (match request.request_id with
         | Some id -> Camlflow.Rpc_protocol.string_of_id id
         | None -> "none")
@@ -933,21 +1016,27 @@ let test_rpc_protocol_request_roundtrip () =
 
 let test_rpc_protocol_notification_includes_params () =
   let json =
-    Camlflow.Rpc_protocol.request ~params:(`Assoc [ ("event", `String "run-start") ])
+    Camlflow.Rpc_protocol.request
+      ~params:(`Assoc [ ("event", `String "run-start") ])
       "camlflow/trace"
   in
   match Camlflow.Rpc_protocol.request_of_yojson json with
   | Ok request ->
-      Alcotest.(check string) "rpc notification method" "camlflow/trace"
+      Alcotest.(check string)
+        "rpc notification method" "camlflow/trace"
         request.Camlflow.Rpc_protocol.request_method;
-      Alcotest.(check bool) "rpc notification params present" true
+      Alcotest.(check bool)
+        "rpc notification params present" true
         (Option.is_some request.request_params)
   | Error error -> Alcotest.failf "rpc notification parse failed: %s" error
 
 let test_rpc_stdio_parse_content_length () =
   match
     Camlflow.Rpc_stdio.parse_content_length
-      [ "Content-Type: application/vscode-jsonrpc; charset=utf-8"; "Content-Length: 17" ]
+      [
+        "Content-Type: application/vscode-jsonrpc; charset=utf-8";
+        "Content-Length: 17";
+      ]
   with
   | Ok length -> Alcotest.(check int) "content length" 17 length
   | Error error -> Alcotest.failf "content length parse failed: %s" error
@@ -969,14 +1058,16 @@ let test_rpc_server_run_request_parse () =
   in
   match Camlflow.Rpc_server.run_request_of_yojson json with
   | Ok request ->
-      Alcotest.(check string) "run path" "examples/basic/main.cml"
+      Alcotest.(check string)
+        "run path" "examples/basic/main.cml"
         request.Camlflow.Rpc_server.run_program.program_path;
-      Alcotest.(check (list string)) "run include paths" [ "lib" ]
-        request.run_program.program_include_paths;
-      Alcotest.(check (option string)) "run skills dir" (Some "skills")
-        request.run_program.program_skills_dir;
+      Alcotest.(check (list string))
+        "run include paths" [ "lib" ] request.run_program.program_include_paths;
+      Alcotest.(check (option string))
+        "run skills dir" (Some "skills") request.run_program.program_skills_dir;
       Alcotest.(check string) "run entry" "main" request.run_entry;
-      Alcotest.(check bool) "run input present" true
+      Alcotest.(check bool)
+        "run input present" true
         (Option.is_some request.run_input)
   | Error error -> Alcotest.failf "run request parse failed: %s" error
 
@@ -996,8 +1087,8 @@ let test_rpc_server_initialize_advertises_trace () =
   let json = Camlflow.Rpc_server.initialized_result () in
   expect_string_field "protocolVersion" "0.1.0" json;
   expect_string_field "irVersion" Camlflow.Ir.ir_version json;
-  (match expect_assoc_field "capabilities" json with
-  | `Assoc fields ->
+  match expect_assoc_field "capabilities" json with
+  | `Assoc fields -> (
       (match List.assoc_opt "trace" fields with
       | Some (`Bool true) -> ()
       | other ->
@@ -1026,7 +1117,7 @@ let test_rpc_server_initialize_advertises_trace () =
             (match other with
             | Some json -> Yojson.Safe.to_string json
             | None -> "null"));
-      (match List.assoc_opt "cancelRequest" fields with
+      match List.assoc_opt "cancelRequest" fields with
       | Some (`Bool true) -> ()
       | other ->
           Alcotest.failf "expected cancelRequest capability, got %s"
@@ -1035,10 +1126,13 @@ let test_rpc_server_initialize_advertises_trace () =
             | None -> "null"))
   | other ->
       Alcotest.failf "expected capabilities object, got %s"
-        (Yojson.Safe.to_string other))
+        (Yojson.Safe.to_string other)
 
 let test_rpc_server_diagnostic_payload () =
-  let request = build_effect_request ~step_index:2 ~run_id:"run-1" (make_invocation ~name:"greeter" ()) in
+  let request =
+    build_effect_request ~step_index:2 ~run_id:"run-1"
+      (make_invocation ~name:"greeter" ())
+  in
   let json =
     Camlflow.Rpc_server.diagnostic_payload ~run_id:"run-1" ~step:2
       ~method_:"camlflow/run" ~request "boom"
@@ -1046,21 +1140,21 @@ let test_rpc_server_diagnostic_payload () =
   expect_string_field "severity" "error" json;
   expect_string_field "message" "boom" json;
   expect_string_field "method" "camlflow/run" json;
-  (match expect_assoc_field "effect" json with
-  | `Assoc fields ->
-      (match List.assoc_opt "name" fields with
+  match expect_assoc_field "effect" json with
+  | `Assoc fields -> (
+      match List.assoc_opt "name" fields with
       | Some (`String name) ->
           Alcotest.(check string) "diagnostic effect name" "greeter" name
       | _ -> Alcotest.fail "missing diagnostic effect name")
   | other ->
       Alcotest.failf "expected effect object, got %s"
-        (Yojson.Safe.to_string other))
+        (Yojson.Safe.to_string other)
 
 let test_rpc_server_progress_payload () =
   let json =
     Camlflow.Rpc_server.progress_payload ~run_id:"run-1" ~step:2
-      ~message:"Executing bound-agent greeter" ~completed_steps:1
-      ~known_steps:3 ~cancellable:true "effect-start"
+      ~message:"Executing bound-agent greeter" ~completed_steps:1 ~known_steps:3
+      ~cancellable:true "effect-start"
   in
   expect_string_field "runId" "run-1" json;
   expect_string_field "stage" "effect-start" json;
@@ -1073,8 +1167,8 @@ let test_rpc_server_progress_payload () =
 let test_rpc_server_output_chunk_payload () =
   let json =
     Camlflow.Rpc_server.output_chunk_payload ~run_id:"run-1" ~step:2
-      ~stream_id:"stream-1" ~format:"text" ~delta:(`String "hello")
-      ~done_:false ()
+      ~stream_id:"stream-1" ~format:"text" ~delta:(`String "hello") ~done_:false
+      ()
   in
   expect_string_field "runId" "run-1" json;
   expect_int_field "step" 2 json;
@@ -1084,25 +1178,29 @@ let test_rpc_server_output_chunk_payload () =
   expect_bool_field "done" false json
 
 let test_rpc_server_trace_payload () =
-  let request = build_effect_request ~step_index:2 ~run_id:"run-1" (make_invocation ~name:"greeter" ()) in
+  let request =
+    build_effect_request ~step_index:2 ~run_id:"run-1"
+      (make_invocation ~name:"greeter" ())
+  in
   let json =
     Camlflow.Rpc_server.trace_payload ~run_id:"run-1" ~step:2 ~request
-      ~details:(`Assoc [ ("status", `String "ok") ]) "effect-result"
+      ~details:(`Assoc [ ("status", `String "ok") ])
+      "effect-result"
   in
   expect_string_field "event" "effect-result" json;
-  (match expect_assoc_field "effect" json with
-  | `Assoc fields ->
+  match expect_assoc_field "effect" json with
+  | `Assoc fields -> (
       (match List.assoc_opt "kind" fields with
       | Some (`String kind) ->
           Alcotest.(check string) "trace kind" "bound-agent" kind
       | _ -> Alcotest.fail "missing trace effect kind");
-      (match List.assoc_opt "name" fields with
+      match List.assoc_opt "name" fields with
       | Some (`String name) ->
           Alcotest.(check string) "trace name" "greeter" name
       | _ -> Alcotest.fail "missing trace effect name")
   | other ->
       Alcotest.failf "expected effect object, got %s"
-        (Yojson.Safe.to_string other))
+        (Yojson.Safe.to_string other)
 
 let test_rpc_server_end_to_end_run () =
   with_temp_dir "camlflow-rpc-e2e-" @@ fun dir ->
@@ -1110,7 +1208,9 @@ let test_rpc_server_end_to_end_run () =
   let caveman_dir = Filename.concat skills_dir "caveman" in
   Unix.mkdir skills_dir 0o755;
   Unix.mkdir caveman_dir 0o755;
-  write_file (Filename.concat caveman_dir "SKILL.md") "# Caveman\n\nReply tersely.\n";
+  write_file
+    (Filename.concat caveman_dir "SKILL.md")
+    "# Caveman\n\nReply tersely.\n";
   let workflow_path = Filename.concat dir "workflow.cml" in
   write_file workflow_path
     {|
@@ -1132,17 +1232,17 @@ let main (name : string) : string =
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
         ~params:
           (`Assoc
-            [
-              ( "program",
-                `Assoc
-                  [
-                    ("path", `String workflow_path);
-                    ("includePaths", `List []);
-                    ("skillsDir", `String skills_dir);
-                  ] );
-              ("entry", `String "main");
-              ("input", `String "Ada");
-            ])
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String workflow_path);
+                     ("includePaths", `List []);
+                     ("skillsDir", `String skills_dir);
+                   ] );
+               ("entry", `String "main");
+               ("input", `String "Ada");
+             ])
         "camlflow/run";
       Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-1")
         (`Assoc [ ("output", `String "hello Ada") ]);
@@ -1180,7 +1280,8 @@ let main (name : string) : string =
   in
   Alcotest.(check int) "effect request count" 3 (List.length effect_requests);
   let trace_request = find_rpc_request "camlflow/trace" output in
-  Alcotest.(check bool) "trace params present" true
+  Alcotest.(check bool)
+    "trace params present" true
     (Option.is_some trace_request.Camlflow.Rpc_protocol.request_params)
 
 let test_rpc_server_end_to_end_progress_notifications () =
@@ -1201,17 +1302,17 @@ let main (name : string) : string =
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
         ~params:
           (`Assoc
-            [
-              ( "program",
-                `Assoc
-                  [
-                    ("path", `String workflow);
-                    ("includePaths", `List []);
-                    ("skillsDir", `Null);
-                  ] );
-              ("entry", `String "main");
-              ("input", `String "Ada");
-            ])
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String workflow);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+               ("entry", `String "main");
+               ("input", `String "Ada");
+             ])
         "camlflow/run";
       Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-1")
         (`Assoc [ ("output", `String "hello Ada") ]);
@@ -1230,7 +1331,8 @@ let main (name : string) : string =
         | _ -> None)
       progress_requests
   in
-  Alcotest.(check (list string)) "progress stages"
+  Alcotest.(check (list string))
+    "progress stages"
     [ "run-start"; "effect-start"; "effect-finish"; "run-finish" ]
     stages;
   let effect_finish =
@@ -1258,11 +1360,11 @@ let main (name : string) : string =
     | request :: _ -> request
     | [] -> Alcotest.fail "missing run-finish progress"
   in
-  (match run_finish.Camlflow.Rpc_protocol.request_params with
+  match run_finish.Camlflow.Rpc_protocol.request_params with
   | Some json ->
       expect_string_field "stage" "run-finish" json;
       expect_bool_field "cancellable" false json
-  | None -> Alcotest.fail "missing run-finish progress params")
+  | None -> Alcotest.fail "missing run-finish progress params"
 
 let test_rpc_server_initialize_notification_preferences () =
   with_temp_dir "camlflow-rpc-notification-prefs-" @@ fun dir ->
@@ -1280,34 +1382,36 @@ let main (name : string) : string =
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
         ~params:
           (`Assoc
-            [
-              ( "notifications",
-                `Assoc [ ("trace", `Bool false); ("progress", `Bool true) ] );
-            ])
+             [
+               ( "notifications",
+                 `Assoc [ ("trace", `Bool false); ("progress", `Bool true) ] );
+             ])
         "initialize";
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
         ~params:
           (`Assoc
-            [
-              ( "program",
-                `Assoc
-                  [
-                    ("path", `String workflow);
-                    ("includePaths", `List []);
-                    ("skillsDir", `Null);
-                  ] );
-              ("entry", `String "main");
-              ("input", `String "Ada");
-            ])
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String workflow);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+               ("entry", `String "main");
+               ("input", `String "Ada");
+             ])
         "camlflow/run";
       Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-1")
         (`Assoc [ ("output", `String "hello Ada") ]);
     ]
   in
   let output = run_rpc_server_with_messages messages in
-  Alcotest.(check int) "trace disabled" 0
+  Alcotest.(check int)
+    "trace disabled" 0
     (List.length (find_rpc_requests "camlflow/trace" output));
-  Alcotest.(check bool) "progress still enabled" true
+  Alcotest.(check bool)
+    "progress still enabled" true
     (List.length (find_rpc_requests "camlflow/progress" output) > 0)
 
 let test_rpc_server_initialize_can_disable_diagnostics () =
@@ -1319,36 +1423,37 @@ let test_rpc_server_initialize_can_disable_diagnostics () =
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
         ~params:
           (`Assoc
-            [
-              ( "notifications",
-                `Assoc
-                  [ ("diagnostic", `Bool false); ("progress", `Bool true) ] );
-            ])
+             [
+               ( "notifications",
+                 `Assoc
+                   [ ("diagnostic", `Bool false); ("progress", `Bool true) ] );
+             ])
         "initialize";
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
         ~params:
           (`Assoc
-            [
-              ( "program",
-                `Assoc
-                  [
-                    ("path", `String workflow);
-                    ("includePaths", `List []);
-                    ("skillsDir", `Null);
-                  ] );
-              ("entry", `String "main");
-            ])
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String workflow);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+               ("entry", `String "main");
+             ])
         "camlflow/run";
     ]
   in
   let output = run_rpc_server_with_messages messages in
-  Alcotest.(check int) "diagnostics disabled" 0
+  Alcotest.(check int)
+    "diagnostics disabled" 0
     (List.length (find_rpc_requests "camlflow/diagnostic" output));
   let response = find_rpc_response_by_id "2" output in
   match response.Camlflow.Rpc_protocol.response_error with
   | Some error ->
-      Alcotest.(check int) "run failure still returned" (-32012)
-        error.error_code
+      Alcotest.(check int)
+        "run failure still returned" (-32012) error.error_code
   | None -> Alcotest.fail "missing run failure response"
 
 let test_rpc_server_end_to_end_requires_initialize () =
@@ -1367,8 +1472,8 @@ let test_rpc_server_end_to_end_requires_initialize () =
   match response.Camlflow.Rpc_protocol.response_error with
   | Some error ->
       Alcotest.(check int) "pre-init error code" (-32002) error.error_code;
-      Alcotest.(check string) "pre-init error message" "server not initialized"
-        error.error_message
+      Alcotest.(check string)
+        "pre-init error message" "server not initialized" error.error_message
   | None -> Alcotest.fail "missing error response"
 
 let test_rpc_server_compile_includes_ir_version () =
@@ -1382,24 +1487,24 @@ let test_rpc_server_compile_includes_ir_version () =
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
         ~params:
           (`Assoc
-            [
-              ( "program",
-                `Assoc
-                  [
-                    ("path", `String main);
-                    ("includePaths", `List []);
-                    ("skillsDir", `Null);
-                  ] );
-            ])
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String main);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+             ])
         "camlflow/compile";
     ]
   in
   let output = run_rpc_server_with_messages messages in
   let response = find_rpc_response_by_id "2" output in
   match response.Camlflow.Rpc_protocol.response_result with
-  | Some json ->
+  | Some json -> (
       expect_string_field "irVersion" Camlflow.Ir.ir_version json;
-      (match expect_assoc_field "artifact" json with
+      match expect_assoc_field "artifact" json with
       | `Assoc _ as artifact ->
           expect_string_field "version" Camlflow.Ir.ir_version artifact
       | other ->
@@ -1408,7 +1513,9 @@ let test_rpc_server_compile_includes_ir_version () =
   | None -> Alcotest.fail "missing compile result"
 
 let test_rpc_server_invalid_request_error () =
-  let messages = [ `Assoc [ ("id", `Int 1); ("method", `String "initialize") ] ] in
+  let messages =
+    [ `Assoc [ ("id", `Int 1); ("method", `String "initialize") ] ]
+  in
   let output = run_rpc_server_with_messages messages in
   let diagnostic = find_rpc_request "camlflow/diagnostic" output in
   (match diagnostic.Camlflow.Rpc_protocol.request_params with
@@ -1419,9 +1526,11 @@ let test_rpc_server_invalid_request_error () =
   let response = find_rpc_response_without_id output in
   match response.Camlflow.Rpc_protocol.response_error with
   | Some error ->
-      Alcotest.(check int) "invalid request error code" (-32600) error.error_code;
-      Alcotest.(check string) "invalid request error message"
-        "missing jsonrpc version" error.error_message
+      Alcotest.(check int)
+        "invalid request error code" (-32600) error.error_code;
+      Alcotest.(check string)
+        "invalid request error message" "missing jsonrpc version"
+        error.error_message
   | None -> Alcotest.fail "missing invalid request error response"
 
 let test_rpc_server_method_not_found_error () =
@@ -1448,10 +1557,10 @@ let test_rpc_server_method_not_found_error () =
   let response = find_rpc_response_by_id "2" output in
   match response.Camlflow.Rpc_protocol.response_error with
   | Some error ->
-      Alcotest.(check int) "method not found error code" (-32601)
-        error.error_code;
-      Alcotest.(check string) "method not found error message"
-        "method not found" error.error_message
+      Alcotest.(check int)
+        "method not found error code" (-32601) error.error_code;
+      Alcotest.(check string)
+        "method not found error message" "method not found" error.error_message
   | None -> Alcotest.fail "missing method not found response"
 
 let test_rpc_server_check_failure_error () =
@@ -1464,15 +1573,15 @@ let test_rpc_server_check_failure_error () =
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
         ~params:
           (`Assoc
-            [
-              ( "program",
-                `Assoc
-                  [
-                    ("path", `String missing);
-                    ("includePaths", `List []);
-                    ("skillsDir", `Null);
-                  ] );
-            ])
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String missing);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+             ])
         "camlflow/check";
     ]
   in
@@ -1484,11 +1593,12 @@ let test_rpc_server_check_failure_error () =
     | [] -> Alcotest.fail "missing check failure diagnostic"
   in
   (match diagnostic.Camlflow.Rpc_protocol.request_params with
-  | Some (`Assoc fields as json) ->
+  | Some (`Assoc fields as json) -> (
       expect_string_field "method" "camlflow/check" json;
-      (match List.assoc_opt "message" fields with
+      match List.assoc_opt "message" fields with
       | Some (`String message) ->
-          Alcotest.(check bool) "check failure mentions missing program" true
+          Alcotest.(check bool)
+            "check failure mentions missing program" true
             (contains_substring message "program path does not exist")
       | _ -> Alcotest.fail "missing check failure message")
   | Some other ->
@@ -1499,7 +1609,8 @@ let test_rpc_server_check_failure_error () =
   match response.Camlflow.Rpc_protocol.response_error with
   | Some error ->
       Alcotest.(check int) "check failure error code" (-32010) error.error_code;
-      Alcotest.(check bool) "check failure response mentions missing program" true
+      Alcotest.(check bool)
+        "check failure response mentions missing program" true
         (contains_substring error.error_message "program path does not exist")
   | None -> Alcotest.fail "missing check failure response"
 
@@ -1513,15 +1624,15 @@ let test_rpc_server_compile_failure_error () =
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
         ~params:
           (`Assoc
-            [
-              ( "program",
-                `Assoc
-                  [
-                    ("path", `String missing);
-                    ("includePaths", `List []);
-                    ("skillsDir", `Null);
-                  ] );
-            ])
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String missing);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+             ])
         "camlflow/compile";
     ]
   in
@@ -1533,11 +1644,12 @@ let test_rpc_server_compile_failure_error () =
     | [] -> Alcotest.fail "missing compile failure diagnostic"
   in
   (match diagnostic.Camlflow.Rpc_protocol.request_params with
-  | Some (`Assoc fields as json) ->
+  | Some (`Assoc fields as json) -> (
       expect_string_field "method" "camlflow/compile" json;
-      (match List.assoc_opt "message" fields with
+      match List.assoc_opt "message" fields with
       | Some (`String message) ->
-          Alcotest.(check bool) "compile failure mentions missing program" true
+          Alcotest.(check bool)
+            "compile failure mentions missing program" true
             (contains_substring message "program path does not exist")
       | _ -> Alcotest.fail "missing compile failure message")
   | Some other ->
@@ -1547,10 +1659,11 @@ let test_rpc_server_compile_failure_error () =
   let response = find_rpc_response_by_id "2" output in
   match response.Camlflow.Rpc_protocol.response_error with
   | Some error ->
-      Alcotest.(check int) "compile failure error code" (-32011)
-        error.error_code;
-      Alcotest.(check bool) "compile failure response mentions missing program"
-        true (contains_substring error.error_message "program path does not exist")
+      Alcotest.(check int)
+        "compile failure error code" (-32011) error.error_code;
+      Alcotest.(check bool)
+        "compile failure response mentions missing program" true
+        (contains_substring error.error_message "program path does not exist")
   | None -> Alcotest.fail "missing compile failure response"
 
 let test_rpc_server_run_failure_error () =
@@ -1564,16 +1677,16 @@ let test_rpc_server_run_failure_error () =
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
         ~params:
           (`Assoc
-            [
-              ( "program",
-                `Assoc
-                  [
-                    ("path", `String main);
-                    ("includePaths", `List []);
-                    ("skillsDir", `Null);
-                  ] );
-              ("entry", `String "main");
-            ])
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String main);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+               ("entry", `String "main");
+             ])
         "camlflow/run";
     ]
   in
@@ -1598,11 +1711,12 @@ let test_rpc_server_run_failure_error () =
     | [] -> Alcotest.fail "missing run failure diagnostic"
   in
   (match diagnostic.Camlflow.Rpc_protocol.request_params with
-  | Some (`Assoc fields as json) ->
+  | Some (`Assoc fields as json) -> (
       expect_string_field "method" "camlflow/run" json;
-      (match List.assoc_opt "message" fields with
+      match List.assoc_opt "message" fields with
       | Some (`String message) ->
-          Alcotest.(check bool) "run failure mentions missing input" true
+          Alcotest.(check bool)
+            "run failure mentions missing input" true
             (contains_substring message "entrypoint requires input")
       | _ -> Alcotest.fail "missing run failure message")
   | Some other ->
@@ -1613,7 +1727,8 @@ let test_rpc_server_run_failure_error () =
   match response.Camlflow.Rpc_protocol.response_error with
   | Some error ->
       Alcotest.(check int) "run failure error code" (-32012) error.error_code;
-      Alcotest.(check bool) "run failure response mentions missing input" true
+      Alcotest.(check bool)
+        "run failure response mentions missing input" true
         (contains_substring error.error_message "entrypoint requires input")
   | None -> Alcotest.fail "missing run failure response"
 
@@ -1635,21 +1750,20 @@ let main (name : string) : string =
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
         ~params:
           (`Assoc
-            [
-              ( "program",
-                `Assoc
-                  [
-                    ("path", `String workflow);
-                    ("includePaths", `List []);
-                    ("skillsDir", `Null);
-                  ] );
-              ("entry", `String "main");
-              ("input", `String "Ada");
-            ])
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String workflow);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+               ("entry", `String "main");
+               ("input", `String "Ada");
+             ])
         "camlflow/run";
-      Camlflow.Rpc_protocol.error
-        ~id:(Camlflow.Rpc_protocol.String "effect-1") ~code:(-32000)
-        ~message:"model timeout" ();
+      Camlflow.Rpc_protocol.error ~id:(Camlflow.Rpc_protocol.String "effect-1")
+        ~code:(-32000) ~message:"model timeout" ();
     ]
   in
   let output = run_rpc_server_with_messages messages in
@@ -1665,17 +1779,18 @@ let main (name : string) : string =
         | _ -> false)
       traces
   in
-  Alcotest.(check bool) "effect failure emits effect-error trace" true
-    has_effect_error;
+  Alcotest.(check bool)
+    "effect failure emits effect-error trace" true has_effect_error;
   let diagnostics = find_rpc_requests "camlflow/diagnostic" output in
-  Alcotest.(check bool) "effect failure emits diagnostics" true
+  Alcotest.(check bool)
+    "effect failure emits diagnostics" true
     (List.length diagnostics >= 2);
   let response = find_rpc_response_by_id "2" output in
   match response.Camlflow.Rpc_protocol.response_error with
   | Some error ->
-      Alcotest.(check int) "effect failure error code" (-32012)
-        error.error_code;
-      Alcotest.(check bool) "effect failure response mentions host timeout" true
+      Alcotest.(check int) "effect failure error code" (-32012) error.error_code;
+      Alcotest.(check bool)
+        "effect failure response mentions host timeout" true
         (contains_substring error.error_message
            "host returned JSON-RPC error -32000 for greeter: model timeout")
   | None -> Alcotest.fail "missing effect failure response"
@@ -1698,20 +1813,21 @@ let main (name : string) : string =
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
         ~params:
           (`Assoc
-            [
-              ( "program",
-                `Assoc
-                  [
-                    ("path", `String workflow);
-                    ("includePaths", `List []);
-                    ("skillsDir", `Null);
-                  ] );
-              ("entry", `String "main");
-              ("input", `String "Ada");
-            ])
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String workflow);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+               ("entry", `String "main");
+               ("input", `String "Ada");
+             ])
         "camlflow/run";
       Camlflow.Rpc_protocol.request
-        ~params:(`Assoc [ ("id", `Int 2) ]) "$/cancelRequest";
+        ~params:(`Assoc [ ("id", `Int 2) ])
+        "$/cancelRequest";
       Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-1")
         (`Assoc [ ("output", `String "hello Ada") ]);
     ]
@@ -1729,8 +1845,8 @@ let main (name : string) : string =
         | _ -> false)
       traces
   in
-  Alcotest.(check bool) "cancellation emits run-cancelled trace" true
-    has_run_cancelled;
+  Alcotest.(check bool)
+    "cancellation emits run-cancelled trace" true has_run_cancelled;
   let diagnostics = find_rpc_requests "camlflow/diagnostic" output in
   let has_cancel_diagnostic =
     List.exists
@@ -1738,21 +1854,23 @@ let main (name : string) : string =
         match request.Camlflow.Rpc_protocol.request_params with
         | Some (`Assoc fields) -> (
             match List.assoc_opt "message" fields with
-            | Some (`String message) -> String.equal message "run cancelled by host"
+            | Some (`String message) ->
+                String.equal message "run cancelled by host"
             | _ -> false)
         | _ -> false)
       diagnostics
   in
-  Alcotest.(check bool) "cancellation emits diagnostic" true has_cancel_diagnostic;
+  Alcotest.(check bool)
+    "cancellation emits diagnostic" true has_cancel_diagnostic;
   let responses = List.filter_map rpc_response_message output in
-  Alcotest.(check int) "late effect response is ignored" 2 (List.length responses);
+  Alcotest.(check int)
+    "late effect response is ignored" 2 (List.length responses);
   let response = find_rpc_response_by_id "2" output in
   match response.Camlflow.Rpc_protocol.response_error with
   | Some error ->
-      Alcotest.(check int) "cancellation error code" (-32800)
-        error.error_code;
-      Alcotest.(check string) "cancellation error message"
-        "run cancelled by host" error.error_message
+      Alcotest.(check int) "cancellation error code" (-32800) error.error_code;
+      Alcotest.(check string)
+        "cancellation error message" "run cancelled by host" error.error_message
   | None -> Alcotest.fail "missing cancellation response"
 
 let test_rpc_server_cancellation_after_effect_response_before_run_finish () =
@@ -1773,26 +1891,28 @@ let main (name : string) : string =
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
         ~params:
           (`Assoc
-            [
-              ( "program",
-                `Assoc
-                  [
-                    ("path", `String workflow);
-                    ("includePaths", `List []);
-                    ("skillsDir", `Null);
-                  ] );
-              ("entry", `String "main");
-              ("input", `String "Ada");
-            ])
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String workflow);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+               ("entry", `String "main");
+               ("input", `String "Ada");
+             ])
         "camlflow/run";
       Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-1")
         (`Assoc [ ("output", `String "hello Ada") ]);
       Camlflow.Rpc_protocol.request
-        ~params:(`Assoc [ ("id", `Int 2) ]) "$/cancelRequest";
+        ~params:(`Assoc [ ("id", `Int 2) ])
+        "$/cancelRequest";
     ]
   in
   let output = run_rpc_server_with_messages messages in
-  Alcotest.(check int) "run-finish not emitted after late cancellation" 0
+  Alcotest.(check int)
+    "run-finish not emitted after late cancellation" 0
     (List.length
        (List.filter
           (fun request ->
@@ -1806,8 +1926,8 @@ let main (name : string) : string =
   let response = find_rpc_response_by_id "2" output in
   match response.Camlflow.Rpc_protocol.response_error with
   | Some error ->
-      Alcotest.(check int) "late cancellation error code" (-32800)
-        error.error_code
+      Alcotest.(check int)
+        "late cancellation error code" (-32800) error.error_code
   | None -> Alcotest.fail "missing late cancellation response"
 
 let test_rpc_server_cancellation_before_next_effect_request () =
@@ -1830,29 +1950,31 @@ let main (name : string) : string =
       Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
         ~params:
           (`Assoc
-            [
-              ( "program",
-                `Assoc
-                  [
-                    ("path", `String workflow);
-                    ("includePaths", `List []);
-                    ("skillsDir", `Null);
-                  ] );
-              ("entry", `String "main");
-              ("input", `String "Ada");
-            ])
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String workflow);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+               ("entry", `String "main");
+               ("input", `String "Ada");
+             ])
         "camlflow/run";
       Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-1")
         (`Assoc [ ("output", `String "hello Ada") ]);
       Camlflow.Rpc_protocol.request
-        ~params:(`Assoc [ ("id", `Int 2) ]) "$/cancelRequest";
+        ~params:(`Assoc [ ("id", `Int 2) ])
+        "$/cancelRequest";
       Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-2")
         (`Assoc [ ("output", `String "me ada") ]);
     ]
   in
   let output = run_rpc_server_with_messages messages in
   let effect_requests = find_rpc_requests "camlflow/executeEffect" output in
-  Alcotest.(check int) "second effect request is skipped after cancellation" 1
+  Alcotest.(check int)
+    "second effect request is skipped after cancellation" 1
     (List.length effect_requests);
   let progress_requests = find_rpc_requests "camlflow/progress" output in
   let has_run_cancelled_progress =
@@ -1866,13 +1988,13 @@ let main (name : string) : string =
         | _ -> false)
       progress_requests
   in
-  Alcotest.(check bool) "cancellation emits run-cancelled progress" true
-    has_run_cancelled_progress;
+  Alcotest.(check bool)
+    "cancellation emits run-cancelled progress" true has_run_cancelled_progress;
   let response = find_rpc_response_by_id "2" output in
   match response.Camlflow.Rpc_protocol.response_error with
   | Some error ->
-      Alcotest.(check int) "between-effects cancellation error code" (-32800)
-        error.error_code
+      Alcotest.(check int)
+        "between-effects cancellation error code" (-32800) error.error_code
   | None -> Alcotest.fail "missing between-effects cancellation response"
 
 let test_rpc_server_relays_output_chunk_notifications () =
@@ -1883,7 +2005,9 @@ let test_rpc_server_relays_output_chunk_notifications () =
   let input = In_channel.open_bin input_path in
   let output_channel = Out_channel.open_bin output_path in
   Fun.protect
-    ~finally:(fun () -> In_channel.close input; Out_channel.close output_channel)
+    ~finally:(fun () ->
+      In_channel.close input;
+      Out_channel.close output_channel)
     (fun () ->
       let server : Camlflow.Rpc_server.server =
         {
@@ -1906,21 +2030,21 @@ let test_rpc_server_relays_output_chunk_notifications () =
       match
         Camlflow.Rpc_server.handle_in_run_output_chunk server request
           (`Assoc
-            [
-              ("runId", `String "run-1");
-              ("step", `Int 1);
-              ("streamId", `String "stream-1");
-              ("format", `String "text");
-              ("delta", `String "hello ");
-              ("done", `Bool false);
-            ])
+             [
+               ("runId", `String "run-1");
+               ("step", `Int 1);
+               ("streamId", `String "stream-1");
+               ("format", `String "text");
+               ("delta", `String "hello ");
+               ("done", `Bool false);
+             ])
       with
-      | Ok () ->
+      | Ok () -> (
           Out_channel.flush output_channel;
           let output = read_rpc_messages output_path in
           let chunks = find_rpc_requests "camlflow/outputChunk" output in
           Alcotest.(check int) "relayed chunk count" 1 (List.length chunks);
-          (match chunks with
+          match chunks with
           | [ request ] -> (
               match request.Camlflow.Rpc_protocol.request_params with
               | Some json ->
@@ -1944,26 +2068,29 @@ let test_provider_schema_for_tuple_and_option () =
   expect_string_field "$schema" "https://json-schema.org/draft/2020-12/schema"
     schema;
   expect_string_field "type" "array" schema;
-  (match expect_assoc_field "prefixItems" schema with
+  match expect_assoc_field "prefixItems" schema with
   | `List [ first; second; third ] ->
       expect_string_field "type" "string" first;
       (match expect_assoc_field "oneOf" second with
       | `List [ none_case; some_case ] ->
           expect_string_field "type" "object" none_case;
           expect_string_field "const" "None"
-            (expect_assoc_field "tag" (expect_assoc_field "properties" none_case));
+            (expect_assoc_field "tag"
+               (expect_assoc_field "properties" none_case));
           expect_string_field "type" "object" some_case;
           expect_string_field "const" "Some"
-            (expect_assoc_field "tag" (expect_assoc_field "properties" some_case));
+            (expect_assoc_field "tag"
+               (expect_assoc_field "properties" some_case));
           expect_string_field "type" "integer"
-            (expect_assoc_field "value" (expect_assoc_field "properties" some_case))
+            (expect_assoc_field "value"
+               (expect_assoc_field "properties" some_case))
       | other ->
           Alcotest.failf "unexpected option schema: %s"
             (Yojson.Safe.to_string other));
       expect_string_field "type" "array" third;
       expect_string_field "type" "boolean" (expect_assoc_field "items" third)
   | other ->
-      Alcotest.failf "unexpected tuple schema: %s" (Yojson.Safe.to_string other))
+      Alcotest.failf "unexpected tuple schema: %s" (Yojson.Safe.to_string other)
 
 let test_provider_schema_for_named_types () =
   with_temp_dir "camlflow-schema-" @@ fun dir ->
@@ -1981,16 +2108,21 @@ let main : report =
   let types = Camlflow.Value.type_index_of_program program in
   let report_decl = find_type_decl program "report" in
   let review_decl = find_type_decl program "review" in
-  let report_key = Camlflow.Syntax.Ast.string_of_qname report_decl.Camlflow.Ir.type_name in
-  let review_key = Camlflow.Syntax.Ast.string_of_qname review_decl.Camlflow.Ir.type_name in
+  let report_key =
+    Camlflow.Syntax.Ast.string_of_qname report_decl.Camlflow.Ir.type_name
+  in
+  let review_key =
+    Camlflow.Syntax.Ast.string_of_qname review_decl.Camlflow.Ir.type_name
+  in
   let schema =
-    schema_for_type ~types (Camlflow.Ir.TRecord report_decl.Camlflow.Ir.type_name)
+    schema_for_type ~types
+      (Camlflow.Ir.TRecord report_decl.Camlflow.Ir.type_name)
   in
   expect_string_field "$schema" "https://json-schema.org/draft/2020-12/schema"
     schema;
   expect_string_field "$ref" ("#/$defs/" ^ report_key) schema;
-  (match expect_assoc_field "$defs" schema with
-  | `Assoc defs ->
+  match expect_assoc_field "$defs" schema with
+  | `Assoc defs -> (
       let report_schema =
         match List.assoc_opt report_key defs with
         | Some schema -> schema
@@ -2003,11 +2135,13 @@ let main : report =
       in
       expect_string_field "type" "object" report_schema;
       expect_string_field "$ref" ("#/$defs/" ^ review_key)
-        (expect_assoc_field "review" (expect_assoc_field "properties" report_schema));
-      (match expect_assoc_field "oneOf" review_schema with
+        (expect_assoc_field "review"
+           (expect_assoc_field "properties" report_schema));
+      match expect_assoc_field "oneOf" review_schema with
       | `List [ approved; needs_changes ] ->
           expect_string_field "const" "Approved"
-            (expect_assoc_field "tag" (expect_assoc_field "properties" approved));
+            (expect_assoc_field "tag"
+               (expect_assoc_field "properties" approved));
           expect_string_field "const" "NeedsChanges"
             (expect_assoc_field "tag"
                (expect_assoc_field "properties" needs_changes));
@@ -2017,7 +2151,8 @@ let main : report =
       | other ->
           Alcotest.failf "unexpected variant schema: %s"
             (Yojson.Safe.to_string other))
-  | other -> Alcotest.failf "unexpected defs payload: %s" (Yojson.Safe.to_string other))
+  | other ->
+      Alcotest.failf "unexpected defs payload: %s" (Yojson.Safe.to_string other)
 
 let test_provider_prompt_for_bound_agent () =
   let rendered =
@@ -2026,10 +2161,10 @@ let test_provider_prompt_for_bound_agent () =
          ~input:(`Assoc [ ("name", `String "Ada") ])
          ~working_directory:"/workspace" ())
   in
-  Alcotest.(check (option string)) "requested model" None
-    rendered.requested_model;
-  Alcotest.(check (list string)) "unsupported settings" []
-    rendered.unsupported_settings;
+  Alcotest.(check (option string))
+    "requested model" None rendered.requested_model;
+  Alcotest.(check (list string))
+    "unsupported settings" [] rendered.unsupported_settings;
   if not (contains_substring rendered.prompt "- role: agent") then
     Alcotest.failf "missing agent role in prompt: %s" rendered.prompt;
   if not (contains_substring rendered.prompt "- name: greeter") then
@@ -2048,9 +2183,10 @@ let test_provider_prompt_for_local_skill () =
   in
   if not (contains_substring rendered.prompt "- role: skill") then
     Alcotest.failf "missing skill role in prompt: %s" rendered.prompt;
-  if not
-       (contains_substring rendered.prompt
-          "Local skill specification (SKILL.md):")
+  if
+    not
+      (contains_substring rendered.prompt
+         "Local skill specification (SKILL.md):")
   then Alcotest.failf "missing SKILL.md section in prompt: %s" rendered.prompt;
   if not (contains_substring rendered.prompt "Reply tersely.") then
     Alcotest.failf "missing skill markdown body in prompt: %s" rendered.prompt
@@ -2070,13 +2206,15 @@ let test_provider_prompt_for_inline_agent () =
       (make_invocation ~kind:Camlflow.Runtime.Context.Inline_agent
          ~name:"reviewer" ~definition ())
   in
-  Alcotest.(check (option string)) "requested model" (Some "gpt-5.4-mini")
-    rendered.requested_model;
-  Alcotest.(check (list string)) "unsupported settings" [ "temperature" ]
-    rendered.unsupported_settings;
-  if not
-       (contains_substring rendered.prompt
-          "The system prompt only defines task intent; it does not need to restate the response structure.")
+  Alcotest.(check (option string))
+    "requested model" (Some "gpt-5.4-mini") rendered.requested_model;
+  Alcotest.(check (list string))
+    "unsupported settings" [ "temperature" ] rendered.unsupported_settings;
+  if
+    not
+      (contains_substring rendered.prompt
+         "The system prompt only defines task intent; it does not need to \
+          restate the response structure.")
   then
     Alcotest.failf "missing generated response-contract guidance: %s"
       rendered.prompt;
@@ -2084,8 +2222,8 @@ let test_provider_prompt_for_inline_agent () =
     Alcotest.failf "missing inline system prompt section: %s" rendered.prompt;
   if not (contains_substring rendered.prompt "Review tersely") then
     Alcotest.failf "missing inline system prompt body: %s" rendered.prompt;
-  if not (contains_substring rendered.prompt "Inline agent metadata (JSON):") then
-    Alcotest.failf "missing inline metadata section: %s" rendered.prompt;
+  if not (contains_substring rendered.prompt "Inline agent metadata (JSON):")
+  then Alcotest.failf "missing inline metadata section: %s" rendered.prompt;
   if not (contains_substring rendered.prompt "\"tone\"") then
     Alcotest.failf "missing inline metadata payload: %s" rendered.prompt
 
@@ -2125,47 +2263,49 @@ let main : string = "ok"
   if not (contains_substring rendered.prompt "Declared response contract:") then
     Alcotest.failf "missing declared response contract section: %s"
       rendered.prompt;
-  if not
-       (contains_substring rendered.prompt
-          "The system prompt only defines task intent; it does not need to restate the response structure.")
-  then
-    Alcotest.failf "missing task-vs-structure guidance: %s" rendered.prompt;
-  if not
-       (contains_substring rendered.prompt
-          "code_response is encoded as a JSON object with required fields:")
-  then
-    Alcotest.failf "missing record contract details: %s" rendered.prompt;
-  if not (contains_substring rendered.prompt "action: tagged JSON variant")
-  then Alcotest.failf "missing variant field summary: %s" rendered.prompt;
-  if not
-       (contains_substring rendered.prompt {|TEST -> {"tag":"TEST"}|})
-  then Alcotest.failf "missing TEST constructor encoding: %s" rendered.prompt;
-  if not
-       (contains_substring rendered.prompt {|RUN -> {"tag":"RUN"}|})
-  then Alcotest.failf "missing RUN constructor encoding: %s" rendered.prompt
+  if
+    not
+      (contains_substring rendered.prompt
+         "The system prompt only defines task intent; it does not need to \
+          restate the response structure.")
+  then Alcotest.failf "missing task-vs-structure guidance: %s" rendered.prompt;
+  if
+    not
+      (contains_substring rendered.prompt
+         "code_response is encoded as a JSON object with required fields:")
+  then Alcotest.failf "missing record contract details: %s" rendered.prompt;
+  if not (contains_substring rendered.prompt "action: tagged JSON variant") then
+    Alcotest.failf "missing variant field summary: %s" rendered.prompt;
+  if not (contains_substring rendered.prompt {|TEST -> {"tag":"TEST"}|}) then
+    Alcotest.failf "missing TEST constructor encoding: %s" rendered.prompt;
+  if not (contains_substring rendered.prompt {|RUN -> {"tag":"RUN"}|}) then
+    Alcotest.failf "missing RUN constructor encoding: %s" rendered.prompt
 
 let test_effect_request_for_local_skill () =
   let invocation =
     make_invocation ~kind:Camlflow.Runtime.Context.Local_prompt_skill
-      ~name:"caveman" ~input:(`Assoc [ ("prompt", `String "hello") ])
+      ~name:"caveman"
+      ~input:(`Assoc [ ("prompt", `String "hello") ])
       ~return_type:Camlflow.Ir.TString ~skills_directory:"/workspace/skills"
       ~markdown:"# Caveman\n\nReply tersely." ()
   in
   let request = build_effect_request ~step_index:7 ~run_id:"run-1" invocation in
-  Alcotest.(check string) "kind" "local-prompt-skill"
+  Alcotest.(check string)
+    "kind" "local-prompt-skill"
     (Camlflow.Effect_request.kind_to_string request.kind);
   Alcotest.(check string) "name" "caveman" request.name;
-  Alcotest.(check string) "declared return type" "string"
-    request.declared_return_type;
-  Alcotest.(check (option string)) "skills directory"
-    (Some "/workspace/skills") request.skills_directory;
-  Alcotest.(check (option string)) "skill markdown"
-    (Some "# Caveman\n\nReply tersely.") request.skill_markdown;
+  Alcotest.(check string)
+    "declared return type" "string" request.declared_return_type;
+  Alcotest.(check (option string))
+    "skills directory" (Some "/workspace/skills") request.skills_directory;
+  Alcotest.(check (option string))
+    "skill markdown" (Some "# Caveman\n\nReply tersely.") request.skill_markdown;
   Alcotest.(check (option int)) "step index" (Some 7) request.step_index;
   Alcotest.(check (option string)) "run id" (Some "run-1") request.run_id;
-  Alcotest.(check (option string)) "requested model" None request.requested_model;
-  Alcotest.(check (list string)) "unsupported settings" []
-    request.unsupported_settings;
+  Alcotest.(check (option string))
+    "requested model" None request.requested_model;
+  Alcotest.(check (list string))
+    "unsupported settings" [] request.unsupported_settings;
   expect_string_field "type" "string" request.output_schema;
   if not (contains_substring request.rendered_prompt "Reply tersely.") then
     Alcotest.failf "missing skill markdown in rendered prompt: %s"
@@ -2186,19 +2326,21 @@ let test_effect_request_for_inline_agent () =
     }
   in
   let invocation =
-    make_invocation ~kind:Camlflow.Runtime.Context.Inline_agent
-      ~name:"reviewer" ~definition ~working_directory:"/workspace" ()
+    make_invocation ~kind:Camlflow.Runtime.Context.Inline_agent ~name:"reviewer"
+      ~definition ~working_directory:"/workspace" ()
   in
   let request = build_effect_request invocation in
-  Alcotest.(check string) "kind" "inline-agent"
+  Alcotest.(check string)
+    "kind" "inline-agent"
     (Camlflow.Effect_request.kind_to_string request.kind);
-  Alcotest.(check (option string)) "requested model" (Some "gpt-5.4-mini")
-    request.requested_model;
-  Alcotest.(check (list string)) "unsupported settings" [ "temperature" ]
-    request.unsupported_settings;
-  Alcotest.(check (option string)) "working directory" (Some "/workspace")
-    request.working_directory;
-  Alcotest.(check bool) "inline definition present" true
+  Alcotest.(check (option string))
+    "requested model" (Some "gpt-5.4-mini") request.requested_model;
+  Alcotest.(check (list string))
+    "unsupported settings" [ "temperature" ] request.unsupported_settings;
+  Alcotest.(check (option string))
+    "working directory" (Some "/workspace") request.working_directory;
+  Alcotest.(check bool)
+    "inline definition present" true
     (Option.is_some request.inline_definition);
   if not (contains_substring request.rendered_prompt "Review tersely") then
     Alcotest.failf "missing inline prompt in rendered request: %s"
@@ -2206,16 +2348,17 @@ let test_effect_request_for_inline_agent () =
   let json = Camlflow.Effect_request.to_yojson request in
   expect_string_field "kind" "inline-agent" json;
   expect_string_field "role" "agent" json;
-  (match expect_assoc_field "inlineDefinition" json with
+  match expect_assoc_field "inlineDefinition" json with
   | `Assoc _ -> ()
   | other ->
       Alcotest.failf "expected inlineDefinition object, got %s"
-        (Yojson.Safe.to_string other))
+        (Yojson.Safe.to_string other)
 
 let test_effect_bridge_executes_with_effect_request () =
   let invocation =
     make_invocation ~kind:Camlflow.Runtime.Context.Local_prompt_skill
-      ~name:"caveman" ~input:(`Assoc [ ("prompt", `String "hello") ])
+      ~name:"caveman"
+      ~input:(`Assoc [ ("prompt", `String "hello") ])
       ~skills_directory:"/workspace/skills"
       ~markdown:"# Caveman\n\nReply tersely." ()
   in
@@ -2223,15 +2366,14 @@ let test_effect_bridge_executes_with_effect_request () =
     run_effect_bridge ~step_index:3 ~run_id:"run-2"
       ~executor:(fun request ->
         Alcotest.(check string) "executor request name" "caveman" request.name;
-        Alcotest.(check (option int)) "executor step" (Some 3)
-          request.step_index;
-        Alcotest.(check (option string)) "executor run id" (Some "run-2")
-          request.run_id;
+        Alcotest.(check (option int))
+          "executor step" (Some 3) request.step_index;
+        Alcotest.(check (option string))
+          "executor run id" (Some "run-2") request.run_id;
         Ok (`String request.name))
       invocation
   in
-  Alcotest.(check string) "bridge request name" "caveman"
-    execution.request.name;
+  Alcotest.(check string) "bridge request name" "caveman" execution.request.name;
   match execution.output_json with
   | `String value -> Alcotest.(check string) "bridge output" "caveman" value
   | json ->
@@ -2299,18 +2441,22 @@ let test_codex_preflight_validation () =
   expect_error_contains "missing login" "provider codex requires login"
     (Camlflow.Providers_codex.validate_preflight_status ~codex_available:true
        ~logged_in:false);
-  (match
-     Camlflow.Providers_codex.validate_preflight_status ~codex_available:true
-       ~logged_in:true
-   with
+  match
+    Camlflow.Providers_codex.validate_preflight_status ~codex_available:true
+      ~logged_in:true
+  with
   | Ok () -> ()
-  | Error error -> Alcotest.failf "unexpected preflight error: %s" error)
+  | Error error -> Alcotest.failf "unexpected preflight error: %s" error
 
 let test_codex_wrapped_response_schema () =
   let wrapped =
     match
       Camlflow.Providers_codex.wrapped_response_schema
-        (`Assoc [ ("$schema", `String "https://json-schema.org/draft/2020-12/schema"); ("type", `String "string") ])
+        (`Assoc
+           [
+             ("$schema", `String "https://json-schema.org/draft/2020-12/schema");
+             ("type", `String "string");
+           ])
     with
     | Ok schema -> schema
     | Error error -> Alcotest.failf "wrapped schema failed: %s" error
@@ -2364,8 +2510,8 @@ let main (code : string) : string =
     }
   in
   let base_context =
-    Camlflow.Runtime.Context.empty
-    |> fun context -> Camlflow.Runtime.Context.with_working_directory context dir
+    Camlflow.Runtime.Context.empty |> fun context ->
+    Camlflow.Runtime.Context.with_working_directory context dir
   in
   let context =
     match
@@ -2415,12 +2561,12 @@ let test_opencode_preflight_validation () =
   expect_error_contains "missing opencode" "provider opencode is not available"
     (Camlflow.Providers_opencode.validate_preflight_status
        ~opencode_available:false);
-  (match
-     Camlflow.Providers_opencode.validate_preflight_status
-       ~opencode_available:true
-   with
+  match
+    Camlflow.Providers_opencode.validate_preflight_status
+      ~opencode_available:true
+  with
   | Ok () -> ()
-  | Error error -> Alcotest.failf "unexpected preflight error: %s" error)
+  | Error error -> Alcotest.failf "unexpected preflight error: %s" error
 
 let test_opencode_parse_wrapped_response () =
   let events =
@@ -2446,7 +2592,8 @@ let test_opencode_parse_wrapped_response () =
     Camlflow.Providers_opencode.parse_wrapped_response ~trace_kind:"bound-agent"
       ~trace_name:"greeter" text
   with
-  | Ok (`String value) -> Alcotest.(check string) "opencode parsed result" "hello" value
+  | Ok (`String value) ->
+      Alcotest.(check string) "opencode parsed result" "hello" value
   | Ok json ->
       Alcotest.failf "unexpected opencode parsed JSON: %s"
         (Yojson.Safe.to_string json)
@@ -2455,14 +2602,16 @@ let test_opencode_parse_wrapped_response () =
 let test_opencode_parse_wrapped_response_rejects_extra_fields () =
   expect_error_contains "opencode extra fields"
     "model response wrapper must not contain extra field(s): debug"
-    (Camlflow.Providers_opencode.parse_wrapped_response ~trace_kind:"bound-agent"
-       ~trace_name:"greeter" "{\"result\":\"hello\",\"debug\":true}")
+    (Camlflow.Providers_opencode.parse_wrapped_response
+       ~trace_kind:"bound-agent" ~trace_name:"greeter"
+       "{\"result\":\"hello\",\"debug\":true}")
 
 let test_opencode_error_event_message () =
   let events =
     match
       Camlflow.Providers_opencode.json_line_events
-        "{\"type\":\"error\",\"error\":{\"name\":\"UnknownError\",\"data\":{\"message\":\"Model not found\"}}}"
+        "{\"type\":\"error\",\"error\":{\"name\":\"UnknownError\",\"data\":{\"message\":\"Model \
+         not found\"}}}"
     with
     | Ok events -> events
     | Error error -> Alcotest.failf "opencode event parse failed: %s" error
@@ -2473,7 +2622,8 @@ let test_opencode_error_event_message () =
   with
   | Ok text -> Alcotest.failf "expected opencode error, got text %s" text
   | Error error ->
-      Alcotest.(check bool) "opencode error message extracted" true
+      Alcotest.(check bool)
+        "opencode error message extracted" true
         (contains_substring error "Model not found")
 
 let test_opencode_inline_temperature_fails_fast () =
@@ -2496,8 +2646,8 @@ let main (code : string) : string =
     }
   in
   let base_context =
-    Camlflow.Runtime.Context.empty
-    |> fun context -> Camlflow.Runtime.Context.with_working_directory context dir
+    Camlflow.Runtime.Context.empty |> fun context ->
+    Camlflow.Runtime.Context.with_working_directory context dir
   in
   let context =
     match
@@ -2528,8 +2678,7 @@ let main : int =
 let test_unsupported_library_module_call_fails () =
   with_temp_dir "camlflow-stdlib-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
-  write_file main
-    {|
+  write_file main {|
 let main : int =
   List.length []
 |};
@@ -2540,15 +2689,15 @@ let main : int =
 let test_zero_arg_main_runs () =
   with_temp_dir "camlflow-zero-arg-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
-  write_file main
-    {|
+  write_file main {|
 let main : string =
   "ready"
 |};
   let program = check_file main in
   let result = run_program program in
   Alcotest.(check int) "zero-arg steps" 0 result.steps_run;
-  Alcotest.(check string) "zero-arg output" "ready"
+  Alcotest.(check string)
+    "zero-arg output" "ready"
     (get_output_string result.output)
 
 let test_check_ignores_unrelated_broken_files () =
@@ -2559,7 +2708,8 @@ let test_check_ignores_unrelated_broken_files () =
   write_file broken "let broken =\n";
   let program = check_file main in
   let result = run_program program in
-  Alcotest.(check int) "unrelated broken file ignored" 1
+  Alcotest.(check int)
+    "unrelated broken file ignored" 1
     (get_output_int result.output)
 
 let test_check_run_and_ir_roundtrip () =
@@ -2591,7 +2741,9 @@ let main (name : string) : string =
     | Error error -> Alcotest.failf "artifact decode failed: %s" error
   in
   let result = run_program ~input:(`String "Ada") reloaded in
-  Alcotest.(check string) "roundtrip output" "!" (get_output_string result.output)
+  Alcotest.(check string)
+    "roundtrip output" "!"
+    (get_output_string result.output)
 
 let test_local_skill_resolution () =
   with_temp_dir "camlflow-skill-" @@ fun dir ->
@@ -2600,7 +2752,9 @@ let test_local_skill_resolution () =
   let caveman_dir = Filename.concat skills_dir "caveman" in
   Unix.mkdir skills_dir 0o755;
   Unix.mkdir caveman_dir 0o755;
-  write_file (Filename.concat caveman_dir "SKILL.md") "# Caveman\n\nPrompt-backed test skill.\n";
+  write_file
+    (Filename.concat caveman_dir "SKILL.md")
+    "# Caveman\n\nPrompt-backed test skill.\n";
   write_file main
     {|
 skill caveman : prompt:string -> string = Skill.bind "caveman"
@@ -2611,14 +2765,15 @@ let main (prompt : string) : string =
 |};
   let program = check_file main in
   let context =
-    Camlflow.Runtime.Context.with_skills_directory Camlflow.Runtime.Context.empty
-      skills_dir
+    Camlflow.Runtime.Context.with_skills_directory
+      Camlflow.Runtime.Context.empty skills_dir
   in
   let result = run_program ~context ~input:(`String "hello") program in
   Alcotest.(check int) "local skill step count" 1 result.steps_run;
-  Alcotest.(check string) "local skill kind" "local-skill"
-    (List.hd result.effect_steps).step_kind;
-  Alcotest.(check string) "local skill output" ""
+  Alcotest.(check string)
+    "local skill kind" "local-skill" (List.hd result.effect_steps).step_kind;
+  Alcotest.(check string)
+    "local skill output" ""
     (get_output_string result.output)
 
 let test_unresolved_open_fails () =
@@ -2657,9 +2812,11 @@ let main (flag : bool) : int =
   let program = check_file main in
   let true_result = run_program ~input:(`Bool true) program in
   let false_result = run_program ~input:(`Bool false) program in
-  Alcotest.(check int) "wildcard true branch" 1
+  Alcotest.(check int)
+    "wildcard true branch" 1
     (get_output_int true_result.output);
-  Alcotest.(check int) "wildcard false branch" 1
+  Alcotest.(check int)
+    "wildcard false branch" 1
     (get_output_int false_result.output)
 
 let test_ctor_then_wildcard_match_is_exhaustive () =
@@ -2675,9 +2832,11 @@ let main (flag : bool) : int =
   let program = check_file main in
   let true_result = run_program ~input:(`Bool true) program in
   let false_result = run_program ~input:(`Bool false) program in
-  Alcotest.(check int) "ctor wildcard true branch" 1
+  Alcotest.(check int)
+    "ctor wildcard true branch" 1
     (get_output_int true_result.output);
-  Alcotest.(check int) "ctor wildcard false branch" 0
+  Alcotest.(check int)
+    "ctor wildcard false branch" 0
     (get_output_int false_result.output)
 
 let test_effectful_call_requires_let_star () =
@@ -2741,7 +2900,8 @@ let main (name : string) : string =
 |};
   let program = check_file main in
   let result = run_program ~input:(`String "Ada") program in
-  Alcotest.(check string) "qualified module output" "Ada"
+  Alcotest.(check string)
+    "qualified module output" "Ada"
     (get_output_string result.output)
 
 let test_recursion_and_int_builtins () =
@@ -2775,7 +2935,8 @@ let main : string =
 |};
   let program = check_file main in
   let result = run_program program in
-  Alcotest.(check string) "option helper output" "retry"
+  Alcotest.(check string)
+    "option helper output" "retry"
     (get_output_string result.output)
 
 let test_bool_match_patterns () =
@@ -2797,14 +2958,14 @@ let main (flag : bool) : int =
 let test_float_operators () =
   with_temp_dir "camlflow-float-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
-  write_file main
-    {|
+  write_file main {|
 let main (x : float) : float =
   (x +. 1.5) *. 2.0
 |};
   let program = check_file main in
   let result = run_program ~input:(`Float 2.0) program in
-  Alcotest.(check (float 0.0001)) "float result" 7.0
+  Alcotest.(check (float 0.0001))
+    "float result" 7.0
     (get_output_float result.output)
 
 let test_default_provider_hook_for_bound_agent () =
@@ -2820,15 +2981,16 @@ let main (name : string) : string =
 |};
   let program = check_file main in
   let context =
-    Camlflow.Runtime.Context.with_default_provider Camlflow.Runtime.Context.empty
-      (fun invocation ->
+    Camlflow.Runtime.Context.with_default_provider
+      Camlflow.Runtime.Context.empty (fun invocation ->
         match invocation.Camlflow.Runtime.Context.invocation_kind with
         | Camlflow.Runtime.Context.Bound_agent ->
             Ok (`String invocation.invocation_name)
         | _ -> Error "unexpected invocation kind")
   in
   let result = run_program ~context ~input:(`String "Ada") program in
-  Alcotest.(check string) "default provider result" "greeter"
+  Alcotest.(check string)
+    "default provider result" "greeter"
     (get_output_string result.output)
 
 let test_inline_agent_typed_response_branches_with_if_and_match () =
@@ -2867,30 +3029,34 @@ let main (code : string) : string =
     | `Assoc [ ("code", `String code) ] when contains_substring code "todo" ->
         Ok
           (`Assoc
-            [
-              ("action", `Assoc [ ("tag", `String "TEST") ]);
-              ("accuracy", `Int 42);
-              ("description", `String "needs stronger validation");
-            ])
+             [
+               ("action", `Assoc [ ("tag", `String "TEST") ]);
+               ("accuracy", `Int 42);
+               ("description", `String "needs stronger validation");
+             ])
     | `Assoc [ ("code", `String _code) ] ->
         Ok
           (`Assoc
-            [
-              ("action", `Assoc [ ("tag", `String "RUN") ]);
-              ("accuracy", `Int 96);
-              ("description", `String "ready for execution");
-            ])
+             [
+               ("action", `Assoc [ ("tag", `String "RUN") ]);
+               ("accuracy", `Int 96);
+               ("description", `String "ready for execution");
+             ])
     | _ -> Error "unexpected input"
   in
   let context =
     Camlflow.Runtime.Context.with_inline_agent_provider
       Camlflow.Runtime.Context.empty provider
   in
-  let low_result = run_program ~context ~input:(`String "todo: add tests") program in
-  Alcotest.(check string) "low accuracy branch" "retry-after-tests: needs stronger validation"
+  let low_result =
+    run_program ~context ~input:(`String "todo: add tests") program
+  in
+  Alcotest.(check string)
+    "low accuracy branch" "retry-after-tests: needs stronger validation"
     (get_output_string low_result.output);
   let high_result = run_program ~context ~input:(`String "ship it") program in
-  Alcotest.(check string) "high accuracy branch" "continue: ready for execution"
+  Alcotest.(check string)
+    "high accuracy branch" "continue: ready for execution"
     (get_output_string high_result.output)
 
 let test_inline_agent_typed_response_retries_recursively () =
@@ -2946,26 +3112,26 @@ let main (code : string) : string =
       when contains_substring code "Retry guidance:" ->
         Ok
           (`Assoc
-            [
-              ("action", `Assoc [ ("tag", `String "RUN") ]);
-              ("accuracy", `Int 96);
-              ("description", `String "ready for execution");
-              ("retry_hint", `Assoc [ ("tag", `String "None") ]);
-            ])
+             [
+               ("action", `Assoc [ ("tag", `String "RUN") ]);
+               ("accuracy", `Int 96);
+               ("description", `String "ready for execution");
+               ("retry_hint", `Assoc [ ("tag", `String "None") ]);
+             ])
     | `Assoc [ ("code", `String _code) ] ->
         Ok
           (`Assoc
-            [
-              ("action", `Assoc [ ("tag", `String "TEST") ]);
-              ("accuracy", `Int 42);
-              ("description", `String "needs stronger validation");
-              ( "retry_hint",
-                `Assoc
-                  [
-                    ("tag", `String "Some");
-                    ("value", `String "ask for test coverage");
-                  ] );
-            ])
+             [
+               ("action", `Assoc [ ("tag", `String "TEST") ]);
+               ("accuracy", `Int 42);
+               ("description", `String "needs stronger validation");
+               ( "retry_hint",
+                 `Assoc
+                   [
+                     ("tag", `String "Some");
+                     ("value", `String "ask for test coverage");
+                   ] );
+             ])
     | _ -> Error "unexpected input"
   in
   let context =
@@ -2974,7 +3140,8 @@ let main (code : string) : string =
   in
   let result = run_program ~context ~input:(`String "ship it") program in
   Alcotest.(check int) "retry step count" 2 result.steps_run;
-  Alcotest.(check string) "retry output" "approved: ready for execution"
+  Alcotest.(check string)
+    "retry output" "approved: ready for execution"
     (get_output_string result.output);
   let second_input =
     match List.nth_opt result.effect_steps 1 with
@@ -2986,29 +3153,39 @@ let main (code : string) : string =
               (Yojson.Safe.to_string input))
     | None -> Alcotest.fail "missing retry effect step"
   in
-  if not
-       (contains_substring second_input
-          "Retry guidance: ask for test coverage")
+  if
+    not
+      (contains_substring second_input "Retry guidance: ask for test coverage")
   then
     Alcotest.failf "missing retry guidance in second attempt: %s" second_input
 
 let test_dev_workflow_example_awaits_clarification () =
   let main = repo_path "examples/dev-workflow/main.cml" in
   let skills_dir = repo_path "examples/dev-workflow/skills" in
-  let input = Yojson.Safe.from_file (repo_path "examples/dev-workflow/input-approved.json") in
+  let input =
+    Yojson.Safe.from_file
+      (repo_path "examples/dev-workflow/input-approved.json")
+  in
   let program = check_file main in
   let requirements_document =
     `Assoc
       [
         ("summary", `String "Feature flag dashboard for internal operators.");
-        ("user_stories", `List [ `String "As an operator, I can inspect rollout state." ]);
-        ("acceptance_criteria", `List [ `String "Dashboard lists flags and environments." ]);
+        ( "user_stories",
+          `List [ `String "As an operator, I can inspect rollout state." ] );
+        ( "acceptance_criteria",
+          `List [ `String "Dashboard lists flags and environments." ] );
         ("technical_requirements", `List [ `String "Read-only v1." ]);
-        ("data_requirements", `List [ `String "Expose flag metadata and audit history." ]);
-        ("performance_requirements", `List [ `String "Keep table responses fast." ]);
-        ("maintainability_requirements", `List [ `String "Reuse existing admin UI patterns." ]);
-        ("test_requirements", `List [ `String "Cover empty states and pagination." ]);
-        ("deployment_requirements", `List [ `String "Roll out behind an internal flag." ]);
+        ( "data_requirements",
+          `List [ `String "Expose flag metadata and audit history." ] );
+        ( "performance_requirements",
+          `List [ `String "Keep table responses fast." ] );
+        ( "maintainability_requirements",
+          `List [ `String "Reuse existing admin UI patterns." ] );
+        ( "test_requirements",
+          `List [ `String "Cover empty states and pagination." ] );
+        ( "deployment_requirements",
+          `List [ `String "Roll out behind an internal flag." ] );
       ]
   in
   let prompt_skill_provider ~name ~markdown:_ ~input:_ ~return_type:_ ~types:_ =
@@ -3016,243 +3193,303 @@ let test_dev_workflow_example_awaits_clarification () =
     | "grill-me" ->
         Ok
           (`Assoc
-            [
-              ("readiness", tagged "NeedsUserAnswers");
-              ("requirements_document", requirements_document);
-              ( "open_questions",
-                `List
-                  [
-                    `String "Who can edit rollout metadata in later phases?";
-                    `String "What pagination size should the default table use?";
-                  ] );
-              ("approval_summary", `String "Not ready for approval yet.");
-            ])
+             [
+               ("readiness", tagged "NeedsUserAnswers");
+               ("requirements_document", requirements_document);
+               ( "open_questions",
+                 `List
+                   [
+                     `String "Who can edit rollout metadata in later phases?";
+                     `String
+                       "What pagination size should the default table use?";
+                   ] );
+               ("approval_summary", `String "Not ready for approval yet.");
+             ])
     | "caveman" -> Alcotest.fail "caveman should not run before clarification"
     | other -> Alcotest.failf "unexpected prompt skill %s" other
   in
-  let inline_agent_provider ~name ~definition:_ ~input:_ ~return_type:_ ~types:_ =
+  let inline_agent_provider ~name ~definition:_ ~input:_ ~return_type:_ ~types:_
+      =
     Alcotest.failf "inline agent %s should not run before clarification" name
   in
   let context =
-    Camlflow.Runtime.Context.empty
-    |> fun context ->
+    Camlflow.Runtime.Context.empty |> fun context ->
     Camlflow.Runtime.Context.with_skills_directory context skills_dir
     |> fun context ->
-    Camlflow.Runtime.Context.with_prompt_skill_provider context prompt_skill_provider
+    Camlflow.Runtime.Context.with_prompt_skill_provider context
+      prompt_skill_provider
     |> fun context ->
-    Camlflow.Runtime.Context.with_inline_agent_provider context inline_agent_provider
+    Camlflow.Runtime.Context.with_inline_agent_provider context
+      inline_agent_provider
   in
   let result = run_program ~context ~input program in
   Alcotest.(check int) "clarification step count" 1 result.steps_run;
-  Alcotest.(check string) "clarification step kind" "local-skill"
+  Alcotest.(check string)
+    "clarification step kind" "local-skill"
     (List.hd result.effect_steps).step_kind;
   let output =
-    match result.output with Some json -> json | None -> Alcotest.fail "expected output"
+    match result.output with
+    | Some json -> json
+    | None -> Alcotest.fail "expected output"
   in
   expect_string_field "tag" "NeedsClarification" output;
   let packet = expect_assoc_field "value" output in
-  expect_string_field "next_step" "Answer the open questions and rerun the harness." packet;
-  (match expect_assoc_field "open_questions" packet with
+  expect_string_field "next_step"
+    "Answer the open questions and rerun the harness." packet;
+  match expect_assoc_field "open_questions" packet with
   | `List [ `String first; `String second ] ->
-      Alcotest.(check string) "first clarification question"
+      Alcotest.(check string)
+        "first clarification question"
         "Who can edit rollout metadata in later phases?" first;
-      Alcotest.(check string) "second clarification question"
+      Alcotest.(check string)
+        "second clarification question"
         "What pagination size should the default table use?" second
   | other ->
       Alcotest.failf "unexpected open_questions payload: %s"
-        (Yojson.Safe.to_string other))
+        (Yojson.Safe.to_string other)
 
 let test_dev_workflow_example_waits_for_approval () =
   let main = repo_path "examples/dev-workflow/main.cml" in
   let skills_dir = repo_path "examples/dev-workflow/skills" in
-  let input = Yojson.Safe.from_file (repo_path "examples/dev-workflow/input-pending.json") in
+  let input =
+    Yojson.Safe.from_file (repo_path "examples/dev-workflow/input-pending.json")
+  in
   let program = check_file main in
   let prompt_skill_provider ~name ~markdown:_ ~input:_ ~return_type:_ ~types:_ =
     match name with
     | "grill-me" ->
         Ok
           (`Assoc
-            [
-              ("readiness", tagged "ReadyForApproval");
-              ( "requirements_document",
-                `Assoc
-                  [
-                    ("summary", `String "Approved-ready dashboard plan.");
-                    ("user_stories", `List [ `String "Inspect flags by environment." ]);
-                    ("acceptance_criteria", `List [ `String "Show audit history." ]);
-                    ("technical_requirements", `List [ `String "Read-only scope." ]);
-                    ("data_requirements", `List [ `String "Need flag and audit tables." ]);
-                    ("performance_requirements", `List [ `String "Paginate large tables." ]);
-                    ("maintainability_requirements", `List [ `String "Reuse admin table components." ]);
-                    ("test_requirements", `List [ `String "Cover empty states." ]);
-                    ("deployment_requirements", `List [ `String "Roll out to staff only." ]);
-                  ] );
-              ("open_questions", `List []);
-              ("approval_summary", `String "Requirements ready for sign-off.");
-            ])
+             [
+               ("readiness", tagged "ReadyForApproval");
+               ( "requirements_document",
+                 `Assoc
+                   [
+                     ("summary", `String "Approved-ready dashboard plan.");
+                     ( "user_stories",
+                       `List [ `String "Inspect flags by environment." ] );
+                     ( "acceptance_criteria",
+                       `List [ `String "Show audit history." ] );
+                     ( "technical_requirements",
+                       `List [ `String "Read-only scope." ] );
+                     ( "data_requirements",
+                       `List [ `String "Need flag and audit tables." ] );
+                     ( "performance_requirements",
+                       `List [ `String "Paginate large tables." ] );
+                     ( "maintainability_requirements",
+                       `List [ `String "Reuse admin table components." ] );
+                     ( "test_requirements",
+                       `List [ `String "Cover empty states." ] );
+                     ( "deployment_requirements",
+                       `List [ `String "Roll out to staff only." ] );
+                   ] );
+               ("open_questions", `List []);
+               ("approval_summary", `String "Requirements ready for sign-off.");
+             ])
     | "caveman" -> Alcotest.fail "caveman should not run before approval"
     | other -> Alcotest.failf "unexpected prompt skill %s" other
   in
-  let inline_agent_provider ~name ~definition:_ ~input:_ ~return_type:_ ~types:_ =
+  let inline_agent_provider ~name ~definition:_ ~input:_ ~return_type:_ ~types:_
+      =
     Alcotest.failf "inline agent %s should not run before approval" name
   in
   let context =
-    Camlflow.Runtime.Context.empty
-    |> fun context ->
+    Camlflow.Runtime.Context.empty |> fun context ->
     Camlflow.Runtime.Context.with_skills_directory context skills_dir
     |> fun context ->
-    Camlflow.Runtime.Context.with_prompt_skill_provider context prompt_skill_provider
+    Camlflow.Runtime.Context.with_prompt_skill_provider context
+      prompt_skill_provider
     |> fun context ->
-    Camlflow.Runtime.Context.with_inline_agent_provider context inline_agent_provider
+    Camlflow.Runtime.Context.with_inline_agent_provider context
+      inline_agent_provider
   in
   let result = run_program ~context ~input program in
   Alcotest.(check int) "approval step count" 1 result.steps_run;
   let output =
-    match result.output with Some json -> json | None -> Alcotest.fail "expected output"
+    match result.output with
+    | Some json -> json
+    | None -> Alcotest.fail "expected output"
   in
   expect_string_field "tag" "NeedsApproval" output;
   let packet = expect_assoc_field "value" output in
-  expect_string_field "approval_summary" "Requirements ready for sign-off." packet;
+  expect_string_field "approval_summary" "Requirements ready for sign-off."
+    packet;
   expect_string_field "next_step"
-    "Review the requirements document, approve it, and rerun with ApprovalGranted."
+    "Review the requirements document, approve it, and rerun with \
+     ApprovalGranted."
     packet
 
 let test_dev_workflow_example_completes_after_approval () =
   let main = repo_path "examples/dev-workflow/main.cml" in
   let skills_dir = repo_path "examples/dev-workflow/skills" in
-  let input = Yojson.Safe.from_file (repo_path "examples/dev-workflow/input-approved.json") in
+  let input =
+    Yojson.Safe.from_file
+      (repo_path "examples/dev-workflow/input-approved.json")
+  in
   let program = check_file main in
   let prompt_skill_provider ~name ~markdown:_ ~input:_ ~return_type:_ ~types:_ =
     match name with
     | "grill-me" ->
         Ok
           (`Assoc
-            [
-              ("readiness", tagged "ReadyForApproval");
-              ( "requirements_document",
-                `Assoc
-                  [
-                    ("summary", `String "Feature flag dashboard v1 for internal operators.");
-                    ("user_stories", `List [ `String "Inspect flags by environment." ]);
-                    ("acceptance_criteria", `List [ `String "Show audit history and search." ]);
-                    ("technical_requirements", `List [ `String "Read-only dashboard." ]);
-                    ("data_requirements", `List [ `String "Use feature flag metadata and audit records." ]);
-                    ("performance_requirements", `List [ `String "Page large result sets." ]);
-                    ("maintainability_requirements", `List [ `String "Stay aligned with admin UI conventions." ]);
-                    ("test_requirements", `List [ `String "Add UI and API coverage." ]);
-                    ("deployment_requirements", `List [ `String "Release behind an internal flag." ]);
-                  ] );
-              ("open_questions", `List []);
-              ("approval_summary", `String "Plan covers scope, tests, and rollout constraints.");
-            ])
+             [
+               ("readiness", tagged "ReadyForApproval");
+               ( "requirements_document",
+                 `Assoc
+                   [
+                     ( "summary",
+                       `String
+                         "Feature flag dashboard v1 for internal operators." );
+                     ( "user_stories",
+                       `List [ `String "Inspect flags by environment." ] );
+                     ( "acceptance_criteria",
+                       `List [ `String "Show audit history and search." ] );
+                     ( "technical_requirements",
+                       `List [ `String "Read-only dashboard." ] );
+                     ( "data_requirements",
+                       `List
+                         [
+                           `String
+                             "Use feature flag metadata and audit records.";
+                         ] );
+                     ( "performance_requirements",
+                       `List [ `String "Page large result sets." ] );
+                     ( "maintainability_requirements",
+                       `List
+                         [ `String "Stay aligned with admin UI conventions." ]
+                     );
+                     ( "test_requirements",
+                       `List [ `String "Add UI and API coverage." ] );
+                     ( "deployment_requirements",
+                       `List [ `String "Release behind an internal flag." ] );
+                   ] );
+               ("open_questions", `List []);
+               ( "approval_summary",
+                 `String "Plan covers scope, tests, and rollout constraints." );
+             ])
     | "caveman" -> Ok (`String "flag dashboard plan, terse")
     | other -> Alcotest.failf "unexpected prompt skill %s" other
   in
-  let inline_agent_provider ~name ~definition:_ ~input:_ ~return_type:_ ~types:_ =
+  let inline_agent_provider ~name ~definition:_ ~input:_ ~return_type:_ ~types:_
+      =
     match name with
     | "the_engineer" ->
         Ok
           (`Assoc
-            [
-              ("summary", `String "Implemented dashboard read path.");
-              ( "implemented_files",
-                `List
-                  [
-                    `Assoc
-                      [
-                        ("path", `String "web/src/flags/dashboard.tsx");
-                        ("change_summary", `String "Added searchable read-only dashboard.");
-                      ];
-                    `Assoc
-                      [
-                        ("path", `String "server/routes/flags.ts");
-                        ("change_summary", `String "Added paginated flag listing endpoint.");
-                      ];
-                  ] );
-              ( "technical_decisions",
-                `List
-                  [
-                    `Assoc
-                      [
-                        ("title", `String "Reuse admin table primitives");
-                        ("rationale", `String "Keeps the first release maintainable.");
-                      ];
-                  ] );
-              ( "added_dependencies",
-                `List
-                  [
-                    `Assoc
-                      [
-                        ("name", `String "none");
-                        ("reason", `String "Used existing repo dependencies only.");
-                      ];
-                  ] );
-            ])
+             [
+               ("summary", `String "Implemented dashboard read path.");
+               ( "implemented_files",
+                 `List
+                   [
+                     `Assoc
+                       [
+                         ("path", `String "web/src/flags/dashboard.tsx");
+                         ( "change_summary",
+                           `String "Added searchable read-only dashboard." );
+                       ];
+                     `Assoc
+                       [
+                         ("path", `String "server/routes/flags.ts");
+                         ( "change_summary",
+                           `String "Added paginated flag listing endpoint." );
+                       ];
+                   ] );
+               ( "technical_decisions",
+                 `List
+                   [
+                     `Assoc
+                       [
+                         ("title", `String "Reuse admin table primitives");
+                         ( "rationale",
+                           `String "Keeps the first release maintainable." );
+                       ];
+                   ] );
+               ( "added_dependencies",
+                 `List
+                   [
+                     `Assoc
+                       [
+                         ("name", `String "none");
+                         ( "reason",
+                           `String "Used existing repo dependencies only." );
+                       ];
+                   ] );
+             ])
     | "code_reviewer" ->
         Ok
           (`Assoc
-            [
-              ("status", tagged "ReviewApproved");
-              ("summary", `String "Implementation matches the approved scope.");
-              ( "issues_found",
-                `List
-                  [
-                    `Assoc
-                      [
-                        ("severity", tagged "Low");
-                        ("message", `String "Consider adding rate-limit coverage later.");
-                        ("file_hint", tagged_value "Some" (`String "server/routes/flags.ts"));
-                      ];
-                  ] );
-              ( "suggestions",
-                `List
-                  [
-                    `String "Add screenshots to the rollout ticket.";
-                    `String "Monitor slow queries after release.";
-                  ] );
-            ])
+             [
+               ("status", tagged "ReviewApproved");
+               ("summary", `String "Implementation matches the approved scope.");
+               ( "issues_found",
+                 `List
+                   [
+                     `Assoc
+                       [
+                         ("severity", tagged "Low");
+                         ( "message",
+                           `String "Consider adding rate-limit coverage later."
+                         );
+                         ( "file_hint",
+                           tagged_value "Some"
+                             (`String "server/routes/flags.ts") );
+                       ];
+                   ] );
+               ( "suggestions",
+                 `List
+                   [
+                     `String "Add screenshots to the rollout ticket.";
+                     `String "Monitor slow queries after release.";
+                   ] );
+             ])
     | other -> Alcotest.failf "unexpected inline agent %s" other
   in
   let context =
-    Camlflow.Runtime.Context.empty
-    |> fun context ->
+    Camlflow.Runtime.Context.empty |> fun context ->
     Camlflow.Runtime.Context.with_skills_directory context skills_dir
     |> fun context ->
-    Camlflow.Runtime.Context.with_prompt_skill_provider context prompt_skill_provider
+    Camlflow.Runtime.Context.with_prompt_skill_provider context
+      prompt_skill_provider
     |> fun context ->
-    Camlflow.Runtime.Context.with_inline_agent_provider context inline_agent_provider
+    Camlflow.Runtime.Context.with_inline_agent_provider context
+      inline_agent_provider
   in
   let result = run_program ~context ~input program in
   Alcotest.(check int) "approved dev workflow steps" 4 result.steps_run;
-  Alcotest.(check string) "first step kind" "local-skill"
-    (List.nth result.effect_steps 0).step_kind;
-  Alcotest.(check string) "second step name" "caveman"
-    (List.nth result.effect_steps 1).step_name;
-  Alcotest.(check string) "third step name" "the_engineer"
-    (List.nth result.effect_steps 2).step_name;
-  Alcotest.(check string) "fourth step name" "code_reviewer"
+  Alcotest.(check string)
+    "first step kind" "local-skill" (List.nth result.effect_steps 0).step_kind;
+  Alcotest.(check string)
+    "second step name" "caveman" (List.nth result.effect_steps 1).step_name;
+  Alcotest.(check string)
+    "third step name" "the_engineer" (List.nth result.effect_steps 2).step_name;
+  Alcotest.(check string)
+    "fourth step name" "code_reviewer"
     (List.nth result.effect_steps 3).step_name;
   let output =
-    match result.output with Some json -> json | None -> Alcotest.fail "expected output"
+    match result.output with
+    | Some json -> json
+    | None -> Alcotest.fail "expected output"
   in
   expect_string_field "tag" "Completed" output;
   let report = expect_assoc_field "value" output in
   let review = expect_assoc_field "review_report" report in
-  expect_string_field "summary" "Implementation matches the approved scope." review;
+  expect_string_field "summary" "Implementation matches the approved scope."
+    review;
   let status = expect_assoc_field "status" review in
   expect_string_field "tag" "ReviewApproved" status;
-  (match expect_assoc_field "next_steps" report with
+  match expect_assoc_field "next_steps" report with
   | `List [ `String first; `String second; `String third ] ->
-      Alcotest.(check string) "first next step"
+      Alcotest.(check string)
+        "first next step"
         "Share the requirements, code package, and review report with the team."
         first;
-      Alcotest.(check string) "second next step"
-        "Merge or ship the approved change." second;
-      Alcotest.(check string) "third next step"
-        "Monitor validation signals after rollout." third
+      Alcotest.(check string)
+        "second next step" "Merge or ship the approved change." second;
+      Alcotest.(check string)
+        "third next step" "Monitor validation signals after rollout." third
   | other ->
       Alcotest.failf "unexpected next_steps payload: %s"
-        (Yojson.Safe.to_string other))
+        (Yojson.Safe.to_string other)
 
 let test_invalid_provider_output_shape () =
   with_temp_dir "camlflow-provider-shape-" @@ fun dir ->
@@ -3268,11 +3505,11 @@ let main (name : string) : string =
   let program = check_file main in
   let context =
     Camlflow.Runtime.Context.with_agent_handler Camlflow.Runtime.Context.empty
-      "greeter"
-      (fun ~name:_ ~input:_ ~return_type:_ ~types:_ -> Ok (`Int 7))
+      "greeter" (fun ~name:_ ~input:_ ~return_type:_ ~types:_ -> Ok (`Int 7))
   in
   expect_error_contains "invalid provider output shape"
-    "provider output for agent greeter does not match declared return type string"
+    "provider output for agent greeter does not match declared return type \
+     string"
     (Camlflow.Runtime.execute ~context ~input:(`String "Ada") program)
 
 let test_provider_metadata_hooks () =
@@ -3283,7 +3520,9 @@ let test_provider_metadata_hooks () =
   let observed = ref [] in
   Unix.mkdir skills_dir 0o755;
   Unix.mkdir caveman_dir 0o755;
-  write_file (Filename.concat caveman_dir "SKILL.md") "# Caveman\n\nHooked local skill.\n";
+  write_file
+    (Filename.concat caveman_dir "SKILL.md")
+    "# Caveman\n\nHooked local skill.\n";
   write_file main
     {|
 skill caveman : prompt:string -> string = Skill.bind "caveman"
@@ -3297,8 +3536,7 @@ let main (prompt : string) : string =
 |};
   let program = check_file main in
   let context =
-    Camlflow.Runtime.Context.empty
-    |> fun context ->
+    Camlflow.Runtime.Context.empty |> fun context ->
     Camlflow.Runtime.Context.with_skills_directory context skills_dir
     |> fun context ->
     Camlflow.Runtime.Context.with_prompt_skill_provider context
@@ -3313,23 +3551,691 @@ let main (prompt : string) : string =
       (fun invocation ~output:_ -> observed := invocation :: !observed)
   in
   let result = run_program ~context ~input:(`String "hello") program in
-  Alcotest.(check string) "hooked output" "inline-output"
+  Alcotest.(check string)
+    "hooked output" "inline-output"
     (get_output_string result.output);
   match List.rev !observed with
   | [ skill_invocation; inline_invocation ] ->
-      Alcotest.(check string) "skill observer kind" "local-prompt-skill"
+      Alcotest.(check string)
+        "skill observer kind" "local-prompt-skill"
         (match skill_invocation.Camlflow.Runtime.Context.invocation_kind with
         | Camlflow.Runtime.Context.Local_prompt_skill -> "local-prompt-skill"
         | _ -> "unexpected");
-      Alcotest.(check bool) "skill markdown captured" true
+      Alcotest.(check bool)
+        "skill markdown captured" true
         (Option.is_some skill_invocation.invocation_markdown);
-      Alcotest.(check string) "inline observer kind" "inline-agent"
+      Alcotest.(check string)
+        "inline observer kind" "inline-agent"
         (match inline_invocation.Camlflow.Runtime.Context.invocation_kind with
         | Camlflow.Runtime.Context.Inline_agent -> "inline-agent"
         | _ -> "unexpected");
-      Alcotest.(check bool) "inline definition captured" true
+      Alcotest.(check bool)
+        "inline definition captured" true
         (Option.is_some inline_invocation.invocation_definition)
   | _ -> Alcotest.fail "expected exactly two observed invocations"
+
+let test_cli_lsp_command () =
+  let parsed = parse_cli [ "lsp" ] in
+  (match parsed.Camlflow.Cli.command with
+  | Camlflow.Cli.Lsp -> ()
+  | _ -> Alcotest.fail "expected lsp command");
+  match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "lsp validate failed: %s" error
+
+let test_lsp_definition_hover_and_rename () =
+  with_temp_dir "camlflow-lsp-feature-" @@ fun dir ->
+  let helpers = Filename.concat dir "helpers.cml" in
+  let main = Filename.concat dir "main.cml" in
+  let helpers_text =
+    {|
+type payload = { name : string }
+
+let make (name : string) : payload =
+  { name = name }
+|}
+  in
+  let main_text =
+    {|
+let main (name : string) : string =
+  let payload : Helpers.payload = Helpers.make name in
+  payload.name
+|}
+  in
+  write_file helpers helpers_text;
+  write_file main main_text;
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let helper_uri = Camlflow.Lsp_analysis.uri_of_path helpers in
+  let lines = String.split_on_char '\n' main_text in
+  let make_line = List.nth lines 2 in
+  let payload_line = List.nth lines 3 in
+  let make_character = substring_index make_line "Helpers.make" + 8 in
+  let payload_character = substring_index payload_line "payload" + 1 in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+               [
+                 ( "textDocument",
+                   `Assoc
+                     [
+                       ("uri", `String main_uri);
+                       ("version", `Int 1);
+                       ("text", `String main_text);
+                     ] );
+               ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+          "textDocument/definition"
+          ~params:
+            (`Assoc
+               [
+                 ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                 ( "position",
+                   `Assoc
+                     [ ("line", `Int 2); ("character", `Int make_character) ] );
+               ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 3)
+          "textDocument/hover"
+          ~params:
+            (`Assoc
+               [
+                 ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                 ( "position",
+                   `Assoc
+                     [ ("line", `Int 2); ("character", `Int make_character) ] );
+               ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 4)
+          "textDocument/prepareRename"
+          ~params:
+            (`Assoc
+               [
+                 ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                 ( "position",
+                   `Assoc
+                     [ ("line", `Int 3); ("character", `Int payload_character) ]
+                 );
+               ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 5)
+          "textDocument/rename"
+          ~params:
+            (`Assoc
+               [
+                 ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                 ( "position",
+                   `Assoc
+                     [ ("line", `Int 3); ("character", `Int payload_character) ]
+                 );
+                 ("newName", `String "result");
+               ]);
+      ]
+  in
+  let definition = find_rpc_response_by_id "2" messages in
+  let definition_json =
+    match definition.Camlflow.Rpc_protocol.response_result with
+    | Some json -> json
+    | None -> Alcotest.fail "missing definition result"
+  in
+  expect_string_field "uri" helper_uri definition_json;
+  let hover = find_rpc_response_by_id "3" messages in
+  let hover_json =
+    match hover.Camlflow.Rpc_protocol.response_result with
+    | Some json -> json
+    | None -> Alcotest.fail "missing hover result"
+  in
+  let contents = expect_assoc_field "contents" hover_json in
+  let hover_value =
+    match expect_assoc_field "value" contents with
+    | `String value -> value
+    | other ->
+        Alcotest.failf "unexpected hover payload %s"
+          (Yojson.Safe.to_string other)
+  in
+  Alcotest.(check bool) "hover non-empty" true (String.length hover_value > 0);
+  let prepare = find_rpc_response_by_id "4" messages in
+  let prepare_json =
+    match prepare.Camlflow.Rpc_protocol.response_result with
+    | Some json -> json
+    | None -> Alcotest.fail "missing prepareRename result"
+  in
+  expect_string_field "placeholder" "payload" prepare_json;
+  let rename = find_rpc_response_by_id "5" messages in
+  let rename_json =
+    match rename.Camlflow.Rpc_protocol.response_result with
+    | Some json -> json
+    | None -> Alcotest.fail "missing rename result"
+  in
+  match expect_assoc_field "changes" rename_json with
+  | `Assoc changes -> (
+      match List.assoc_opt main_uri changes with
+      | Some (`List edits) ->
+          Alcotest.(check int) "rename edit count" 2 (List.length edits);
+          List.iter
+            (fun edit -> expect_string_field "newText" "result" edit)
+            edits
+      | _ -> Alcotest.fail "rename did not include main file edits")
+  | other ->
+      Alcotest.failf "unexpected rename payload %s"
+        (Yojson.Safe.to_string other)
+
+let test_lsp_prepare_rename_uses_occurrence_range_for_qualified_symbol () =
+  with_temp_dir "camlflow-lsp-rename-qualified-" @@ fun dir ->
+  let helpers = Filename.concat dir "helpers.cml" in
+  let main = Filename.concat dir "main.cml" in
+  let helpers_text =
+    {|
+type payload = { name : string }
+
+let make (name : string) : payload =
+  { name = name }
+|}
+  in
+  let main_text =
+    {|
+let main (name : string) : Helpers.payload =
+  Helpers.make name
+|}
+  in
+  write_file helpers helpers_text;
+  write_file main main_text;
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let helper_uri = Camlflow.Lsp_analysis.uri_of_path helpers in
+  let lines = String.split_on_char '\n' main_text in
+  let make_line = List.nth lines 2 in
+  let make_start =
+    substring_index make_line "Helpers.make" + String.length "Helpers."
+  in
+  let make_character = make_start + 1 in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+               [
+                 ( "textDocument",
+                   `Assoc
+                     [
+                       ("uri", `String main_uri);
+                       ("version", `Int 1);
+                       ("text", `String main_text);
+                     ] );
+               ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+          "textDocument/prepareRename"
+          ~params:
+            (`Assoc
+               [
+                 ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                 ( "position",
+                   `Assoc
+                     [ ("line", `Int 2); ("character", `Int make_character) ] );
+               ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 3)
+          "textDocument/rename"
+          ~params:
+            (`Assoc
+               [
+                 ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                 ( "position",
+                   `Assoc
+                     [ ("line", `Int 2); ("character", `Int make_character) ] );
+                 ("newName", `String "build");
+               ]);
+      ]
+  in
+  let prepare = find_rpc_response_by_id "2" messages in
+  let prepare_json =
+    match prepare.Camlflow.Rpc_protocol.response_result with
+    | Some json -> json
+    | None -> Alcotest.fail "missing prepareRename result"
+  in
+  expect_string_field "placeholder" "make" prepare_json;
+  let prepare_range = expect_assoc_field "range" prepare_json in
+  let prepare_start = expect_assoc_field "start" prepare_range in
+  let prepare_end = expect_assoc_field "end" prepare_range in
+  expect_int_field "line" 2 prepare_start;
+  expect_int_field "character" make_start prepare_start;
+  expect_int_field "line" 2 prepare_end;
+  expect_int_field "character" (make_start + String.length "make") prepare_end;
+  let rename = find_rpc_response_by_id "3" messages in
+  let rename_json =
+    match rename.Camlflow.Rpc_protocol.response_result with
+    | Some json -> json
+    | None -> Alcotest.fail "missing rename result"
+  in
+  match expect_assoc_field "changes" rename_json with
+  | `Assoc changes -> (
+      match
+        (List.assoc_opt main_uri changes, List.assoc_opt helper_uri changes)
+      with
+      | Some (`List [ main_edit ]), Some (`List [ helper_edit ]) ->
+          expect_string_field "newText" "build" main_edit;
+          expect_string_field "newText" "build" helper_edit;
+          let main_range = expect_assoc_field "range" main_edit in
+          let main_start = expect_assoc_field "start" main_range in
+          let main_end = expect_assoc_field "end" main_range in
+          expect_int_field "line" 2 main_start;
+          expect_int_field "character" make_start main_start;
+          expect_int_field "line" 2 main_end;
+          expect_int_field "character"
+            (make_start + String.length "make")
+            main_end
+      | _ ->
+          Alcotest.failf "unexpected rename changes payload %s"
+            (Yojson.Safe.to_string (`Assoc changes)))
+  | other ->
+      Alcotest.failf "unexpected rename payload %s"
+        (Yojson.Safe.to_string other)
+
+let test_lsp_diagnostics_for_unbound_value () =
+  with_temp_dir "camlflow-lsp-diagnostics-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  let main_text = {|
+let main : string =
+  missing
+|} in
+  write_file main main_text;
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+               [
+                 ( "textDocument",
+                   `Assoc
+                     [
+                       ("uri", `String main_uri);
+                       ("version", `Int 1);
+                       ("text", `String main_text);
+                     ] );
+               ]);
+      ]
+  in
+  let diagnostics =
+    find_rpc_request "textDocument/publishDiagnostics" messages
+  in
+  let params =
+    match diagnostics.Camlflow.Rpc_protocol.request_params with
+    | Some params -> params
+    | None -> Alcotest.fail "missing diagnostics params"
+  in
+  expect_string_field "uri" main_uri params;
+  match expect_assoc_field "diagnostics" params with
+  | `List diagnostics ->
+      Alcotest.(check bool) "diagnostics emitted" true (diagnostics <> []);
+      let messages =
+        List.map
+          (fun diagnostic ->
+            match expect_assoc_field "message" diagnostic with
+            | `String value -> value
+            | other ->
+                Alcotest.failf "unexpected diagnostic payload %s"
+                  (Yojson.Safe.to_string other))
+          diagnostics
+      in
+      Alcotest.(check bool)
+        "diagnostic mentions missing" true
+        (List.exists
+           (fun message -> contains_substring message "missing")
+           messages)
+  | other ->
+      Alcotest.failf "unexpected diagnostics payload %s"
+        (Yojson.Safe.to_string other)
+
+let test_lsp_references_and_document_symbols () =
+  with_temp_dir "camlflow-lsp-refs-symbols-" @@ fun dir ->
+  let helpers = Filename.concat dir "helpers.cml" in
+  let main = Filename.concat dir "main.cml" in
+  let helpers_text =
+    {|
+type payload = { name : string }
+
+let make (name : string) : payload =
+  { name = name }
+|}
+  in
+  let main_text =
+    {|
+open Helpers
+
+let main (name : string) : string =
+  let payload : payload = make name in
+  payload.name
+|}
+  in
+  write_file helpers helpers_text;
+  write_file main main_text;
+  let helper_uri = Camlflow.Lsp_analysis.uri_of_path helpers in
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let lines = String.split_on_char '\n' main_text in
+  let make_line = List.nth lines 4 in
+  let make_character = substring_index make_line "make" + 1 in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+               [
+                 ( "textDocument",
+                   `Assoc
+                     [
+                       ("uri", `String main_uri);
+                       ("version", `Int 1);
+                       ("text", `String main_text);
+                     ] );
+               ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+          "textDocument/references"
+          ~params:
+            (`Assoc
+               [
+                 ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                 ( "position",
+                   `Assoc
+                     [ ("line", `Int 4); ("character", `Int make_character) ] );
+                 ("context", `Assoc [ ("includeDeclaration", `Bool false) ]);
+               ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 3)
+          "textDocument/references"
+          ~params:
+            (`Assoc
+               [
+                 ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                 ( "position",
+                   `Assoc
+                     [ ("line", `Int 4); ("character", `Int make_character) ] );
+                 ("context", `Assoc [ ("includeDeclaration", `Bool true) ]);
+               ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 4)
+          "textDocument/documentSymbol"
+          ~params:
+            (`Assoc [ ("textDocument", `Assoc [ ("uri", `String helper_uri) ]) ]);
+      ]
+  in
+  let references_without_declaration = find_rpc_response_by_id "2" messages in
+  (match
+     references_without_declaration.Camlflow.Rpc_protocol.response_result
+   with
+  | Some (`List [ reference ]) -> expect_string_field "uri" main_uri reference
+  | Some other ->
+      Alcotest.failf "unexpected references without declaration payload %s"
+        (Yojson.Safe.to_string other)
+  | None -> Alcotest.fail "missing references without declaration result");
+  let references_with_declaration = find_rpc_response_by_id "3" messages in
+  (match references_with_declaration.Camlflow.Rpc_protocol.response_result with
+  | Some (`List references) ->
+      Alcotest.(check int)
+        "references with declaration count" 2 (List.length references);
+      let uris =
+        List.map
+          (fun reference ->
+            match expect_assoc_field "uri" reference with
+            | `String uri -> uri
+            | other ->
+                Alcotest.failf "unexpected reference payload %s"
+                  (Yojson.Safe.to_string other))
+          references
+      in
+      Alcotest.(check bool)
+        "includes helper declaration" true (List.mem helper_uri uris);
+      Alcotest.(check bool)
+        "includes main reference" true (List.mem main_uri uris)
+  | Some other ->
+      Alcotest.failf "unexpected references with declaration payload %s"
+        (Yojson.Safe.to_string other)
+  | None -> Alcotest.fail "missing references with declaration result");
+  let document_symbols = find_rpc_response_by_id "4" messages in
+  match document_symbols.Camlflow.Rpc_protocol.response_result with
+  | Some (`List [ payload_symbol; make_symbol ]) ->
+      expect_string_field "name" "payload" payload_symbol;
+      expect_int_field "kind" 23 payload_symbol;
+      (match expect_assoc_field "children" payload_symbol with
+      | `List [ field_symbol ] ->
+          expect_string_field "name" "name" field_symbol;
+          expect_int_field "kind" 8 field_symbol
+      | other ->
+          Alcotest.failf "unexpected payload children %s"
+            (Yojson.Safe.to_string other));
+      expect_string_field "name" "make" make_symbol;
+      expect_int_field "kind" 12 make_symbol
+  | Some other ->
+      Alcotest.failf "unexpected document symbol payload %s"
+        (Yojson.Safe.to_string other)
+  | None -> Alcotest.fail "missing document symbols result"
+
+let test_lsp_did_change_republishes_diagnostics () =
+  with_temp_dir "camlflow-lsp-did-change-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  let invalid_text = {|
+let main : string =
+  missing
+|} in
+  let fixed_text = {|
+let main : string =
+  "ok"
+|} in
+  write_file main fixed_text;
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+               [
+                 ( "textDocument",
+                   `Assoc
+                     [
+                       ("uri", `String main_uri);
+                       ("version", `Int 1);
+                       ("text", `String invalid_text);
+                     ] );
+               ]);
+        Camlflow.Rpc_protocol.request "textDocument/didChange"
+          ~params:
+            (`Assoc
+               [
+                 ( "textDocument",
+                   `Assoc [ ("uri", `String main_uri); ("version", `Int 2) ] );
+                 ( "contentChanges",
+                   `List [ `Assoc [ ("text", `String fixed_text) ] ] );
+               ]);
+      ]
+  in
+  match find_rpc_requests "textDocument/publishDiagnostics" messages with
+  | [ first; second ] -> (
+      let first_params =
+        match first.Camlflow.Rpc_protocol.request_params with
+        | Some params -> params
+        | None -> Alcotest.fail "missing first diagnostics params"
+      in
+      let second_params =
+        match second.Camlflow.Rpc_protocol.request_params with
+        | Some params -> params
+        | None -> Alcotest.fail "missing second diagnostics params"
+      in
+      expect_string_field "uri" main_uri first_params;
+      expect_int_field "version" 1 first_params;
+      (match expect_assoc_field "diagnostics" first_params with
+      | `List diagnostics ->
+          Alcotest.(check bool)
+            "initial diagnostics emitted" true (diagnostics <> [])
+      | other ->
+          Alcotest.failf "unexpected first diagnostics payload %s"
+            (Yojson.Safe.to_string other));
+      expect_string_field "uri" main_uri second_params;
+      expect_int_field "version" 2 second_params;
+      match expect_assoc_field "diagnostics" second_params with
+      | `List diagnostics ->
+          Alcotest.(check int)
+            "changed diagnostics cleared" 0 (List.length diagnostics)
+      | other ->
+          Alcotest.failf "unexpected second diagnostics payload %s"
+            (Yojson.Safe.to_string other))
+  | other ->
+      Alcotest.failf "expected two publishDiagnostics notifications, got %d"
+        (List.length other)
+
+let test_lsp_did_close_reverts_to_on_disk_analysis () =
+  with_temp_dir "camlflow-lsp-did-close-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  let invalid_text = {|
+let main : string =
+  missing
+|} in
+  let fixed_text = {|
+let main : string =
+  "ok"
+|} in
+  write_file main fixed_text;
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+               [
+                 ( "textDocument",
+                   `Assoc
+                     [
+                       ("uri", `String main_uri);
+                       ("version", `Int 1);
+                       ("text", `String invalid_text);
+                     ] );
+               ]);
+        Camlflow.Rpc_protocol.request "textDocument/didClose"
+          ~params:
+            (`Assoc [ ("textDocument", `Assoc [ ("uri", `String main_uri) ]) ]);
+      ]
+  in
+  match find_rpc_requests "textDocument/publishDiagnostics" messages with
+  | [ first; second ] -> (
+      let first_params =
+        match first.Camlflow.Rpc_protocol.request_params with
+        | Some params -> params
+        | None -> Alcotest.fail "missing first diagnostics params"
+      in
+      let second_params =
+        match second.Camlflow.Rpc_protocol.request_params with
+        | Some params -> params
+        | None -> Alcotest.fail "missing second diagnostics params"
+      in
+      expect_string_field "uri" main_uri first_params;
+      expect_int_field "version" 1 first_params;
+      (match expect_assoc_field "diagnostics" first_params with
+      | `List diagnostics ->
+          Alcotest.(check bool)
+            "opened diagnostics emitted" true (diagnostics <> [])
+      | other ->
+          Alcotest.failf "unexpected first diagnostics payload %s"
+            (Yojson.Safe.to_string other));
+      expect_string_field "uri" main_uri second_params;
+      Alcotest.(check bool)
+        "closed diagnostics omit version" true
+        (Option.is_none (assoc_field "version" second_params));
+      match expect_assoc_field "diagnostics" second_params with
+      | `List diagnostics ->
+          Alcotest.(check int)
+            "closed diagnostics cleared" 0 (List.length diagnostics)
+      | other ->
+          Alcotest.failf "unexpected second diagnostics payload %s"
+            (Yojson.Safe.to_string other))
+  | other ->
+      Alcotest.failf "expected two publishDiagnostics notifications, got %d"
+        (List.length other)
+
+let test_lsp_rename_rejects_nonrenameable_field () =
+  with_temp_dir "camlflow-lsp-rename-field-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  let main_text =
+    {|
+type payload = { name : string }
+
+let main (name : string) : string =
+  let payload : payload = { name = name } in
+  payload.name
+|}
+  in
+  write_file main main_text;
+  let main_uri = Camlflow.Lsp_analysis.uri_of_path main in
+  let lines = String.split_on_char '\n' main_text in
+  let field_line = List.nth lines 5 in
+  let field_character = substring_index field_line ".name" + 2 in
+  let messages =
+    run_lsp_server_with_messages
+      [
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+          "initialize" ~params:(`Assoc []);
+        Camlflow.Rpc_protocol.request "textDocument/didOpen"
+          ~params:
+            (`Assoc
+               [
+                 ( "textDocument",
+                   `Assoc
+                     [
+                       ("uri", `String main_uri);
+                       ("version", `Int 1);
+                       ("text", `String main_text);
+                     ] );
+               ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+          "textDocument/prepareRename"
+          ~params:
+            (`Assoc
+               [
+                 ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                 ( "position",
+                   `Assoc
+                     [ ("line", `Int 5); ("character", `Int field_character) ]
+                 );
+               ]);
+        Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 3)
+          "textDocument/rename"
+          ~params:
+            (`Assoc
+               [
+                 ("textDocument", `Assoc [ ("uri", `String main_uri) ]);
+                 ( "position",
+                   `Assoc
+                     [ ("line", `Int 5); ("character", `Int field_character) ]
+                 );
+                 ("newName", `String "label");
+               ]);
+      ]
+  in
+  let prepare = find_rpc_response_by_id "2" messages in
+  (match prepare.Camlflow.Rpc_protocol.response_result with
+  | Some `Null -> ()
+  | Some other ->
+      Alcotest.failf "expected null prepareRename result, got %s"
+        (Yojson.Safe.to_string other)
+  | None -> Alcotest.fail "missing prepareRename result");
+  let rename = find_rpc_response_by_id "3" messages in
+  match rename.Camlflow.Rpc_protocol.response_error with
+  | Some error ->
+      Alcotest.(check int) "rename error code" (-32801) error.error_code;
+      Alcotest.(check string)
+        "rename error message" "symbol at position is not renameable"
+        error.error_message
+  | None -> Alcotest.fail "missing rename error"
 
 let () =
   Alcotest.run "camlflow"
@@ -3337,7 +4243,8 @@ let () =
       ( "mvp",
         [
           Alcotest.test_case "parse source" `Quick test_parse_source;
-          Alcotest.test_case "multiline quoted strings preserve agent skill text" `Quick
+          Alcotest.test_case
+            "multiline quoted strings preserve agent skill text" `Quick
             test_multiline_quoted_strings_preserve_agent_skill_text;
           Alcotest.test_case
             "return-annotated function without param annotations fails cleanly"
@@ -3360,6 +4267,7 @@ let () =
             test_cli_serve_stdio_parse;
           Alcotest.test_case "cli serve requires stdio" `Quick
             test_cli_serve_requires_stdio;
+          Alcotest.test_case "cli lsp command" `Quick test_cli_lsp_command;
           Alcotest.test_case "cli run provider flags parse" `Quick
             test_cli_run_provider_flags_parse;
           Alcotest.test_case "cli provider flags require provider" `Quick
@@ -3379,15 +4287,15 @@ let () =
             `Quick
             test_project_config_load_file_normalizes_relative_and_absolute_paths;
           Alcotest.test_case
-            "project config invalid enum includes path and field"
-            `Quick test_project_config_invalid_enum_includes_path_and_field;
+            "project config invalid enum includes path and field" `Quick
+            test_project_config_invalid_enum_includes_path_and_field;
           Alcotest.test_case
-            "project config wrong shape includes path and field"
-            `Quick test_project_config_wrong_shape_includes_path_and_field;
-          Alcotest.test_case "project config invalid provider config key rejected"
-            `Quick test_project_config_invalid_provider_config_key_rejected;
+            "project config wrong shape includes path and field" `Quick
+            test_project_config_wrong_shape_includes_path_and_field;
           Alcotest.test_case
-            "project config bad path includes path and field"
+            "project config invalid provider config key rejected" `Quick
+            test_project_config_invalid_provider_config_key_rejected;
+          Alcotest.test_case "project config bad path includes path and field"
             `Quick test_project_config_bad_path_value_includes_path_and_field;
           Alcotest.test_case "project config unknown field rejected" `Quick
             test_project_config_unknown_field_rejected;
@@ -3400,14 +4308,12 @@ let () =
           Alcotest.test_case "cli explicit program overrides config program"
             `Quick test_cli_explicit_program_overrides_project_config_program;
           Alcotest.test_case
-            "cli explicit provider setting overrides config setting"
-            `Quick
+            "cli explicit provider setting overrides config setting" `Quick
             test_cli_explicit_provider_setting_overrides_project_config_setting;
           Alcotest.test_case "cli config-backed run keeps input validation"
             `Quick test_cli_project_config_keeps_run_input_validation;
           Alcotest.test_case
-            "cli check uses project program without run-only defaults"
-            `Quick
+            "cli check uses project program without run-only defaults" `Quick
             test_cli_check_uses_project_program_without_run_only_defaults;
           Alcotest.test_case "rpc protocol request roundtrip" `Quick
             test_rpc_protocol_request_roundtrip;
@@ -3431,12 +4337,12 @@ let () =
             test_rpc_server_trace_payload;
           Alcotest.test_case "rpc server end-to-end run" `Quick
             test_rpc_server_end_to_end_run;
-          Alcotest.test_case "rpc server end-to-end progress notifications" `Quick
-            test_rpc_server_end_to_end_progress_notifications;
-          Alcotest.test_case "rpc server initialize notification preferences" `Quick
-            test_rpc_server_initialize_notification_preferences;
-          Alcotest.test_case "rpc server initialize can disable diagnostics" `Quick
-            test_rpc_server_initialize_can_disable_diagnostics;
+          Alcotest.test_case "rpc server end-to-end progress notifications"
+            `Quick test_rpc_server_end_to_end_progress_notifications;
+          Alcotest.test_case "rpc server initialize notification preferences"
+            `Quick test_rpc_server_initialize_notification_preferences;
+          Alcotest.test_case "rpc server initialize can disable diagnostics"
+            `Quick test_rpc_server_initialize_can_disable_diagnostics;
           Alcotest.test_case "rpc server end-to-end requires initialize" `Quick
             test_rpc_server_end_to_end_requires_initialize;
           Alcotest.test_case "rpc server compile includes IR version" `Quick
@@ -3445,6 +4351,22 @@ let () =
             test_rpc_server_invalid_request_error;
           Alcotest.test_case "rpc server method not found error" `Quick
             test_rpc_server_method_not_found_error;
+          Alcotest.test_case "lsp definition hover and rename" `Quick
+            test_lsp_definition_hover_and_rename;
+          Alcotest.test_case
+            "lsp prepareRename uses occurrence range for qualified symbol"
+            `Quick
+            test_lsp_prepare_rename_uses_occurrence_range_for_qualified_symbol;
+          Alcotest.test_case "lsp diagnostics for unbound value" `Quick
+            test_lsp_diagnostics_for_unbound_value;
+          Alcotest.test_case "lsp references and document symbols" `Quick
+            test_lsp_references_and_document_symbols;
+          Alcotest.test_case "lsp didChange republishes diagnostics" `Quick
+            test_lsp_did_change_republishes_diagnostics;
+          Alcotest.test_case "lsp didClose reverts to on-disk analysis" `Quick
+            test_lsp_did_close_reverts_to_on_disk_analysis;
+          Alcotest.test_case "lsp rename rejects nonrenameable field" `Quick
+            test_lsp_rename_rejects_nonrenameable_field;
           Alcotest.test_case "rpc server check failure error" `Quick
             test_rpc_server_check_failure_error;
           Alcotest.test_case "rpc server compile failure error" `Quick
@@ -3453,16 +4375,17 @@ let () =
             test_rpc_server_run_failure_error;
           Alcotest.test_case "rpc server effect error propagation" `Quick
             test_rpc_server_effect_error_propagation;
-          Alcotest.test_case "rpc server cancellation returns request cancelled" `Quick
-            test_rpc_server_cancellation_returns_request_cancelled;
+          Alcotest.test_case "rpc server cancellation returns request cancelled"
+            `Quick test_rpc_server_cancellation_returns_request_cancelled;
           Alcotest.test_case
             "rpc server cancellation after effect response before run finish"
             `Quick
             test_rpc_server_cancellation_after_effect_response_before_run_finish;
-          Alcotest.test_case "rpc server cancellation before next effect request" `Quick
+          Alcotest.test_case
+            "rpc server cancellation before next effect request" `Quick
             test_rpc_server_cancellation_before_next_effect_request;
-          Alcotest.test_case "rpc server relays output chunk notifications" `Quick
-            test_rpc_server_relays_output_chunk_notifications;
+          Alcotest.test_case "rpc server relays output chunk notifications"
+            `Quick test_rpc_server_relays_output_chunk_notifications;
           Alcotest.test_case "provider schema for tuple and option" `Quick
             test_provider_schema_for_tuple_and_option;
           Alcotest.test_case "provider schema for named types" `Quick
@@ -3495,8 +4418,7 @@ let () =
           Alcotest.test_case "provider wrapped response rejects extra fields"
             `Quick test_provider_wrapped_response_json_rejects_extra_fields;
           Alcotest.test_case
-            "provider wrapped response rejects duplicate result fields"
-            `Quick
+            "provider wrapped response rejects duplicate result fields" `Quick
             test_provider_wrapped_response_json_rejects_duplicate_result_fields;
           Alcotest.test_case "codex inline temperature fails fast" `Quick
             test_codex_inline_temperature_fails_fast;
@@ -3507,8 +4429,8 @@ let () =
           Alcotest.test_case "opencode parse wrapped response" `Quick
             test_opencode_parse_wrapped_response;
           Alcotest.test_case
-            "opencode parse wrapped response rejects extra fields"
-            `Quick test_opencode_parse_wrapped_response_rejects_extra_fields;
+            "opencode parse wrapped response rejects extra fields" `Quick
+            test_opencode_parse_wrapped_response_rejects_extra_fields;
           Alcotest.test_case "opencode error event message" `Quick
             test_opencode_error_event_message;
           Alcotest.test_case "opencode inline temperature fails fast" `Quick
@@ -3517,8 +4439,7 @@ let () =
             test_wrong_argument_labels_fail;
           Alcotest.test_case "unsupported library/module call fails" `Quick
             test_unsupported_library_module_call_fails;
-          Alcotest.test_case "zero-arg main runs" `Quick
-            test_zero_arg_main_runs;
+          Alcotest.test_case "zero-arg main runs" `Quick test_zero_arg_main_runs;
           Alcotest.test_case "check ignores unrelated broken files" `Quick
             test_check_ignores_unrelated_broken_files;
           Alcotest.test_case "check run and IR roundtrip" `Quick
@@ -3547,25 +4468,20 @@ let () =
             test_option_helper_builtins;
           Alcotest.test_case "bool match patterns" `Quick
             test_bool_match_patterns;
-          Alcotest.test_case "float operators" `Quick
-            test_float_operators;
+          Alcotest.test_case "float operators" `Quick test_float_operators;
           Alcotest.test_case "default provider hook for bound agent" `Quick
             test_default_provider_hook_for_bound_agent;
           Alcotest.test_case
-            "inline agent typed response branches with if and match"
-            `Quick test_inline_agent_typed_response_branches_with_if_and_match;
-          Alcotest.test_case
-            "inline agent typed response retries recursively" `Quick
-            test_inline_agent_typed_response_retries_recursively;
-          Alcotest.test_case
-            "dev workflow example awaits clarification" `Quick
+            "inline agent typed response branches with if and match" `Quick
+            test_inline_agent_typed_response_branches_with_if_and_match;
+          Alcotest.test_case "inline agent typed response retries recursively"
+            `Quick test_inline_agent_typed_response_retries_recursively;
+          Alcotest.test_case "dev workflow example awaits clarification" `Quick
             test_dev_workflow_example_awaits_clarification;
-          Alcotest.test_case
-            "dev workflow example waits for approval" `Quick
+          Alcotest.test_case "dev workflow example waits for approval" `Quick
             test_dev_workflow_example_waits_for_approval;
-          Alcotest.test_case
-            "dev workflow example completes after approval" `Quick
-            test_dev_workflow_example_completes_after_approval;
+          Alcotest.test_case "dev workflow example completes after approval"
+            `Quick test_dev_workflow_example_completes_after_approval;
           Alcotest.test_case "invalid provider output shape" `Quick
             test_invalid_provider_output_shape;
           Alcotest.test_case "provider metadata hooks" `Quick

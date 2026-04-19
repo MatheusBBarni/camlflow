@@ -1,14 +1,5 @@
-type position = {
-  line : int;
-  column : int;
-  offset : int;
-}
-
-type t = {
-  file : string;
-  start_pos : position;
-  end_pos : position;
-}
+type position = { line : int; column : int; offset : int }
+type t = { file : string; start_pos : position; end_pos : position }
 
 let ( let* ) = Result.bind
 
@@ -34,8 +25,8 @@ let none : t =
   }
 
 let to_string (loc : t) : string =
-  Printf.sprintf "%s:%d:%d-%d:%d" loc.file loc.start_pos.line loc.start_pos.column
-    loc.end_pos.line loc.end_pos.column
+  Printf.sprintf "%s:%d:%d-%d:%d" loc.file loc.start_pos.line
+    loc.start_pos.column loc.end_pos.line loc.end_pos.column
 
 let position_to_yojson (pos : position) : Yojson.Safe.t =
   `Assoc

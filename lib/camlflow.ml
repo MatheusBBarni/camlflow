@@ -13,6 +13,8 @@ module Effect_bridge = Effect_bridge
 module Rpc_protocol = Rpc_protocol
 module Rpc_stdio = Rpc_stdio
 module Rpc_server = Rpc_server
+module Lsp_analysis = Lsp_analysis
+module Lsp_server = Lsp_server
 module Providers_codex = Providers_codex
 module Providers_opencode = Providers_opencode
 module Providers = Providers
@@ -20,4 +22,4 @@ module Cli = Cli
 module Project_config = Project_config
 
 let version = "0.2.0-dev"
-let about = "CamlFlow MVP: typed parser, checker, IR, runtime, and CLI." 
+let about = "CamlFlow MVP: typed parser, checker, IR, runtime, and CLI."

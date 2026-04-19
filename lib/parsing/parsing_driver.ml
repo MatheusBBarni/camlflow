@@ -24,6 +24,7 @@ let parse_string ?(path = "<string>") (source : string) :
   let* module_ = parse_module ~module_name ~path source in
   Ok { Syntax.Ast.root_module = module_name; modules = [ module_ ] }
 
-let parse_file ?module_name (path : string) : (Syntax.Ast.module_, error) result =
+let parse_file ?module_name (path : string) : (Syntax.Ast.module_, error) result
+    =
   let source = In_channel.with_open_bin path In_channel.input_all in
   parse_module ?module_name ~path source

@@ -20,16 +20,9 @@ type typ =
   | TVariant of qname
   | TFunc of param_type list * typ
 
-and param_type = {
-  param_label : string option;
-  param_typ : typ;
-}
+and param_type = { param_label : string option; param_typ : typ }
 
-type record_field = {
-  field_name : string;
-  field_typ : typ;
-  field_loc : Loc.t;
-}
+type record_field = { field_name : string; field_typ : typ; field_loc : Loc.t }
 
 type variant_ctor = {
   ctor_name : string;
@@ -55,10 +48,7 @@ type param = {
   param_loc : Loc.t;
 }
 
-type pattern = {
-  pattern_loc : Loc.t;
-  pattern_desc : pattern_desc;
-}
+type pattern = { pattern_loc : Loc.t; pattern_desc : pattern_desc }
 
 and pattern_desc =
   | PWildcard
@@ -68,10 +58,7 @@ and pattern_desc =
   | PRecord of (string * pattern) list
   | PConstruct of qname * pattern list
 
-type expr = {
-  expr_loc : Loc.t;
-  expr_desc : expr_desc;
-}
+type expr = { expr_loc : Loc.t; expr_desc : expr_desc }
 
 and expr_desc =
   | ELiteral of literal
@@ -87,11 +74,7 @@ and expr_desc =
   | EApply of expr * argument list
   | ELambda of param list * expr
 
-and argument = {
-  arg_label : string option;
-  arg_value : expr;
-  arg_loc : Loc.t;
-}
+and argument = { arg_label : string option; arg_value : expr; arg_loc : Loc.t }
 
 and let_star = {
   let_star_name : string;
@@ -99,11 +82,7 @@ and let_star = {
   let_star_loc : Loc.t;
 }
 
-and case = {
-  case_pattern : pattern;
-  case_body : expr;
-  case_loc : Loc.t;
-}
+and case = { case_pattern : pattern; case_body : expr; case_loc : Loc.t }
 
 and binding = {
   binding_name : string;
@@ -124,9 +103,7 @@ type agent_definition = {
   define_loc : Loc.t;
 }
 
-type callable_body =
-  | Bind_target of string
-  | Inline_agent of agent_definition
+type callable_body = Bind_target of string | Inline_agent of agent_definition
 
 type callable_decl = {
   callable_name : string;
@@ -151,13 +128,9 @@ type module_ = {
   module_loc : Loc.t;
 }
 
-type program = {
-  root_module : qname;
-  modules : module_ list;
-}
+type program = { root_module : qname; modules : module_ list }
 
 let ir_version = "0.1.0"
-
 let ( let* ) = Result.bind
 
 let all results =
@@ -203,10 +176,12 @@ let qname_of_yojson = function
   | _ -> Error "expected string qualified name"
 
 let literal_to_yojson = function
-  | LString value -> `Assoc [ ("kind", `String "string"); ("value", `String value) ]
+  | LString value ->
+      `Assoc [ ("kind", `String "string"); ("value", `String value) ]
   | LInt value -> `Assoc [ ("kind", `String "int"); ("value", `Int value) ]
   | LBool value -> `Assoc [ ("kind", `String "bool"); ("value", `Bool value) ]
-  | LFloat value -> `Assoc [ ("kind", `String "float"); ("value", `Float value) ]
+  | LFloat value ->
+      `Assoc [ ("kind", `String "float"); ("value", `Float value) ]
   | LUnit -> `Assoc [ ("kind", `String "unit") ]
 
 let literal_of_yojson = function
@@ -285,7 +260,9 @@ and typ_of_yojson = function
           let* name = required_field fields "name" qname_of_yojson in
           Ok (TVariant name)
       | Some (`String "func") ->
-          let* params = required_list_field fields "params" param_type_of_yojson in
+          let* params =
+            required_list_field fields "params" param_type_of_yojson
+          in
           let* result = required_field fields "result" typ_of_yojson in
           Ok (TFunc (params, result))
       | _ -> Error "unknown type kind")
@@ -374,7 +351,8 @@ let variant_ctor_of_yojson = function
   | _ -> Error "expected variant ctor JSON object"
 
 let type_decl_kind_to_yojson = function
-  | Alias typ -> `Assoc [ ("kind", `String "alias"); ("typ", typ_to_yojson typ) ]
+  | Alias typ ->
+      `Assoc [ ("kind", `String "alias"); ("typ", typ_to_yojson typ) ]
   | Record fields ->
       `Assoc
         [
@@ -395,10 +373,14 @@ let type_decl_kind_of_yojson = function
           let* typ = required_field fields "typ" typ_of_yojson in
           Ok (Alias typ)
       | Some (`String "record") ->
-          let* items = required_list_field fields "fields" record_field_of_yojson in
+          let* items =
+            required_list_field fields "fields" record_field_of_yojson
+          in
           Ok (Record items)
       | Some (`String "variant") ->
-          let* items = required_list_field fields "ctors" variant_ctor_of_yojson in
+          let* items =
+            required_list_field fields "ctors" variant_ctor_of_yojson
+          in
           Ok (Variant items)
       | _ -> Error "unknown type declaration kind")
   | _ -> Error "expected type declaration kind JSON object"
@@ -440,7 +422,11 @@ let rec pattern_to_yojson (pattern : pattern) : Yojson.Safe.t =
               `List
                 (List.map
                    (fun (name, item) ->
-                     `Assoc [ ("name", `String name); ("pattern", pattern_to_yojson item) ])
+                     `Assoc
+                       [
+                         ("name", `String name);
+                         ("pattern", pattern_to_yojson item);
+                       ])
                    fields) );
           ]
     | PConstruct (name, args) ->
@@ -478,8 +464,12 @@ and pattern_desc_of_yojson = function
           let* fields =
             required_list_field fields "fields" (function
               | `Assoc item_fields ->
-                  let* name = required_field item_fields "name" string_of_yojson in
-                  let* pattern = required_field item_fields "pattern" pattern_of_yojson in
+                  let* name =
+                    required_field item_fields "name" string_of_yojson
+                  in
+                  let* pattern =
+                    required_field item_fields "pattern" pattern_of_yojson
+                  in
                   Ok (name, pattern)
               | _ -> Error "expected record pattern field object")
           in
@@ -494,8 +484,10 @@ and pattern_desc_of_yojson = function
 and expr_to_yojson (expr : expr) : Yojson.Safe.t =
   let body =
     match expr.expr_desc with
-    | ELiteral lit -> `Assoc [ ("kind", `String "literal"); ("value", literal_to_yojson lit) ]
-    | EVar name -> `Assoc [ ("kind", `String "var"); ("name", qname_to_yojson name) ]
+    | ELiteral lit ->
+        `Assoc [ ("kind", `String "literal"); ("value", literal_to_yojson lit) ]
+    | EVar name ->
+        `Assoc [ ("kind", `String "var"); ("name", qname_to_yojson name) ]
     | ETuple items ->
         `Assoc
           [
@@ -510,7 +502,10 @@ and expr_to_yojson (expr : expr) : Yojson.Safe.t =
               `List
                 (List.map
                    (fun (name, item) ->
-                     `Assoc [ ("name", `String name); ("value", expr_to_yojson item) ])
+                     `Assoc
+                       [
+                         ("name", `String name); ("value", expr_to_yojson item);
+                       ])
                    fields) );
           ]
     | EField (target, field) ->
@@ -597,8 +592,12 @@ and expr_desc_of_yojson = function
           let* items =
             required_list_field fields "fields" (function
               | `Assoc item_fields ->
-                  let* name = required_field item_fields "name" string_of_yojson in
-                  let* value = required_field item_fields "value" expr_of_yojson in
+                  let* name =
+                    required_field item_fields "name" string_of_yojson
+                  in
+                  let* value =
+                    required_field item_fields "value" expr_of_yojson
+                  in
                   Ok (name, value)
               | _ -> Error "expected record field object")
           in
@@ -643,9 +642,7 @@ and argument_to_yojson (arg : argument) : Yojson.Safe.t =
   `Assoc
     [
       ( "label",
-        match arg.arg_label with
-        | None -> `Null
-        | Some value -> `String value );
+        match arg.arg_label with None -> `Null | Some value -> `String value );
       ("value", expr_to_yojson arg.arg_value);
       ("loc", Loc.to_yojson arg.arg_loc);
     ]
@@ -710,10 +707,14 @@ and binding_to_yojson (binding : binding) : Yojson.Safe.t =
 and binding_of_yojson = function
   | `Assoc fields ->
       let* binding_name = required_field fields "name" string_of_yojson in
-      let* binding_params = required_list_field fields "params" param_of_yojson in
+      let* binding_params =
+        required_list_field fields "params" param_of_yojson
+      in
       let* binding_type = required_field fields "type" typ_of_yojson in
       let* binding_body = required_field fields "body" expr_of_yojson in
-      let* binding_recursive = required_field fields "recursive" bool_of_yojson in
+      let* binding_recursive =
+        required_field fields "recursive" bool_of_yojson
+      in
       let* binding_loc = required_field fields "loc" Loc.of_yojson in
       Ok
         {
@@ -754,7 +755,8 @@ let agent_definition_to_yojson (definition : agent_definition) : Yojson.Safe.t =
         `List
           (List.map
              (fun (name, value) ->
-               `Assoc [ ("name", `String name); ("value", literal_to_yojson value) ])
+               `Assoc
+                 [ ("name", `String name); ("value", literal_to_yojson value) ])
              definition.define_metadata) );
       ("loc", Loc.to_yojson definition.define_loc);
     ]
@@ -787,7 +789,9 @@ let agent_definition_of_yojson = function
         required_list_field fields "metadata" (function
           | `Assoc item_fields ->
               let* name = required_field item_fields "name" string_of_yojson in
-              let* value = required_field item_fields "value" literal_of_yojson in
+              let* value =
+                required_field item_fields "value" literal_of_yojson
+              in
               Ok (name, value)
           | _ -> Error "expected metadata item object")
       in
@@ -803,7 +807,8 @@ let agent_definition_of_yojson = function
   | _ -> Error "expected agent definition JSON object"
 
 let callable_body_to_yojson = function
-  | Bind_target target -> `Assoc [ ("kind", `String "bind"); ("target", `String target) ]
+  | Bind_target target ->
+      `Assoc [ ("kind", `String "bind"); ("target", `String target) ]
   | Inline_agent definition ->
       `Assoc
         [
@@ -818,7 +823,9 @@ let callable_body_of_yojson = function
           let* target = required_field fields "target" string_of_yojson in
           Ok (Bind_target target)
       | Some (`String "inline_agent") ->
-          let* definition = required_field fields "definition" agent_definition_of_yojson in
+          let* definition =
+            required_field fields "definition" agent_definition_of_yojson
+          in
           Ok (Inline_agent definition)
       | _ -> Error "unknown callable body kind")
   | _ -> Error "expected callable body JSON object"
@@ -837,10 +844,18 @@ let callable_decl_to_yojson (decl : callable_decl) : Yojson.Safe.t =
 let callable_decl_of_yojson = function
   | `Assoc fields ->
       let* callable_name = required_field fields "name" string_of_yojson in
-      let* callable_params = required_list_field fields "params" param_type_of_yojson in
-      let* callable_return_type = required_field fields "return_type" typ_of_yojson in
-      let* callable_body = required_field fields "body" callable_body_of_yojson in
-      let* callable_kind = required_field fields "callable_kind" callable_kind_of_yojson in
+      let* callable_params =
+        required_list_field fields "params" param_type_of_yojson
+      in
+      let* callable_return_type =
+        required_field fields "return_type" typ_of_yojson
+      in
+      let* callable_body =
+        required_field fields "body" callable_body_of_yojson
+      in
+      let* callable_kind =
+        required_field fields "callable_kind" callable_kind_of_yojson
+      in
       let* callable_loc = required_field fields "loc" Loc.of_yojson in
       Ok
         {
@@ -859,9 +874,11 @@ let decl_to_yojson = function
   | LetDecl decl ->
       `Assoc [ ("kind", `String "let"); ("decl", binding_to_yojson decl) ]
   | AgentDecl decl ->
-      `Assoc [ ("kind", `String "agent"); ("decl", callable_decl_to_yojson decl) ]
+      `Assoc
+        [ ("kind", `String "agent"); ("decl", callable_decl_to_yojson decl) ]
   | SkillDecl decl ->
-      `Assoc [ ("kind", `String "skill"); ("decl", callable_decl_to_yojson decl) ]
+      `Assoc
+        [ ("kind", `String "skill"); ("decl", callable_decl_to_yojson decl) ]
   | OpenDecl (name, loc) ->
       `Assoc
         [
@@ -937,7 +954,8 @@ let program_of_yojson = function
 
 let to_json_string ?(pretty = true) (program : program) : string =
   let json = program_to_yojson program in
-  if pretty then Yojson.Safe.pretty_to_string json else Yojson.Safe.to_string json
+  if pretty then Yojson.Safe.pretty_to_string json
+  else Yojson.Safe.to_string json
 
 let of_json_string (source : string) : (program, string) result =
   try program_of_yojson (Yojson.Safe.from_string source)

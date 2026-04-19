@@ -28,7 +28,8 @@ let rec string_of_typ = function
           (fun (param : Ir.param_type) ->
             match param.Ir.param_label with
             | None -> string_of_typ param.Ir.param_typ
-            | Some label -> Printf.sprintf "%s:%s" label (string_of_typ param.Ir.param_typ))
+            | Some label ->
+                Printf.sprintf "%s:%s" label (string_of_typ param.Ir.param_typ))
           params
       in
       String.concat " -> " (params @ [ string_of_typ result ])
@@ -46,7 +47,6 @@ let metadata_json definition =
        definition.Ir.define_metadata)
 
 let format_path = function None -> "(not set)" | Some path -> path
-
 let indent depth = String.make (depth * 2) ' '
 let bullet depth text = indent depth ^ "- " ^ text
 
@@ -61,8 +61,7 @@ let rec json_shape_label = function
   | Ir.TBool -> "JSON boolean"
   | Ir.TFloat -> "JSON number"
   | Ir.TUnit -> "JSON null"
-  | Ir.TList inner ->
-      Printf.sprintf "JSON array of %s" (string_of_typ inner)
+  | Ir.TList inner -> Printf.sprintf "JSON array of %s" (string_of_typ inner)
   | Ir.TOption inner ->
       Printf.sprintf "tagged JSON option carrying %s" (string_of_typ inner)
   | Ir.TTuple items ->
@@ -72,13 +71,15 @@ let rec json_shape_label = function
       Printf.sprintf "JSON object matching record %s"
         (Syntax.Ast.string_of_qname name)
   | Ir.TVariant name ->
-      Printf.sprintf "tagged JSON variant %s"
-        (Syntax.Ast.string_of_qname name)
+      Printf.sprintf "tagged JSON variant %s" (Syntax.Ast.string_of_qname name)
   | Ir.TFunc _ -> "function values are not JSON encodable"
 
 let constructor_example_json types variant_name ctor =
-  let* payload = Value.all (List.map (Value.default_value types) ctor.Ir.ctor_args) in
-  Value.to_json types (Ir.TVariant variant_name) (Value.VVariant (ctor.Ir.ctor_name, payload))
+  let* payload =
+    Value.all (List.map (Value.default_value types) ctor.Ir.ctor_args)
+  in
+  Value.to_json types (Ir.TVariant variant_name)
+    (Value.VVariant (ctor.Ir.ctor_name, payload))
 
 let option_some_example_json types inner =
   let* value = Value.default_value types inner in
@@ -105,13 +106,13 @@ let rec contract_detail_lines ~types ~seen depth typ =
                              (json_shape_label field.Ir.field_typ))
                       in
                       detail
-                      :: contract_detail_lines ~types ~seen
-                           (depth + 2) field.Ir.field_typ)
+                      :: contract_detail_lines ~types ~seen (depth + 2)
+                           field.Ir.field_typ)
                     fields
                 in
                 bullet depth
-                  (Printf.sprintf "%s is encoded as a JSON object with required fields:"
-                     key)
+                  (Printf.sprintf
+                     "%s is encoded as a JSON object with required fields:" key)
                 :: field_lines
             | Ir.Alias inner ->
                 bullet depth
@@ -135,7 +136,8 @@ let rec contract_detail_lines ~types ~seen depth typ =
                       let example =
                         match constructor_example_json types name ctor with
                         | Ok json -> Yojson.Safe.to_string json
-                        | Error _ -> Printf.sprintf {|{"tag":"%s"}|} ctor.Ir.ctor_name
+                        | Error _ ->
+                            Printf.sprintf {|{"tag":"%s"}|} ctor.Ir.ctor_name
                       in
                       bullet (depth + 1)
                         (Printf.sprintf "%s -> %s" ctor.Ir.ctor_name example)
@@ -154,7 +156,9 @@ let rec contract_detail_lines ~types ~seen depth typ =
                 :: contract_detail_lines ~types ~seen (depth + 1) inner
             | Ir.Record _ -> []))
   | Ir.TOption inner ->
-      let none_json = Yojson.Safe.to_string (`Assoc [ ("tag", `String "None") ]) in
+      let none_json =
+        Yojson.Safe.to_string (`Assoc [ ("tag", `String "None") ])
+      in
       let some_json =
         match option_some_example_json types inner with
         | Ok json -> Yojson.Safe.to_string json
@@ -181,7 +185,8 @@ let response_contract_lines invocation =
       Printf.sprintf "- The CamlFlow step output must have type %s."
         (string_of_typ return_type);
       "- Use the declared return type and JSON schema below for output shape.";
-      "- The system prompt only defines task intent; it does not need to restate the response structure.";
+      "- The system prompt only defines task intent; it does not need to \
+       restate the response structure.";
     ]
   in
   let example_lines =
@@ -201,13 +206,17 @@ let lines_of_invocation invocation output_schema =
       Printf.sprintf "You are executing a CamlFlow %s step." role;
       (match invocation.Runtime.Context.invocation_kind with
       | Runtime.Context.Bound_agent ->
-          "This is a bound agent with no inline prompt text. Infer intent from the agent name and typed input."
+          "This is a bound agent with no inline prompt text. Infer intent from \
+           the agent name and typed input."
       | Runtime.Context.Bound_skill ->
-          "This is a bound skill with no local prompt markdown. Behave like a narrow, tool-like operation."
+          "This is a bound skill with no local prompt markdown. Behave like a \
+           narrow, tool-like operation."
       | Runtime.Context.Local_prompt_skill ->
-          "This is a local prompt-backed skill. Follow the provided SKILL.md instructions closely."
+          "This is a local prompt-backed skill. Follow the provided SKILL.md \
+           instructions closely."
       | Runtime.Context.Inline_agent ->
-          "This is an inline agent definition. Follow the provided system prompt and metadata closely.");
+          "This is an inline agent definition. Follow the provided system \
+           prompt and metadata closely.");
       "Return only JSON that matches the required schema exactly.";
       "Do not wrap the JSON in markdown fences and do not add commentary.";
       "";
@@ -227,19 +236,16 @@ let lines_of_invocation invocation output_schema =
       "";
     ]
     @ response_contract_lines invocation
-    @ [
-      "";
-      "Output JSON Schema:";
-      Yojson.Safe.pretty_to_string output_schema;
-    ]
+    @ [ ""; "Output JSON Schema:"; Yojson.Safe.pretty_to_string output_schema ]
   in
   match invocation.Runtime.Context.invocation_kind with
-  | Runtime.Context.Local_prompt_skill ->
+  | Runtime.Context.Local_prompt_skill -> (
       base_lines
       @ [ ""; "Local skill specification (SKILL.md):" ]
-      @ (match invocation.Runtime.Context.invocation_markdown with
-        | Some markdown -> [ markdown ]
-        | None -> [ "(missing SKILL.md content)" ])
+      @
+      match invocation.Runtime.Context.invocation_markdown with
+      | Some markdown -> [ markdown ]
+      | None -> [ "(missing SKILL.md content)" ])
   | Runtime.Context.Inline_agent ->
       let definition =
         match invocation.Runtime.Context.invocation_definition with
@@ -278,9 +284,9 @@ let render ~invocation ~output_schema =
     match invocation.Runtime.Context.invocation_definition with
     | Some definition ->
         ( definition.Ir.define_model,
-          (match definition.Ir.define_temperature with
+          match definition.Ir.define_temperature with
           | Some _ -> [ "temperature" ]
-          | None -> []) )
+          | None -> [] )
     | None -> (None, [])
   in
   Ok
