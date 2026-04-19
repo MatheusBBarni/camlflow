@@ -106,7 +106,8 @@ let lookup_builtin name =
   | "+" | "-" | "*" | "/" | "mod"
   | "+." | "-." | "*." | "/."
   | "=" | "<>" | "<" | "<=" | ">" | ">="
-  | "&&" | "||" | "not" | "^" -> Some (builtin_value name)
+  | "&&" | "||" | "not" | "^"
+  | "is_some" | "is_none" | "unwrap_or" -> Some (builtin_value name)
   | _ -> None
 
 let lookup_in_assoc name items = List.assoc_opt name items
@@ -544,6 +545,18 @@ and apply_builtin loc name args =
   let* unlabeled = all unlabeled in
   match (name, unlabeled) with
   | "not", [ Value.VBool value ] -> Ok (RData (Value.VBool (not value)))
+  | "is_some", [ Value.VVariant ("Some", [ _ ]) ] ->
+      Ok (RData (Value.VBool true))
+  | "is_some", [ Value.VVariant ("None", []) ] ->
+      Ok (RData (Value.VBool false))
+  | "is_none", [ Value.VVariant ("Some", [ _ ]) ] ->
+      Ok (RData (Value.VBool false))
+  | "is_none", [ Value.VVariant ("None", []) ] ->
+      Ok (RData (Value.VBool true))
+  | "unwrap_or", [ Value.VVariant ("Some", [ value ]); _fallback ] ->
+      Ok (RData value)
+  | "unwrap_or", [ Value.VVariant ("None", []); fallback ] ->
+      Ok (RData fallback)
   | "+", [ Value.VInt lhs; Value.VInt rhs ] -> Ok (RData (Value.VInt (lhs + rhs)))
   | "-", [ Value.VInt lhs; Value.VInt rhs ] -> Ok (RData (Value.VInt (lhs - rhs)))
   | "*", [ Value.VInt lhs; Value.VInt rhs ] -> Ok (RData (Value.VInt (lhs * rhs)))

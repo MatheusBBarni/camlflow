@@ -105,7 +105,8 @@ let is_builtin_name = function
   | "+" | "-" | "*" | "/" | "mod"
   | "+." | "-." | "*." | "/."
   | "=" | "<>" | "<" | "<=" | ">" | ">="
-  | "&&" | "||" | "not" | "^" -> true
+  | "&&" | "||" | "not" | "^"
+  | "is_some" | "is_none" | "unwrap_or" -> true
   | _ -> false
 
 let primitive_equality_type = function
@@ -612,6 +613,27 @@ and infer_builtin_apply env ?expected (expr : Syntax.Ast.expr) name args =
   | "not", [ arg ] ->
       let* arg = infer_unlabeled ~expected:Ir.TBool arg in
       finalize Ir.TBool [ arg ]
+  | ("is_some" | "is_none"), [ arg ] ->
+      let* arg_checked = infer_unlabeled arg in
+      let arg_info = snd arg_checked in
+      (match arg_info.inferred_type with
+      | Ir.TOption _ -> finalize Ir.TBool [ arg_checked ]
+      | other ->
+          type_error arg.arg_loc "builtin %s expects option value, got %s" name
+            (string_of_typ other))
+  | "unwrap_or", [ option_arg; fallback_arg ] ->
+      let* option_checked = infer_unlabeled option_arg in
+      let option_info = snd option_checked in
+      (match option_info.inferred_type with
+      | Ir.TOption inner ->
+          let* fallback_checked =
+            infer_unlabeled ~expected:inner fallback_arg
+          in
+          finalize inner [ option_checked; fallback_checked ]
+      | other ->
+          type_error option_arg.arg_loc
+            "builtin unwrap_or expects option value, got %s"
+            (string_of_typ other))
   | ("+" | "-" | "*" | "/" | "mod"), [ lhs; rhs ] ->
       let* lhs = infer_unlabeled ~expected:Ir.TInt lhs in
       let* rhs = infer_unlabeled ~expected:Ir.TInt rhs in

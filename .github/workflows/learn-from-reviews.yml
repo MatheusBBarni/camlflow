@@ -1,0 +1,119 @@
+name: learn-from-reviews
+
+on:
+  pull_request_review:
+    types:
+      - submitted
+      - edited
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  learn:
+    if: ${{ github.event.review.body != '' }}
+    runs-on: ubuntu-latest
+    env:
+      REVIEW_BODY: ${{ github.event.review.body }}
+      REVIEW_NODE_ID: ${{ github.event.review.node_id }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Extract sanitized rule
+        id: extract
+        shell: bash
+        run: |
+          python3 - <<'PY'
+import os
+import re
+from pathlib import Path
+
+body = os.environ.get("REVIEW_BODY", "")
+out = Path(os.environ["GITHUB_OUTPUT"])
+match = re.search(r"@claude-learn\s+(.+)", body, flags=re.IGNORECASE)
+if not match:
+    out.write_text("has_rule=false\n", encoding="utf-8")
+    raise SystemExit(0)
+
+rule = match.group(1).strip()
+if rule.startswith("[") and rule.endswith("]"):
+    rule = rule[1:-1].strip()
+rule = rule.splitlines()[0].strip()
+
+if len(rule) > 200:
+    out.write_text("has_rule=false\n", encoding="utf-8")
+    raise SystemExit(0)
+
+if any(token in rule for token in ("`", "$(", "${")):
+    out.write_text("has_rule=false\n", encoding="utf-8")
+    raise SystemExit(0)
+
+if not re.fullmatch(r"[A-Za-z0-9 .,;:()'\"/_-]+", rule):
+    out.write_text("has_rule=false\n", encoding="utf-8")
+    raise SystemExit(0)
+
+if not re.match(r"^(MUST|SHOULD|NEVER)\b", rule):
+    rule = "MUST " + rule
+
+with out.open("w", encoding="utf-8") as fh:
+    fh.write("has_rule=true\n")
+    fh.write(f"rule={rule}\n")
+          PY
+
+      - name: Apply learned rule to AGENTS
+        if: steps.extract.outputs.has_rule == 'true'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+import os
+from pathlib import Path
+
+path = Path("AGENTS.md")
+rule = os.environ["RULE"]
+text = path.read_text(encoding="utf-8")
+bullet = f"- {rule}"
+if bullet in text:
+    raise SystemExit(0)
+
+marker = "## Patterns\n"
+if marker not in text:
+    raise SystemExit("AGENTS.md missing ## Patterns section")
+
+before, after = text.split(marker, 1)
+next_section = after.find("\n## ")
+if next_section == -1:
+    body = after.rstrip() + "\n" + bullet + "\n"
+    updated = before + marker + body
+else:
+    section = after[:next_section].rstrip() + "\n" + bullet + "\n"
+    updated = before + marker + section + after[next_section:]
+
+path.write_text(updated, encoding="utf-8")
+          PY
+        env:
+          RULE: ${{ steps.extract.outputs.rule }}
+
+      - name: Create pull request
+        if: steps.extract.outputs.has_rule == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: claude-learn/pr-${{ env.PR_NUMBER }}-${{ github.run_id }}
+          delete-branch: true
+          commit-message: "docs: learn rule from PR review"
+          title: "docs: learn rule from PR #${{ env.PR_NUMBER }}"
+          body: |
+            Learned from PR review `${{ env.REVIEW_NODE_ID }}`.
+
+            Added rule:
+            - `${{ steps.extract.outputs.rule }}`
+          add-paths: |
+            AGENTS.md

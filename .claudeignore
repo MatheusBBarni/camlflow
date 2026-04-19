@@ -1,0 +1,30 @@
+# Build artifacts
+_build/
+.opam-switch/
+*.install
+*.merlin
+.merlin-conf/
+.utop-history
+
+# Dependencies and generated package output
+node_modules/
+packages/*/dist/
+packages/*/examples-dist/
+*.vsix
+
+# VCS and editor noise
+.git/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Coverage and logs
+coverage/
+.nyc_output/
+*.log
+
+# Temporary files
+tmp/
+tmp-*/

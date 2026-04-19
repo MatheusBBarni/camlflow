@@ -2744,6 +2744,25 @@ let main (n : int) : int =
   let result = run_program ~input:(`Int 4) program in
   Alcotest.(check int) "recursive result" 10 (get_output_int result.output)
 
+let test_option_helper_builtins () =
+  with_temp_dir "camlflow-option-builtins-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+let primary_hint : string option = Some "retry"
+let backup_hint : string option = None
+
+let main : string =
+  if is_some primary_hint && is_none backup_hint then
+    unwrap_or primary_hint "missing"
+  else
+    unwrap_or backup_hint "fallback"
+|};
+  let program = check_file main in
+  let result = run_program program in
+  Alcotest.(check string) "option helper output" "retry"
+    (get_output_string result.output)
+
 let test_bool_match_patterns () =
   with_temp_dir "camlflow-bool-match-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
@@ -2858,6 +2877,105 @@ let main (code : string) : string =
   let high_result = run_program ~context ~input:(`String "ship it") program in
   Alcotest.(check string) "high accuracy branch" "continue: ready for execution"
     (get_output_string high_result.output)
+
+let test_inline_agent_typed_response_retries_recursively () =
+  with_temp_dir "camlflow-model-retry-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+type action = TEST | RUN
+
+type code_response = {
+  action : action;
+  accuracy : int;
+  description : string;
+  retry_hint : string option;
+}
+
+type review_outcome =
+  | Approved of code_response
+  | Exhausted of code_response
+
+agent reviewer : code:string -> code_response =
+  Agent.define ~system_prompt:"Review the submitted code."
+
+let needs_retry (response : code_response) : bool =
+  response.accuracy < 90 || is_some response.retry_hint
+
+let retry_message (response : code_response) : string =
+  unwrap_or response.retry_hint response.description
+
+let rec review_until_ready (code : string) (attempt : int) : review_outcome =
+  let* response = reviewer ~code:code in
+  if needs_retry response then
+    if attempt >= 2 then Exhausted response
+    else
+      review_until_ready
+        (code ^ "\nRetry guidance: " ^ retry_message response)
+        (attempt + 1)
+  else Approved response
+
+let summarize (outcome : review_outcome) : string =
+  match outcome with
+  | Approved response -> "approved: " ^ response.description
+  | Exhausted response -> "exhausted: " ^ response.description
+
+let main (code : string) : string =
+  let outcome = review_until_ready code 0 in
+  summarize outcome
+|};
+  let program = check_file main in
+  let provider ~name:_ ~definition:_ ~input ~return_type:_ ~types:_ =
+    match input with
+    | `Assoc [ ("code", `String code) ]
+      when contains_substring code "Retry guidance:" ->
+        Ok
+          (`Assoc
+            [
+              ("action", `Assoc [ ("tag", `String "RUN") ]);
+              ("accuracy", `Int 96);
+              ("description", `String "ready for execution");
+              ("retry_hint", `Assoc [ ("tag", `String "None") ]);
+            ])
+    | `Assoc [ ("code", `String _code) ] ->
+        Ok
+          (`Assoc
+            [
+              ("action", `Assoc [ ("tag", `String "TEST") ]);
+              ("accuracy", `Int 42);
+              ("description", `String "needs stronger validation");
+              ( "retry_hint",
+                `Assoc
+                  [
+                    ("tag", `String "Some");
+                    ("value", `String "ask for test coverage");
+                  ] );
+            ])
+    | _ -> Error "unexpected input"
+  in
+  let context =
+    Camlflow.Runtime.Context.with_inline_agent_provider
+      Camlflow.Runtime.Context.empty provider
+  in
+  let result = run_program ~context ~input:(`String "ship it") program in
+  Alcotest.(check int) "retry step count" 2 result.steps_run;
+  Alcotest.(check string) "retry output" "approved: ready for execution"
+    (get_output_string result.output);
+  let second_input =
+    match List.nth_opt result.effect_steps 1 with
+    | Some step -> (
+        match step.Camlflow.Runtime.input with
+        | `Assoc [ ("code", `String code) ] -> code
+        | input ->
+            Alcotest.failf "unexpected retry input payload: %s"
+              (Yojson.Safe.to_string input))
+    | None -> Alcotest.fail "missing retry effect step"
+  in
+  if not
+       (contains_substring second_input
+          "Retry guidance: ask for test coverage")
+  then
+    Alcotest.failf "missing retry guidance in second attempt: %s" second_input
 
 let test_invalid_provider_output_shape () =
   with_temp_dir "camlflow-provider-shape-" @@ fun dir ->
@@ -3148,6 +3266,8 @@ let () =
             test_qualified_refs_without_open;
           Alcotest.test_case "recursion and int builtins" `Quick
             test_recursion_and_int_builtins;
+          Alcotest.test_case "option helper builtins" `Quick
+            test_option_helper_builtins;
           Alcotest.test_case "bool match patterns" `Quick
             test_bool_match_patterns;
           Alcotest.test_case "float operators" `Quick
@@ -3157,6 +3277,9 @@ let () =
           Alcotest.test_case
             "inline agent typed response branches with if and match"
             `Quick test_inline_agent_typed_response_branches_with_if_and_match;
+          Alcotest.test_case
+            "inline agent typed response retries recursively" `Quick
+            test_inline_agent_typed_response_retries_recursively;
           Alcotest.test_case "invalid provider output shape" `Quick
             test_invalid_provider_output_shape;
           Alcotest.test_case "provider metadata hooks" `Quick

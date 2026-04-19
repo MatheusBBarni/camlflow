@@ -513,6 +513,7 @@ runtime hooks.
 - `examples/variants-match/` — records, variants, and pattern matching with a zero-arg `main`
 - `examples/inline-agent/` — executable `Agent.define`
 - `examples/model-response-validation/` — typed model response plus branching with `if` and `match`
+- `examples/model-response-retry/` — typed model response validation plus recursive retry
 - `examples/provider-hooks/` — embedded OCaml host using runtime provider hooks
 - `examples/json-rpc-host/` — dependency-free Node host speaking CamlFlow JSON-RPC over stdio
 - `examples/json-rpc-problem-coach/` — dependency-free Node host running the structured problem-coach workflow over JSON-RPC
@@ -542,6 +543,7 @@ runtime hooks.
 - `packages/camlflow-ts-json-rpc-sdk/examples/README.md` — runnable SDK-backed JSON-RPC host examples
 - `examples/codex/README.md` — runnable Codex provider example
 - `examples/model-response-validation/README.md` — runnable typed model-response branching example
+- `examples/model-response-retry/README.md` — runnable typed model-response retry example
 - `examples/swe-leetcode/README.md` — runnable swe-leetcode example
 - `examples/problem-coach/README.md` — runnable problem-coach example
 - `examples/repo-triage/README.md` — runnable repo-triage example aimed at `pi-mono` host testing
@@ -564,6 +566,7 @@ make run-recursion
 make run-variants-match
 make run-inline-agent
 make run-model-response-validation
+make run-model-response-retry
 make run-provider-hooks
 ```
 
@@ -679,13 +682,13 @@ Delivered:
   `{"result": ...}` contract before CamlFlow decodes typed output
 - [x] Prove typed model responses can drive `if` / `match` workflow branching
   through a runnable example and regression coverage
+- [x] Extend typed model-response workflows with option-aware validation helpers
+  and a recursive retry pattern that works in the current MVP subset
 
 Remaining Beta 3 follow-up:
 
 - [ ] Integrate with Claude Code
 - [ ] Integrate with Claude CLI
-- [ ] Extend typed model-response workflows beyond the current record/variant
-  slice with richer validation helpers and first-class retry patterns
 - [ ] Expand workflow control flow around typed model responses with future
   iteration constructs such as `for` / `while` when the language grows beyond
   the current MVP subset
@@ -707,4 +710,5 @@ This would let a workflow author branch on model output in typed code, for
 example by checking `if response.accuracy < 90 then ...` or matching on
 `response.action` to decide whether to run tests, continue execution, or retry
 with a different prompt/provider strategy. A concrete minimal version now lives
-in `examples/model-response-validation/`.
+in `examples/model-response-validation/`, and a recursive retry-oriented version
+lives in `examples/model-response-retry/`.

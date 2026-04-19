@@ -1,4 +1,4 @@
-.PHONY: help build test clean cli-help completion-bash completion-zsh completion-fish parse-basic check-basic compile-basic run run-basic run-local-skill run-qualified run-recursion run-variants-match run-inline-agent run-model-response-validation run-provider-hooks all
+.PHONY: help build test clean cli-help completion-bash completion-zsh completion-fish parse-basic check-basic compile-basic run run-basic run-local-skill run-qualified run-recursion run-variants-match run-inline-agent run-model-response-validation run-model-response-retry run-provider-hooks all
 
 DUNE ?= dune
 BINARY ?= ./bin/main.exe
@@ -29,6 +29,7 @@ help:
 	@printf "  make run-variants-match   Run examples/variants-match/main.cml\n"
 	@printf "  make run-inline-agent     Run examples/inline-agent/main.cml\n"
 	@printf "  make run-model-response-validation  Run examples/model-response-validation/main.cml\n"
+	@printf "  make run-model-response-retry  Run examples/model-response-retry/main.cml\n"
 	@printf "  make run-provider-hooks   Run embedded OCaml provider-hooks host example\n"
 	@printf "  make clean                Clean dune build artifacts\n\n"
 	@printf "Generic run variables:\n"
@@ -108,6 +109,9 @@ run-inline-agent:
 
 run-model-response-validation:
 	$(DUNE) exec $(BINARY) -- run examples/model-response-validation/main.cml --input-json '$(INLINE_AGENT_INPUT)'
+
+run-model-response-retry:
+	$(DUNE) exec $(BINARY) -- run examples/model-response-retry/main.cml --input-json '$(INLINE_AGENT_INPUT)'
 
 run-provider-hooks:
 	$(DUNE) exec examples/provider-hooks/host.exe
