@@ -630,6 +630,8 @@ Delivered:
 - [x] Add advisory output streaming through `camlflow/outputChunk`
 - [x] Add a maintained TypeScript JSON-RPC SDK plus runnable Node host examples
 - [x] Add offline tests and end-to-end examples for provider-backed and JSON-RPC execution
+- [x] Add `pi-mono` launcher scripts, host-integration docs, and opt-in host E2E
+  scaffolding for thin sidecar validation
 
 Remaining Beta 1 follow-up:
 
@@ -639,25 +641,64 @@ Remaining Beta 1 follow-up:
 - [ ] Run multiple real workflows through that host and capture the biggest friction points
 - [ ] Iterate on provider/runtime behavior, SDK ergonomics, payload shapes, and docs based on real host feedback
 
-### Beta 2
+### Beta 2 — initial DX slice delivered
 
 Goal: build the developer experience (DX) layer around the language.
 
 See `docs/beta-2-tasks.md` for the first concrete DX slice.
 
-- [ ] Add LSP support for CamlFlow
-- [ ] Integrate with IDEs and editors
-- [ ] Build editor extensions, icons, and related UX pieces
-- [ ] Add a CamlFlow configuration file for project setup
-- [ ] Allow users to define entrypoint location, skills location, and related project settings in config
-- [ ] Improve project ergonomics for day-to-day development
+Delivered:
 
-### Beta 3
+- [x] Integrate with IDEs and editors through first-pass VS Code and Zed packages
+- [x] Build editor extensions, icons, syntax highlighting, snippets, and related UX pieces
+- [x] Add a CamlFlow configuration file for project setup
+- [x] Allow users to define entrypoint location, skills location, and related project settings in config
+- [x] Improve project ergonomics for day-to-day development through `camlflow.json`,
+  schema validation, examples, completions, and updated docs
+
+Remaining Beta 2 follow-up:
+
+- [ ] Add LSP support for CamlFlow
+- [ ] Layer semantic editor features on top of the baseline extensions
+- [ ] Add go-to-definition, rename, hover, outline, diagnostics, formatting, and code actions
+
+### Beta 3 — multi-provider CLI foundation partially delivered
 
 Goal: expand model/provider integrations and advanced CLI control.
 
+Delivered:
+
+- [x] Improve the CLI so users can choose model, reasoning mode, sandbox,
+  profile, provider config, and related execution settings
+- [x] Generalize runtime/provider selection across the currently supported AI
+  coding tools shipped in-repo (`codex` and `opencode`)
+
+Remaining Beta 3 follow-up:
+
 - [ ] Integrate with Claude Code
 - [ ] Integrate with Claude CLI
-- [ ] Improve the CLI so users can choose model, reasoning mode, and related execution settings
-- [ ] Generalize runtime/provider selection across supported AI coding tools
+- [ ] Add typed model-output response control so workflow authors can declare
+  structured provider return types (including enum-like variants, numeric
+  scores, and freeform descriptions) and route them through validation,
+  branching, and retry logic
+- [ ] Expand workflow control flow around typed model responses so authors can
+  validate results with `if` / `else`, `match`, and future iteration constructs
+  such as `for` / `while` when the language grows beyond the current MVP subset
 - [ ] Refine multi-provider workflow execution experience
+
+Example target shape for this Beta 3 slice:
+
+```ocaml
+type action = TEST | RUN
+
+type code_response = {
+  action : action;
+  accuracy : int;
+  description : string;
+}
+```
+
+This would let a workflow author branch on model output in typed code, for
+example by checking `if response.accuracy < 90 then ...` or matching on
+`response.action` to decide whether to run tests, continue execution, or retry
+with a different prompt/provider strategy.
