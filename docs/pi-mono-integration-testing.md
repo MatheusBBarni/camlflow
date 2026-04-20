@@ -275,6 +275,8 @@ What it does:
 
 - resolves the current `camlflow` repo root
 - finds the `pi-mono` repo at `~/projects/pi-mono` by default
+- if the current shell switch is older than OCaml `5.4.0`, it re-runs
+  `pi-test.sh` through `opam exec --switch 5.4.0 --` when that switch exists
 - exports `CAMLFLOW_REPO` so `pi-mono` uses this CamlFlow checkout
 - runs `~/projects/pi-mono/pi-test.sh`
 - passes all CLI args through to `pi-test.sh`
@@ -291,6 +293,7 @@ Useful env override:
 
 ```sh
 PI_MONO_REPO=/some/other/pi-mono ./scripts/run-pi-mono.sh
+CAMLFLOW_OPAM_SWITCH=5.4.0 ./scripts/run-pi-mono.sh
 ```
 
 Failure modes:
@@ -298,6 +301,8 @@ Failure modes:
 - if `pi-mono` is missing, it errors immediately
 - if `pi-test.sh` is missing, it errors immediately
 - if required build artifacts are missing, it tells you to build `pi-mono` first
+- if neither the shell nor the selected opam switch provides OCaml `5.4.0+`, it
+  tells you to switch to a compatible toolchain before launch
 
 ### `scripts/run-pi-mono-basic.sh`
 
@@ -313,7 +318,7 @@ cd ~/projects/camlflow
 Default initial message:
 
 ```text
-/camlflow-run examples/basic/main.cml --entry main --input-json "Ada"
+/camlflow-run examples/basic/main.cml --entry main --input-json '"Ada"'
 ```
 
 ### `scripts/run-pi-mono-recursion.sh`
@@ -347,7 +352,7 @@ cd ~/projects/camlflow
 Default initial message:
 
 ```text
-/camlflow-run examples/problem-coach/main.cml --entry main --input-json { ... } --skills-dir examples/problem-coach/skills
+/camlflow-run examples/problem-coach/main.cml --entry main --input-json '{ ... }' --skills-dir examples/problem-coach/skills
 ```
 
 ### `scripts/run-pi-mono-interview-pipeline.sh`
@@ -364,7 +369,7 @@ cd ~/projects/camlflow
 Default initial message:
 
 ```text
-/camlflow-run examples/interview-pipeline/main.cml --entry main --input-json { ... } --skills-dir examples/interview-pipeline/skills
+/camlflow-run examples/interview-pipeline/main.cml --entry main --input-json '{ ... }' --skills-dir examples/interview-pipeline/skills
 ```
 
 ### `scripts/run-pi-mono-repo-triage.sh`
@@ -381,7 +386,7 @@ cd ~/projects/camlflow
 Default initial message:
 
 ```text
-/camlflow-run examples/repo-triage/main.cml --entry main --input-json { ... } --skills-dir examples/repo-triage/skills
+/camlflow-run examples/repo-triage/main.cml --entry main --input-json '{ ... }' --skills-dir examples/repo-triage/skills
 ```
 
 Why this script matters:

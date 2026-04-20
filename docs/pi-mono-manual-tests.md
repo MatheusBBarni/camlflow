@@ -90,6 +90,8 @@ It:
 
 - resolves the current `camlflow` repo root
 - defaults `PI_MONO_REPO` to `~/projects/pi-mono`
+- prefers the current shell OCaml, but falls back to `opam exec --switch 5.4.0
+  --` when the shell switch is older than the repo requirement
 - requires `pi-test.sh` to exist and be executable
 - requires these build artifacts to exist before launch:
   - `packages/ai/dist/index.js`
@@ -100,6 +102,9 @@ It:
 
 So if this script fails, you are still in launcher/preflight territory. You are
 not testing the CamlFlow host integration yet.
+
+If you need to force a specific compatible switch, set
+`CAMLFLOW_OPAM_SWITCH=<switch-name>` when launching.
 
 ### Convenience launchers
 
@@ -376,7 +381,7 @@ cd ~/projects/camlflow
 The script should prefill something equivalent to:
 
 ```text
-/camlflow-run examples/problem-coach/main.cml --entry main --input-json {"problem_name":"two sum","language":{"tag":"Python"},"audience":{"tag":"Interview"},"must_cover":["hash map approach","time complexity","duplicate values edge case"]} --skills-dir examples/problem-coach/skills
+/camlflow-run examples/problem-coach/main.cml --entry main --input-json '{"problem_name":"two sum","language":{"tag":"Python"},"audience":{"tag":"Interview"},"must_cover":["hash map approach","time complexity","duplicate values edge case"]}' --skills-dir examples/problem-coach/skills
 ```
 
 Expected:
@@ -442,7 +447,7 @@ cd ~/projects/camlflow
 The script should prefill something equivalent to:
 
 ```text
-/camlflow-run examples/interview-pipeline/main.cml --entry main --input-json {"algorithm_name":"longest increasing subsequence","preferred_language":{"tag":"Python"},"target_difficulty":{"tag":"Hard"},"focus":[{"tag":"Pattern","value":"dynamic programming"},{"tag":"Constraint","value":"n up to 10^5"}]} --skills-dir examples/interview-pipeline/skills
+/camlflow-run examples/interview-pipeline/main.cml --entry main --input-json '{"algorithm_name":"longest increasing subsequence","preferred_language":{"tag":"Python"},"target_difficulty":{"tag":"Hard"},"focus":[{"tag":"Pattern","value":"dynamic programming"},{"tag":"Constraint","value":"n up to 10^5"}]}' --skills-dir examples/interview-pipeline/skills
 ```
 
 Expected:
@@ -518,7 +523,7 @@ cd ~/projects/camlflow
 The script should prefill something equivalent to:
 
 ```text
-/camlflow-run examples/repo-triage/main.cml --entry main --input-json {"task":"Triage how the pi-mono host integration is wired in this repo and identify the best files to inspect for improving no-model UX, effect streaming, and helper script ergonomics.","suspected_area":"pi-mono host integration docs, scripts, and TypeScript SDK wiring","file_hints":["docs/pi-mono-host-integration-plan.md","docs/pi-mono-implementation-checklist.md","docs/pi-mono-integration-testing.md","packages/camlflow-ts-json-rpc-sdk/src/client.ts","scripts"],"goals":["map the main integration path","identify the highest-value files for a follow-up patch","propose a small validation plan"],"constraints":["ground conclusions in repository evidence","prefer concrete file paths over generic advice","assume the caller wants to test through pi-mono"],"mode":{"tag":"DeepDive"}} --skills-dir examples/repo-triage/skills
+/camlflow-run examples/repo-triage/main.cml --entry main --input-json '{"task":"Triage how the pi-mono host integration is wired in this repo and identify the best files to inspect for improving no-model UX, effect streaming, and helper script ergonomics.","suspected_area":"pi-mono host integration docs, scripts, and TypeScript SDK wiring","file_hints":["docs/pi-mono-host-integration-plan.md","docs/pi-mono-implementation-checklist.md","docs/pi-mono-integration-testing.md","packages/camlflow-ts-json-rpc-sdk/src/client.ts","scripts"],"goals":["map the main integration path","identify the highest-value files for a follow-up patch","propose a small validation plan"],"constraints":["ground conclusions in repository evidence","prefer concrete file paths over generic advice","assume the caller wants to test through pi-mono"],"mode":{"tag":"DeepDive"}}' --skills-dir examples/repo-triage/skills
 ```
 
 Expected:

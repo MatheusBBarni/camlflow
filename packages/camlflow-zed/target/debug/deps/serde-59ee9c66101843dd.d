@@ -1,0 +1,14 @@
+/home/adminai/projects/camlflow/packages/camlflow-zed/target/debug/deps/serde-59ee9c66101843dd.d: /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/adminai/projects/camlflow/packages/camlflow-zed/target/debug/build/serde-6c6e19b37af37250/out/private.rs
+
+/home/adminai/projects/camlflow/packages/camlflow-zed/target/debug/deps/libserde-59ee9c66101843dd.rlib: /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/adminai/projects/camlflow/packages/camlflow-zed/target/debug/build/serde-6c6e19b37af37250/out/private.rs
+
+/home/adminai/projects/camlflow/packages/camlflow-zed/target/debug/deps/libserde-59ee9c66101843dd.rmeta: /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /home/adminai/projects/camlflow/packages/camlflow-zed/target/debug/build/serde-6c6e19b37af37250/out/private.rs
+
+/home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/home/adminai/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/home/adminai/projects/camlflow/packages/camlflow-zed/target/debug/build/serde-6c6e19b37af37250/out/private.rs:
+
+# env-dep:OUT_DIR=/home/adminai/projects/camlflow/packages/camlflow-zed/target/debug/build/serde-6c6e19b37af37250/out

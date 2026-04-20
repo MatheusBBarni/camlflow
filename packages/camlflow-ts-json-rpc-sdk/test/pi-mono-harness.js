@@ -128,6 +128,7 @@ async function collectPiMonoPreflight(options = {}) {
       runPiMonoRecursion: path.join(repoRoot, "scripts/run-pi-mono-recursion.sh"),
       runPiMonoBasic: path.join(repoRoot, "scripts/run-pi-mono-basic.sh"),
       runPiMonoProblemCoach: path.join(repoRoot, "scripts/run-pi-mono-problem-coach.sh"),
+      runPiMonoInterviewPipeline: path.join(repoRoot, "scripts/run-pi-mono-interview-pipeline.sh"),
       runPiMonoRepoTriage: path.join(repoRoot, "scripts/run-pi-mono-repo-triage.sh"),
     },
     exists: {

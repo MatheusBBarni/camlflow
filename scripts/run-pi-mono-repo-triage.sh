@@ -2,6 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/pi-mono-message-lib.sh"
+
 WORKFLOW="${CAMLFLOW_WORKFLOW:-examples/repo-triage/main.cml}"
 ENTRY="${CAMLFLOW_ENTRY:-main}"
 if [[ -n "${CAMLFLOW_INPUT_JSON:-}" ]]; then
@@ -11,10 +13,7 @@ else
 fi
 SKILLS_DIR="${CAMLFLOW_SKILLS_DIR:-examples/repo-triage/skills}"
 
-INITIAL_MESSAGE="/camlflow-run $WORKFLOW --entry $ENTRY --input-json $INPUT_JSON"
-if [[ -n "$SKILLS_DIR" ]]; then
-  INITIAL_MESSAGE+=" --skills-dir $SKILLS_DIR"
-fi
+INITIAL_MESSAGE="$(build_camlflow_run_message "$WORKFLOW" "$ENTRY" "$INPUT_JSON" "$SKILLS_DIR")"
 
 echo "Launching pi-mono with initial message:"
 echo "  $INITIAL_MESSAGE"

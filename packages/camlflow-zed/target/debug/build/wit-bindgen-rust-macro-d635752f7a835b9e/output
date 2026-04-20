@@ -1,0 +1,2 @@
+cargo:rerun-if-changed=build.rs
+cargo:rustc-env=DEBUG_OUTPUT_DIR=/home/adminai/projects/camlflow/packages/camlflow-zed/target/debug/build/wit-bindgen-rust-macro-d635752f7a835b9e/out
