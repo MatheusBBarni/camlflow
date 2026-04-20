@@ -423,8 +423,11 @@ let test_cli_completion_script_mentions_commands () =
   then Alcotest.failf "unexpected completion script: %s" script;
   if not (contains_substring script "--provider --model --reasoning") then
     Alcotest.failf "provider flags missing from completion script: %s" script;
-  if not (contains_substring script "codex opencode") then
-    Alcotest.failf "provider completions missing adapter names: %s" script;
+  if
+    not
+      (contains_substring script
+         (String.concat " " Camlflow.Provider.available_provider_names))
+  then Alcotest.failf "provider completions missing adapter names: %s" script;
   if not (contains_substring script "--stdio") then
     Alcotest.failf "serve flags missing from completion script: %s" script
 
@@ -526,6 +529,74 @@ let test_cli_run_opencode_provider_parse () =
   Alcotest.(check string)
     "model" "openai/gpt-5.4-mini"
     (match settings.model with Some model -> model | None -> "none")
+
+let test_cli_run_claude_code_provider_parse () =
+  let parsed =
+    parse_cli
+      [
+        "run";
+        "main.cml";
+        "--provider";
+        "claude-code";
+        "--model";
+        "sonnet";
+        "--reasoning";
+        "medium";
+        "--allow-write-dir";
+        "tmp";
+      ]
+  in
+  (match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "run validate failed: %s" error);
+  let settings = parsed.options.provider_options in
+  Alcotest.(check string)
+    "provider" "claude-code"
+    (match settings.provider with
+    | Some provider -> Camlflow.Provider.name_to_string provider
+    | None -> "none");
+  Alcotest.(check string)
+    "model" "sonnet"
+    (match settings.model with Some model -> model | None -> "none");
+  Alcotest.(check string)
+    "reasoning" "medium"
+    (match settings.reasoning with
+    | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
+    | None -> "none");
+  Alcotest.(check (list string))
+    "write dirs" [ "tmp" ] settings.allow_write_dirs
+
+let test_cli_run_claude_cli_provider_parse () =
+  let parsed =
+    parse_cli
+      [
+        "run";
+        "main.cml";
+        "--provider";
+        "claude-cli";
+        "--model";
+        "claude-sonnet-4-6";
+        "--reasoning";
+        "max";
+      ]
+  in
+  (match Camlflow.Cli.validate parsed with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "run validate failed: %s" error);
+  let settings = parsed.options.provider_options in
+  Alcotest.(check string)
+    "provider" "claude-cli"
+    (match settings.provider with
+    | Some provider -> Camlflow.Provider.name_to_string provider
+    | None -> "none");
+  Alcotest.(check string)
+    "model" "claude-sonnet-4-6"
+    (match settings.model with Some model -> model | None -> "none");
+  Alcotest.(check string)
+    "reasoning" "max"
+    (match settings.reasoning with
+    | Some reasoning -> Camlflow.Provider.reasoning_to_string reasoning
+    | None -> "none")
 
 let test_cli_provider_flags_require_provider () =
   let parsed = parse_cli [ "run"; "main.cml"; "--model"; "gpt-5.4-mini" ] in
@@ -2661,6 +2732,229 @@ let main (code : string) : string =
     "provider opencode does not support inline setting(s) temperature"
     (Camlflow.Runtime.execute ~context ~input:(`String "let x = 1") program)
 
+let test_claude_code_build_exec_args () =
+  let settings =
+    {
+      Camlflow.Provider.default_settings with
+      provider = Some Camlflow.Provider.Claude_code;
+      model = Some "sonnet";
+      reasoning = Some Camlflow.Provider.Medium;
+      allow_write_dirs = [ "tmp"; "/abs/cache" ];
+    }
+  in
+  let schema = `Assoc [ ("type", `String "object") ] in
+  let argv =
+    Camlflow.Providers_claude_code.build_exec_args
+      ~working_directory:"/workspace" ~settings ~model:settings.model ~schema
+      ~prompt:"Reply with JSON"
+  in
+  let expected =
+    [
+      "claude";
+      "-p";
+      "--output-format";
+      "json";
+      "--json-schema";
+      "{\"type\":\"object\"}";
+      "--cwd";
+      "/workspace";
+      "--bare";
+      "--no-session-persistence";
+      "--dangerously-skip-permissions";
+      "--model";
+      "sonnet";
+      "--effort";
+      "medium";
+      "--add-dir";
+      "/workspace/tmp";
+      "--add-dir";
+      "/abs/cache";
+      "Reply with JSON";
+    ]
+  in
+  Alcotest.(check (list string)) "claude-code argv" expected argv
+
+let test_claude_code_preflight_validation () =
+  expect_error_contains "missing claude-code"
+    "provider claude-code is not available"
+    (Camlflow.Providers_claude_code.validate_preflight_status
+       ~claude_available:false ~logged_in:false);
+  expect_error_contains "missing claude-code login"
+    "provider claude-code requires login"
+    (Camlflow.Providers_claude_code.validate_preflight_status
+       ~claude_available:true ~logged_in:false);
+  match
+    Camlflow.Providers_claude_code.validate_preflight_status
+      ~claude_available:true ~logged_in:true
+  with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "unexpected preflight error: %s" error
+
+let test_claude_code_parse_structured_response () =
+  match
+    Camlflow.Providers_claude_code.parse_structured_response
+      ~trace_kind:"bound-agent" ~trace_name:"greeter"
+      {|{"result":"hello","structured_output":{"result":"hello"}}|}
+  with
+  | Ok (`String value) ->
+      Alcotest.(check string) "claude-code parsed result" "hello" value
+  | Ok json ->
+      Alcotest.failf "unexpected claude-code parsed JSON: %s"
+        (Yojson.Safe.to_string json)
+  | Error error -> Alcotest.failf "claude-code parse failed: %s" error
+
+let test_claude_code_parse_structured_response_rejects_extra_fields () =
+  expect_error_contains "claude-code extra fields"
+    "model response wrapper must not contain extra field(s): debug"
+    (Camlflow.Providers_claude_code.parse_structured_response
+       ~trace_kind:"bound-agent" ~trace_name:"greeter"
+       {|{"structured_output":{"result":"hello","debug":true}}|})
+
+let test_claude_code_inline_temperature_fails_fast () =
+  with_temp_dir "camlflow-claude-code-temp-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+agent reviewer : code:string -> string =
+  Agent.define ~temperature:0.1 ~system_prompt:"Review tersely"
+
+let main (code : string) : string =
+  let* review = reviewer ~code:code in
+  review
+|};
+  let program = check_file main in
+  let settings =
+    {
+      Camlflow.Provider.default_settings with
+      provider = Some Camlflow.Provider.Claude_code;
+    }
+  in
+  let base_context =
+    Camlflow.Runtime.Context.empty |> fun context ->
+    Camlflow.Runtime.Context.with_working_directory context dir
+  in
+  let context =
+    match
+      Camlflow.Providers_claude_code.build_runtime_context
+        ~working_directory:dir ~settings base_context
+    with
+    | Ok context -> context
+    | Error error -> Alcotest.failf "build runtime context failed: %s" error
+  in
+  expect_error_contains "inline temperature unsupported"
+    "provider claude-code does not support inline setting(s) temperature"
+    (Camlflow.Runtime.execute ~context ~input:(`String "let x = 1") program)
+
+let test_claude_cli_build_request_body () =
+  let settings =
+    {
+      Camlflow.Provider.default_settings with
+      provider = Some Camlflow.Provider.Claude_cli;
+      reasoning = Some Camlflow.Provider.Low;
+    }
+  in
+  let schema = `Assoc [ ("type", `String "object") ] in
+  let request_body =
+    Camlflow.Providers_claude_cli.build_request_body ~prompt:"Reply with JSON"
+      ~schema ~model:"claude-sonnet-4-6" ~settings
+  in
+  let message =
+    match expect_assoc_field "messages" request_body with
+    | `List [ message ] -> message
+    | other ->
+        Alcotest.failf "expected one request message, got %s"
+          (Yojson.Safe.to_string other)
+  in
+  expect_string_field "model" "claude-sonnet-4-6" request_body;
+  expect_string_field "content" "Reply with JSON" message;
+  expect_string_field "effort" "low"
+    (expect_assoc_field "output_config" request_body)
+
+let test_claude_cli_preflight_validation () =
+  expect_error_contains "missing claude-cli"
+    "provider claude-cli is not available"
+    (Camlflow.Providers_claude_cli.validate_preflight_status
+       ~ant_available:false ~api_key_present:false);
+  expect_error_contains "missing claude-cli api key"
+    "provider claude-cli requires ANTHROPIC_API_KEY"
+    (Camlflow.Providers_claude_cli.validate_preflight_status ~ant_available:true
+       ~api_key_present:false);
+  match
+    Camlflow.Providers_claude_cli.validate_preflight_status ~ant_available:true
+      ~api_key_present:true
+  with
+  | Ok () -> ()
+  | Error error -> Alcotest.failf "unexpected preflight error: %s" error
+
+let test_claude_cli_parse_wrapped_response () =
+  let response =
+    `Assoc
+      [
+        ( "content",
+          `List
+            [
+              `Assoc
+                [
+                  ("type", `String "text");
+                  ("text", `String {|{"result":"hello"}|});
+                ];
+            ] );
+      ]
+  in
+  let text =
+    match
+      Camlflow.Providers_claude_cli.extract_response_text
+        ~trace_kind:"bound-agent" ~trace_name:"greeter" response
+    with
+    | Ok text -> text
+    | Error error -> Alcotest.failf "claude-cli response text failed: %s" error
+  in
+  match
+    Camlflow.Providers_claude_cli.parse_wrapped_response
+      ~trace_kind:"bound-agent" ~trace_name:"greeter" text
+  with
+  | Ok (`String value) ->
+      Alcotest.(check string) "claude-cli parsed result" "hello" value
+  | Ok json ->
+      Alcotest.failf "unexpected claude-cli parsed JSON: %s"
+        (Yojson.Safe.to_string json)
+  | Error error -> Alcotest.failf "claude-cli parse failed: %s" error
+
+let test_claude_cli_missing_model_fails_fast () =
+  with_temp_dir "camlflow-claude-cli-model-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+agent reviewer : code:string -> string =
+  Agent.define ~system_prompt:"Review tersely"
+
+let main (code : string) : string =
+  let* review = reviewer ~code:code in
+  review
+|};
+  let program = check_file main in
+  let settings =
+    {
+      Camlflow.Provider.default_settings with
+      provider = Some Camlflow.Provider.Claude_cli;
+    }
+  in
+  let base_context =
+    Camlflow.Runtime.Context.empty |> fun context ->
+    Camlflow.Runtime.Context.with_working_directory context dir
+  in
+  let context =
+    match
+      Camlflow.Providers_claude_cli.build_runtime_context ~working_directory:dir
+        ~settings base_context
+    with
+    | Ok context -> context
+    | Error error -> Alcotest.failf "build runtime context failed: %s" error
+  in
+  expect_error_contains "missing claude-cli model"
+    "provider claude-cli requires --model or inline Agent.define ~model"
+    (Camlflow.Runtime.execute ~context ~input:(`String "let x = 1") program)
+
 let test_wrong_argument_labels_fail () =
   with_temp_dir "camlflow-labels-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
@@ -2684,6 +2978,31 @@ let main : int =
 |};
   expect_error_contains "unsupported library/module call"
     "qualified library/module calls such as List.<value> are unsupported"
+    (Camlflow.Typing.check_file main)
+
+let test_while_loop_fails_with_recursion_guidance () =
+  with_temp_dir "camlflow-while-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main {|
+let main : int =
+  let x = 0 in
+  while x < 3 do x done
+|};
+  expect_error_contains "while loop unsupported"
+    "while loops are unsupported in CamlFlow MVP; use recursion for now"
+    (Camlflow.Typing.check_file main)
+
+let test_for_loop_fails_with_recursion_guidance () =
+  with_temp_dir "camlflow-for-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+let main : int =
+  let total = 0 in
+  for i = 0 to 2 do total done
+|};
+  expect_error_contains "for loop unsupported"
+    "for loops are unsupported in CamlFlow MVP; use recursion for now"
     (Camlflow.Typing.check_file main)
 
 let test_zero_arg_main_runs () =
@@ -4274,6 +4593,10 @@ let () =
             test_cli_provider_flags_require_provider;
           Alcotest.test_case "cli run opencode provider parse" `Quick
             test_cli_run_opencode_provider_parse;
+          Alcotest.test_case "cli run claude-code provider parse" `Quick
+            test_cli_run_claude_code_provider_parse;
+          Alcotest.test_case "cli run claude-cli provider parse" `Quick
+            test_cli_run_claude_cli_provider_parse;
           Alcotest.test_case "cli unknown provider rejected" `Quick
             test_cli_unknown_provider_rejected;
           Alcotest.test_case "cli invalid provider config rejected" `Quick
@@ -4435,10 +4758,33 @@ let () =
             test_opencode_error_event_message;
           Alcotest.test_case "opencode inline temperature fails fast" `Quick
             test_opencode_inline_temperature_fails_fast;
+          Alcotest.test_case "claude-code build exec args" `Quick
+            test_claude_code_build_exec_args;
+          Alcotest.test_case "claude-code preflight validation" `Quick
+            test_claude_code_preflight_validation;
+          Alcotest.test_case "claude-code parse structured response" `Quick
+            test_claude_code_parse_structured_response;
+          Alcotest.test_case
+            "claude-code parse structured response rejects extra fields" `Quick
+            test_claude_code_parse_structured_response_rejects_extra_fields;
+          Alcotest.test_case "claude-code inline temperature fails fast" `Quick
+            test_claude_code_inline_temperature_fails_fast;
+          Alcotest.test_case "claude-cli build request body" `Quick
+            test_claude_cli_build_request_body;
+          Alcotest.test_case "claude-cli preflight validation" `Quick
+            test_claude_cli_preflight_validation;
+          Alcotest.test_case "claude-cli parse wrapped response" `Quick
+            test_claude_cli_parse_wrapped_response;
+          Alcotest.test_case "claude-cli missing model fails fast" `Quick
+            test_claude_cli_missing_model_fails_fast;
           Alcotest.test_case "wrong argument labels fail" `Quick
             test_wrong_argument_labels_fail;
           Alcotest.test_case "unsupported library/module call fails" `Quick
             test_unsupported_library_module_call_fails;
+          Alcotest.test_case "while loop fails with recursion guidance" `Quick
+            test_while_loop_fails_with_recursion_guidance;
+          Alcotest.test_case "for loop fails with recursion guidance" `Quick
+            test_for_loop_fails_with_recursion_guidance;
           Alcotest.test_case "zero-arg main runs" `Quick test_zero_arg_main_runs;
           Alcotest.test_case "check ignores unrelated broken files" `Quick
             test_check_ignores_unrelated_broken_files;

@@ -11,6 +11,8 @@ Today the built-in CLI providers are:
 
 - `codex`
 - `opencode`
+- `claude-code`
+- `claude-cli`
 
 Usage stays provider-agnostic at the CLI level:
 
@@ -72,6 +74,20 @@ CamlFlow checks that:
 
 - `opencode` is installed and on `PATH`
 
+### `claude-code`
+
+CamlFlow checks that:
+
+- `claude` is installed and on `PATH`
+- Claude Code authentication is available through `claude auth status`
+
+### `claude-cli`
+
+CamlFlow checks that:
+
+- `ant` is installed and on `PATH`
+- `ANTHROPIC_API_KEY` is set in the environment
+
 If preflight fails, the run fails before the workflow starts.
 
 ## Runtime behavior
@@ -101,6 +117,24 @@ When `--provider opencode` is set:
 - CamlFlow concatenates all `text` event chunks before decoding the final wrapped JSON payload
 - if OpenCode emits an `error` event, CamlFlow surfaces that message as the step failure
 
+### `claude-code`
+
+When `--provider claude-code` is set:
+
+- each effect becomes a fresh `claude -p --output-format json` call
+- CamlFlow passes the wrapped JSON Schema through `--json-schema`
+- CamlFlow runs Claude Code in `--bare` print mode with no session persistence
+- CamlFlow parses the validated `structured_output` payload from Claude Code's JSON response
+
+### `claude-cli`
+
+When `--provider claude-cli` is set:
+
+- each effect becomes a fresh `ant messages create --format json` call
+- CamlFlow sends the wrapped JSON Schema through `output_config.format`
+- CamlFlow maps `--reasoning` onto Anthropic's `output_config.effort`
+- CamlFlow parses the returned message JSON, then decodes the JSON string from `content[0].text`
+
 Both adapters use a wrapped `{"result": ...}` response shape so non-object CamlFlow values remain safe to transport.
 
 ## Prompt sources by effect kind
@@ -121,6 +155,10 @@ For inline agents:
 
 For `opencode`, `--reasoning` is mapped onto `--variant` values such as `minimal`, `medium`, `high`, and `max`.
 
+For `claude-code`, `--reasoning` is mapped onto `--effort low|medium|high|max`.
+
+For `claude-cli`, `--reasoning` is mapped onto Anthropic's `output_config.effort`.
+
 ## Unsupported inline settings
 
 Current direct CLI adapters fail fast on inline settings that are not mapped
@@ -137,6 +175,8 @@ provider codex does not support inline setting(s) temperature for agent reviewer
 ```
 
 The Opencode adapter behaves the same way for unsupported inline settings.
+
+The Claude Code and Claude CLI adapters behave the same way for unsupported inline settings.
 
 ## Tracing
 
@@ -187,6 +227,39 @@ Current adapter limitations:
 - no mapping for provider profiles yet
 - no mapping for arbitrary provider config overrides yet
 
+### `claude-code`
+
+Current adapter capabilities:
+
+- supports model override
+- supports reasoning mapping through `--effort`
+- supports extra accessible directories through repeatable `--add-dir`
+- supports wrapped JSON structured output through `--json-schema`
+- supports provider tracing
+
+Current adapter limitations:
+
+- no mapping for `--provider-profile`
+- no mapping for arbitrary `--provider-config`
+- no faithful read-only sandbox mapping yet
+
+### `claude-cli`
+
+Current adapter capabilities:
+
+- supports model override
+- supports reasoning mapping through `output_config.effort`
+- supports wrapped JSON structured output through `output_config.format`
+- supports provider tracing
+
+Current adapter limitations:
+
+- requires an explicit model from CLI or inline `Agent.define ~model`
+- no sandbox mapping
+- no extra writable directory mapping
+- no mapping for `--provider-profile`
+- no mapping for arbitrary `--provider-config`
+
 ## Writable scope
 
 Default provider execution uses:
@@ -211,6 +284,10 @@ That means the adapter currently does **not** support:
 - `--provider-config`
 
 In other words, the first Opencode slice is a convenience adapter, not a full sandbox-policy mapping.
+
+`claude-code` currently maps workspace-capable execution onto Claude Code's coarse non-interactive permission-bypass mode. It supports extra accessible directories, but it does **not** yet expose a faithful read-only sandbox mapping.
+
+`claude-cli` is a direct API adapter, so it does **not** expose filesystem sandboxing or writable-scope controls.
 
 ## OpenCode error handling notes
 
@@ -244,4 +321,26 @@ dune exec camlflow -- run examples/codex/main.cml \
   --input-json '"Ada"' \
   --provider opencode \
   --model openai/gpt-5.4-mini
+```
+
+Claude Code:
+
+```sh
+dune exec camlflow -- run examples/codex/main.cml \
+  --skills examples/codex/skills \
+  --input-json '"Ada"' \
+  --provider claude-code \
+  --model sonnet \
+  --reasoning medium
+```
+
+Claude CLI:
+
+```sh
+ANTHROPIC_API_KEY=... dune exec camlflow -- run examples/codex/main.cml \
+  --skills examples/codex/skills \
+  --input-json '"Ada"' \
+  --provider claude-cli \
+  --model claude-sonnet-4-6 \
+  --reasoning medium
 ```

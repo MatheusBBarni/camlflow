@@ -1,4 +1,4 @@
-type name = Codex | Opencode
+type name = Codex | Opencode | Claude_code | Claude_cli
 type reasoning = Low | Medium | High | Max
 type sandbox = Read_only | Workspace_write | Danger_full_access
 type config = { key : string; value : string }
@@ -39,12 +39,20 @@ let default_settings =
     trace_provider = false;
   }
 
-let name_to_string = function Codex -> "codex" | Opencode -> "opencode"
-let available_provider_names = List.map name_to_string [ Codex; Opencode ]
+let name_to_string = function
+  | Codex -> "codex"
+  | Opencode -> "opencode"
+  | Claude_code -> "claude-code"
+  | Claude_cli -> "claude-cli"
+
+let available_provider_names =
+  List.map name_to_string [ Codex; Opencode; Claude_code; Claude_cli ]
 
 let name_of_string = function
   | "codex" -> Ok Codex
   | "opencode" -> Ok Opencode
+  | "claude-code" -> Ok Claude_code
+  | "claude-cli" -> Ok Claude_cli
   | other ->
       Error
         (Printf.sprintf "unknown provider %s; expected one of: %s" other

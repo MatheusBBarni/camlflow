@@ -960,38 +960,3 @@ let to_json_string ?(pretty = true) (program : program) : string =
 let of_json_string (source : string) : (program, string) result =
   try program_of_yojson (Yojson.Safe.from_string source)
   with Yojson.Json_error message -> Error message
-
-let string_of_yojson = function
-  | `String value -> Ok value
-  | _ -> Error "expected string"
-
-let bool_of_yojson = function
-  | `Bool value -> Ok value
-  | _ -> Error "expected bool"
-
-let required_json_object_field fields name =
-  match List.assoc_opt name fields with
-  | Some (`Assoc nested) -> Ok (`Assoc nested)
-  | Some _ -> Error (Printf.sprintf "field %s must be an object" name)
-  | None -> Error (Printf.sprintf "missing field %s" name)
-
-let required_field fields name parse =
-  match List.assoc_opt name fields with
-  | Some value -> parse value
-  | None -> Error (Printf.sprintf "missing field %s" name)
-
-let required_list_field fields name parse =
-  match List.assoc_opt name fields with
-  | Some (`List items) -> all (List.map parse items)
-  | Some _ -> Error (Printf.sprintf "field %s must be a list" name)
-  | None -> Error (Printf.sprintf "missing field %s" name)
-
-let all results =
-  let rec aux acc = function
-    | [] -> Ok (List.rev acc)
-    | Ok value :: rest -> aux (value :: acc) rest
-    | Error error :: _ -> Error error
-  in
-  aux [] results
-
-let with_loc loc data = `Assoc [ ("loc", Loc.to_yojson loc); ("data", data) ]
