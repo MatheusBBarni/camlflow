@@ -464,6 +464,12 @@ let rec lower_expr (expr : expression) : Syntax.Ast.expr =
           (lower_expr cond, lower_expr then_branch, lower_expr else_branch)
     | Pexp_ifthenelse (_, _, None) ->
         failf expr.pexp_loc "if expressions must have an else branch"
+    | Pexp_while _ ->
+        failf expr.pexp_loc
+          "while loops are unsupported in CamlFlow MVP; use recursion for now"
+    | Pexp_for _ ->
+        failf expr.pexp_loc
+          "for loops are unsupported in CamlFlow MVP; use recursion for now"
     | Pexp_match (scrutinee, cases) ->
         Syntax.Ast.EMatch (lower_expr scrutinee, List.map lower_case cases)
     | Pexp_let (rec_flag, bindings, body) ->

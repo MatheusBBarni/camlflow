@@ -90,9 +90,7 @@ let command_name = function
   | Completion -> "completion"
 
 let shell_name = function Bash -> "bash" | Zsh -> "zsh" | Fish -> "fish"
-let all_commands = [ Help; Parse; Check; Compile; Run; Serve; Lsp; Completion ]
 let public_commands = [ Parse; Check; Compile; Run; Serve; Lsp; Completion ]
-let public_command_names = List.map command_name public_commands
 let shell_names = [ "bash"; "zsh"; "fish" ]
 let provider_names_text = String.concat ", " Provider.available_provider_names
 

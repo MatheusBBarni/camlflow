@@ -103,6 +103,8 @@ It will **not** include:
    - no loops
    - no assignment
    - no imperative control flow
+   - `for` / `while` should be rejected explicitly, with guidance to use
+     recursion in the current MVP subset
 
 ### Effects and runtime
 15. `let*` is reserved for **effectful sequencing**.

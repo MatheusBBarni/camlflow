@@ -719,6 +719,11 @@ Remaining Beta 3 follow-up:
   the current MVP subset
 - [x] Refine multi-provider workflow execution experience
 
+Today the MVP keeps typed model-response control flow inside the pure subset:
+`if`, `match`, and recursion. `for` and `while` remain future-language work,
+and CamlFlow now diagnoses them explicitly so authors fall back to recursive
+helpers like `examples/model-response-retry/`.
+
 Example target shape for this Beta 3 slice:
 
 ```ocaml

@@ -2980,6 +2980,31 @@ let main : int =
     "qualified library/module calls such as List.<value> are unsupported"
     (Camlflow.Typing.check_file main)
 
+let test_while_loop_fails_with_recursion_guidance () =
+  with_temp_dir "camlflow-while-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main {|
+let main : int =
+  let x = 0 in
+  while x < 3 do x done
+|};
+  expect_error_contains "while loop unsupported"
+    "while loops are unsupported in CamlFlow MVP; use recursion for now"
+    (Camlflow.Typing.check_file main)
+
+let test_for_loop_fails_with_recursion_guidance () =
+  with_temp_dir "camlflow-for-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+let main : int =
+  let total = 0 in
+  for i = 0 to 2 do total done
+|};
+  expect_error_contains "for loop unsupported"
+    "for loops are unsupported in CamlFlow MVP; use recursion for now"
+    (Camlflow.Typing.check_file main)
+
 let test_zero_arg_main_runs () =
   with_temp_dir "camlflow-zero-arg-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
@@ -4756,6 +4781,10 @@ let () =
             test_wrong_argument_labels_fail;
           Alcotest.test_case "unsupported library/module call fails" `Quick
             test_unsupported_library_module_call_fails;
+          Alcotest.test_case "while loop fails with recursion guidance" `Quick
+            test_while_loop_fails_with_recursion_guidance;
+          Alcotest.test_case "for loop fails with recursion guidance" `Quick
+            test_for_loop_fails_with_recursion_guidance;
           Alcotest.test_case "zero-arg main runs" `Quick test_zero_arg_main_runs;
           Alcotest.test_case "check ignores unrelated broken files" `Quick
             test_check_ignores_unrelated_broken_files;
