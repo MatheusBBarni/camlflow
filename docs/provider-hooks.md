@@ -4,6 +4,11 @@ CamlFlow can run workflows with deterministic local defaults, but the runtime is
 
 This document shows how to wire those hooks from OCaml and what metadata each hook receives.
 
+The built-in CLI providers (`codex`, `opencode`, `claude-code`, and
+`claude-cli`) are layered on top of the same runtime invocation metadata shown
+here. For the CLI-facing execution flow and provider-specific behavior, see
+`docs/provider-execution.md`.
+
 ## Available runtime hooks
 
 The runtime context lives in:

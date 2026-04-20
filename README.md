@@ -50,7 +50,7 @@ integration slice:
   - default bound-agent / bound-skill provider fallback
   - effect observer hook with invocation metadata
   - prompt-backed local skill metadata
-- provider-backed CLI execution for Codex and OpenCode
+- provider-backed CLI execution for Codex, OpenCode, Claude Code, and Claude CLI
 - JSON-RPC host integration over stdio:
   - `serve --stdio`
   - host → server methods for `initialize`, `camlflow/check`, `camlflow/compile`, `camlflow/run`, `shutdown`, and `exit`
@@ -306,7 +306,7 @@ Supported fields:
 - `entry`: default entrypoint name
 - `includePaths`: extra module search paths
 - `skillsDir`: local skill root
-- `provider`: unresolved-effect provider, currently `codex` or `opencode`
+- `provider`: unresolved-effect provider, currently `codex`, `opencode`, `claude-code`, or `claude-cli`
 - `model`: provider model override
 - `reasoning`: provider-agnostic reasoning level, one of `low`, `medium`, `high`, `max`
 - `providerProfile`: named provider profile
@@ -423,6 +423,26 @@ dune exec camlflow -- run examples/basic/main.cml \
   --reasoning low
 ```
 
+### Run with Claude Code provider
+
+```sh
+dune exec camlflow -- run examples/basic/main.cml \
+  --input-json '"Ada"' \
+  --provider claude-code \
+  --model sonnet \
+  --reasoning medium
+```
+
+### Run with Claude CLI provider
+
+```sh
+ANTHROPIC_API_KEY=... dune exec camlflow -- run examples/basic/main.cml \
+  --input-json '"Ada"' \
+  --provider claude-cli \
+  --model claude-sonnet-4-6 \
+  --reasoning medium
+```
+
 ### Run Codex provider example with a local skill + inline agent
 
 ```sh
@@ -519,14 +539,14 @@ runtime hooks.
 - `examples/json-rpc-host/` — dependency-free Node host speaking CamlFlow JSON-RPC over stdio
 - `examples/json-rpc-problem-coach/` — dependency-free Node host running the structured problem-coach workflow over JSON-RPC
 - `packages/camlflow-ts-json-rpc-sdk/examples/` — SDK-backed JSON-RPC host examples for spawned and attached clients, including progress, cancellation, and output chunks
-- `examples/codex/` — CLI Codex provider run using a bound agent, local skill, and inline agent
+- `examples/codex/` — multi-provider CLI run using a bound agent, local skill, and inline agent
 - `examples/swe-leetcode/` — inline LeetCode solver agent using the caveman skill and a fixed model
 - `examples/problem-coach/` — multi-step solver that returns a directly useful final answer pack
 - `examples/repo-triage/` — repository-grounded triage workflow designed to show host-side tool use in `pi-mono`
 
 ## Provider docs
 
-- `docs/provider-execution.md` — CLI provider-backed execution and Codex usage
+- `docs/provider-execution.md` — CLI provider-backed execution across all built-in providers
 - `docs/provider-hooks.md` — hook model, invocation metadata, and embedding guide
 - `docs/json-rpc.md` — Phase 0 JSON-RPC host-integration contract
 - `docs/json-rpc-fixtures.md` — concrete JSON-RPC request/response transcripts
@@ -542,7 +562,7 @@ runtime hooks.
 - `examples/json-rpc-problem-coach/README.md` — runnable dependency-free structured JSON-RPC host example
 - `packages/camlflow-ts-json-rpc-sdk/README.md` — TypeScript SDK guide
 - `packages/camlflow-ts-json-rpc-sdk/examples/README.md` — runnable SDK-backed JSON-RPC host examples
-- `examples/codex/README.md` — runnable Codex provider example
+- `examples/codex/README.md` — runnable multi-provider example
 - `examples/model-response-validation/README.md` — runnable typed model-response branching example
 - `examples/model-response-retry/README.md` — runnable typed model-response retry example
 - `examples/dev-workflow/README.md` — runnable end-to-end dev-workflow harness example
@@ -672,7 +692,7 @@ Remaining Beta 2 follow-up:
 - [x] Add go-to-definition, rename, hover, outline, and diagnostics
 - [ ] Add formatting and code actions
 
-### Beta 3 — multi-provider CLI foundation partially delivered
+### Beta 3 — multi-provider CLI foundation mostly delivered
 
 Goal: expand model/provider integrations and advanced CLI control.
 
@@ -681,7 +701,8 @@ Delivered:
 - [x] Improve the CLI so users can choose model, reasoning mode, sandbox,
   profile, provider config, and related execution settings
 - [x] Generalize runtime/provider selection across the currently supported AI
-  coding tools shipped in-repo (`codex` and `opencode`)
+  coding tools shipped in-repo (`codex`, `opencode`, `claude-code`, and
+  `claude-cli`)
 - [x] Tighten model-response validation so providers must return the wrapped
   `{"result": ...}` contract before CamlFlow decodes typed output
 - [x] Prove typed model responses can drive `if` / `match` workflow branching
@@ -691,12 +712,12 @@ Delivered:
 
 Remaining Beta 3 follow-up:
 
-- [ ] Integrate with Claude Code
-- [ ] Integrate with Claude CLI
+- [x] Integrate with Claude Code
+- [x] Integrate with Claude CLI
 - [ ] Expand workflow control flow around typed model responses with future
   iteration constructs such as `for` / `while` when the language grows beyond
   the current MVP subset
-- [ ] Refine multi-provider workflow execution experience
+- [x] Refine multi-provider workflow execution experience
 
 Example target shape for this Beta 3 slice:
 
