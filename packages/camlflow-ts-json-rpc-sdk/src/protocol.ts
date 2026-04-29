@@ -333,6 +333,8 @@ export interface CamlFlowOutputChunkNotification extends JsonObject {
   format: string;
   delta: JsonValue;
   done: boolean;
+  declaredReturnType: string | null;
+  outputSchema: JsonObject | null;
 }
 
 export function effectOutput<TOutput extends JsonValue>(

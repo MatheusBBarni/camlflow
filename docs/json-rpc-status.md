@@ -27,7 +27,7 @@ These docs lock the core model:
 - framing is `Content-Length`
 - MVP execution is blocking request/response
 - MVP server supports one active run per server instance
-- v1 does not include suspend/resume or authoritative incremental result streaming
+- v1 does not include suspend/resume; authoritative effect completion is limited to typed final `camlflow/outputChunk` notifications for the currently active effect
 
 ### 2. Reusable effect request model was extracted
 
@@ -263,17 +263,19 @@ Completed:
 - SDK typing for initialize notification preferences
 - tests covering progress-disabled and diagnostic-disabled sessions
 
-### 18. An initial advisory streaming relay now exists
+### 18. Typed output streaming over `camlflow/outputChunk` now exists
 
 Completed:
 
 - `initialize.capabilities.streaming = true`
-- server relay support for advisory `camlflow/outputChunk`
+- server relay support for `camlflow/outputChunk`
+- relayed chunks include `declaredReturnType` and `outputSchema`, using `null` for legacy untyped chunks
+- typed final chunks with matching effect metadata can complete the active effect after normal host-output validation
 - SDK callback surface `onOutputChunk`
 - SDK effect-handler context support for `emitOutputChunk(...)`
-- tests covering relayed output-chunk behavior end to end
+- tests covering relayed output-chunk behavior and typed streamed completion end to end
 
-This keeps streaming explicitly non-authoritative while making the notification surface real.
+Legacy untyped chunks remain advisory compatibility previews. Hosts may still send the late matching `camlflow/executeEffect` response after typed streamed completion.
 
 ---
 
@@ -314,6 +316,6 @@ Future follow-up beyond the checklist could still include:
 - deepening progress semantics:
   - decide whether pure-step milestones should expand further
   - decide whether known-step estimates should ever become non-null
-- deciding whether advisory `outputChunk` relay should grow into richer automatic streaming semantics
+- deciding whether typed `outputChunk` relay should grow into richer multi-effect or resumable streaming semantics
 - more direct CLI/provider backends such as additional tool-specific adapters after more host feedback
 - publishing or packaging the SDK more formally once the example-driven integration surface feels stable

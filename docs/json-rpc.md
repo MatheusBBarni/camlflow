@@ -606,11 +606,24 @@ Current notification shapes:
   "streamId": "string",
   "format": "string",
   "delta": "json",
-  "done": "bool"
+  "done": "bool",
+  "declaredReturnType": "string | null",
+  "outputSchema": "object | null"
 }
 ```
 
-These notifications are advisory effect-output previews. Hosts may buffer or ignore them.
+`runId` and `step` must match the active `camlflow/executeEffect` request when a host emits this notification during effect execution. CamlFlow relays output chunks back to the host session and includes `declaredReturnType` / `outputSchema` on every relayed notification; legacy chunks that omit typed metadata are relayed with `null` metadata.
+
+Streaming semantics are backward-compatible under `protocolVersion = "0.1.0"`:
+
+- chunks with missing or `null` typed metadata are advisory compatibility previews only
+- chunks with both `declaredReturnType` and `outputSchema` matching the active effect request are typed stream observations
+- typed `done: false` chunks are authoritative observations but do not advance the workflow
+- a typed `done: true` chunk is an authoritative final output candidate; CamlFlow may complete the active effect from `delta` before receiving the original effect response
+- the streamed final `delta` is still validated against the declared CamlFlow return type; invalid output fails the effect and enclosing run the same way as an invalid host response
+- if typed metadata is present but does not match the active effect request, CamlFlow reports a diagnostic and does not use the chunk as authoritative output
+
+Hosts whose JSON-RPC stack requires one response per request should still send the matching `camlflow/executeEffect` response after a streamed completion. CamlFlow tolerates and ignores that late response when its JSON-RPC id matches the effect request already completed by a typed final chunk.
 
 ### Current host error propagation behavior
 
@@ -691,6 +704,8 @@ Host → server success result:
 }
 ```
 
+A host may also stream the final effect output with a matching typed `camlflow/outputChunk` notification before the JSON-RPC response. The response should still be sent if the host framework requires it; CamlFlow ignores a late response with the same effect request id after the typed stream chunk has already completed the effect.
+
 Host → server failure result should use a JSON-RPC error response.
 
 Recommended shape:
@@ -747,9 +762,9 @@ This keeps the host protocol aligned with the runtime invocation model already d
 
 The host returns JSON, not raw CamlFlow values.
 
-After receiving a host response, CamlFlow must:
+After receiving a host response or a typed final streamed output chunk, CamlFlow must:
 
-1. decode the JSON response payload
+1. decode the JSON output payload
 2. validate it against the declared CamlFlow return type
 3. fail the run if the returned JSON shape is invalid
 
@@ -773,7 +788,7 @@ Phase 0 locks this direction so later implementation work can target one explici
 
 The first JSON-RPC version should not attempt to solve:
 
-- token streaming execution semantics beyond the current advisory output-chunk relay
+- concurrent or resumable token-stream execution semantics beyond single-effect typed final output streaming
 - concurrent multi-run multiplexing on one connection
 - durable checkpoints
 - protocol-level retries

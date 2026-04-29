@@ -24,7 +24,7 @@ The SDK targets the bridge as it exists today:
 
 ## What it includes
 
-- protocol and payload types for initialize, run/check/compile, effect requests, trace, diagnostics, progress, and advisory output-chunk notifications
+- protocol and payload types for initialize, run/check/compile, effect requests, trace, diagnostics, progress, and output-chunk notifications
 - a `Content-Length` parser/encoder for raw stream integrations
 - a high-level Node client that can:
   - attach to existing streams
@@ -143,7 +143,7 @@ They now cover:
 - a larger structured-output workflow
 - host-side cancellation with `AbortSignal`
 - optional progress callbacks through `camlflow/progress`
-- advisory output-chunk callbacks through `camlflow/outputChunk`
+- typed output-chunk callbacks through `camlflow/outputChunk`
 
 ## `pi-mono` harness scaffold
 
@@ -216,7 +216,7 @@ These notifications are advisory UI metadata. They do not replace the final type
 
 ## Output chunk notifications
 
-The SDK now includes a live `onOutputChunk` callback surface plus effect-handler helpers for advisory streaming.
+The SDK includes a live `onOutputChunk` callback surface plus effect-handler helpers for streaming effect output.
 
 Current behavior:
 
@@ -224,8 +224,11 @@ Current behavior:
 - effect handlers receive a third `context` argument with `emitOutputChunk(...)`
 - effect handlers can also forward iterable/async-iterable text streams with `context.relayTextOutput(...)`
 - the package also exports `relayOutputChunks(...)` and `relayTextOutput(...)` for custom wiring
-- CamlFlow relays those `camlflow/outputChunk` notifications back to the host session
-- streamed chunks remain advisory only; the final typed effect response still controls correctness
+- `context.emitOutputChunk({ streamId, format, delta, done })` fills `declaredReturnType` and `outputSchema` from the active effect request by default
+- pass `declaredReturnType: null` and `outputSchema: null` explicitly to emit an advisory compatibility preview
+- CamlFlow relays those `camlflow/outputChunk` notifications back to the host session, including typed metadata or `null` metadata
+- typed `done: false` chunks are stream observations; typed `done: true` chunks can complete the active effect from `delta` after normal output validation
+- hosts may still return `effectOutput(...)` after a typed final chunk; CamlFlow tolerates the late matching JSON-RPC response
 
 Example:
 
@@ -253,7 +256,7 @@ effectHandler: async ({ effect }, _request, context) => {
 - `initialize()` returns both `protocolVersion` and `irVersion` so hosts can separately reason about transport compatibility and compiled-artifact compatibility.
 - `initialize().capabilities.cancelRequest` tells hosts whether `$/cancelRequest` is supported.
 - `initialize().capabilities.progress` tells hosts whether `camlflow/progress` may be emitted.
-- `initialize().capabilities.streaming` tells hosts whether advisory `camlflow/outputChunk` notifications are available; it is currently `true`.
+- `initialize().capabilities.streaming` tells hosts whether `camlflow/outputChunk` notifications are available; it is currently `true`.
 - `compile()` returns `irVersion` plus the IR artifact as generic JSON by default. The bridge does not expose a smaller dedicated compile-artifact schema.
 - `effect.inlineDefinition` is typed from CamlFlow's current IR serialization, including inline agent metadata and source locations.
 - `exit` is modeled as a notification because that is how the current host examples shut the server down.

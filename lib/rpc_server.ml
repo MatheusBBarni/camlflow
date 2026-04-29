@@ -17,6 +17,7 @@ type active_run = {
   mutable current_step : int option;
   mutable completed_steps : int;
   mutable waiting_effect_id : Rpc_protocol.id option;
+  mutable stream_completed_effect_ids : Rpc_protocol.id list;
   mutable cancellation_requested : bool;
   mutable cancellation_emitted : bool;
 }
@@ -61,9 +62,17 @@ type output_chunk = {
   output_chunk_format : string;
   output_chunk_delta : Yojson.Safe.t;
   output_chunk_done : bool;
+  output_chunk_declared_return_type : string option;
+  output_chunk_output_schema : Yojson.Safe.t option;
 }
 
 type run_error = Run_failed of string | Run_cancelled of string
+
+type output_chunk_classification =
+  | Advisory_output_chunk
+  | Typed_incomplete_output_chunk
+  | Typed_final_output_chunk of Yojson.Safe.t
+  | Invalid_typed_output_chunk of string
 
 let id_matches left right =
   match (left, right) with
@@ -83,6 +92,12 @@ let optional_string_field fields name =
   | None | Some `Null -> Ok None
   | Some (`String value) -> Ok (Some value)
   | Some _ -> Error (Printf.sprintf "field %s must be a string or null" name)
+
+let optional_object_field fields name =
+  match List.assoc_opt name fields with
+  | None | Some `Null -> Ok None
+  | Some (`Assoc _ as value) -> Ok (Some value)
+  | Some _ -> Error (Printf.sprintf "field %s must be an object or null" name)
 
 let optional_int_field fields name =
   match List.assoc_opt name fields with
@@ -162,6 +177,12 @@ let output_chunk_of_yojson = function
         | Some _ -> Error "field done must be a bool"
         | None -> Error "missing field done"
       in
+      let* output_chunk_declared_return_type =
+        optional_string_field fields "declaredReturnType"
+      in
+      let* output_chunk_output_schema =
+        optional_object_field fields "outputSchema"
+      in
       Ok
         {
           output_chunk_run_id;
@@ -170,6 +191,8 @@ let output_chunk_of_yojson = function
           output_chunk_format;
           output_chunk_delta;
           output_chunk_done;
+          output_chunk_declared_return_type;
+          output_chunk_output_schema;
         }
   | _ -> Error "output chunk params must be a JSON object"
 
@@ -303,6 +326,10 @@ let bool_option_field name = function
   | Some value -> (name, `Bool value)
   | None -> (name, `Null)
 
+let json_option_field name = function
+  | Some value -> (name, value)
+  | None -> (name, `Null)
+
 let effect_summary_field = function
   | None -> ("effect", `Null)
   | Some (request : Effect_request.t) ->
@@ -350,7 +377,8 @@ let send_progress (server : server) ?run_id ?step ?message ?completed_steps
          ?cancellable stage)
   else Ok ()
 
-let output_chunk_payload ?run_id ?step ~stream_id ~format ~delta ~done_ () =
+let output_chunk_payload ?run_id ?step ?declared_return_type ?output_schema
+    ~stream_id ~format ~delta ~done_ () =
   `Assoc
     [
       string_option_field "runId" run_id;
@@ -359,11 +387,15 @@ let output_chunk_payload ?run_id ?step ~stream_id ~format ~delta ~done_ () =
       ("format", `String format);
       ("delta", delta);
       ("done", `Bool done_);
+      string_option_field "declaredReturnType" declared_return_type;
+      json_option_field "outputSchema" output_schema;
     ]
 
-let send_output_chunk server ?run_id ?step ~stream_id ~format ~delta ~done_ () =
+let send_output_chunk server ?run_id ?step ?declared_return_type ?output_schema
+    ~stream_id ~format ~delta ~done_ () =
   notify server output_chunk_method
-    (output_chunk_payload ?run_id ?step ~stream_id ~format ~delta ~done_ ())
+    (output_chunk_payload ?run_id ?step ?declared_return_type ?output_schema
+       ~stream_id ~format ~delta ~done_ ())
 
 let diagnostic_payload ?run_id ?step ?method_ ?request message =
   `Assoc
@@ -403,24 +435,63 @@ let output_chunk_matches_request (request : Effect_request.t)
   request.Effect_request.run_id = chunk.output_chunk_run_id
   && request.Effect_request.step_index = chunk.output_chunk_step
 
+let classify_output_chunk (request : Effect_request.t) (chunk : output_chunk) =
+  match
+    (chunk.output_chunk_declared_return_type, chunk.output_chunk_output_schema)
+  with
+  | None, None | None, Some _ | Some _, None -> Advisory_output_chunk
+  | Some declared_return_type, Some output_schema ->
+      if
+        String.equal declared_return_type request.declared_return_type
+        && output_schema = request.output_schema
+      then
+        if chunk.output_chunk_done then
+          Typed_final_output_chunk chunk.output_chunk_delta
+        else Typed_incomplete_output_chunk
+      else
+        Invalid_typed_output_chunk
+          (Printf.sprintf
+             "output chunk typed metadata must match the active effect request \
+              for %s"
+             request.Effect_request.name)
+
 let relay_output_chunk server (chunk : output_chunk) =
   send_output_chunk server ?run_id:chunk.output_chunk_run_id
     ?step:chunk.output_chunk_step ~stream_id:chunk.output_chunk_stream_id
     ~format:chunk.output_chunk_format ~delta:chunk.output_chunk_delta
-    ~done_:chunk.output_chunk_done ()
+    ~done_:chunk.output_chunk_done
+    ?declared_return_type:chunk.output_chunk_declared_return_type
+    ?output_schema:chunk.output_chunk_output_schema ()
 
 let handle_in_run_output_chunk server (request : Effect_request.t) params =
   match output_chunk_of_yojson params with
   | Error error ->
-      send_diagnostic server ?run_id:request.run_id ?step:request.step_index
-        ~method_:output_chunk_method ~request error
+      let* () =
+        send_diagnostic server ?run_id:request.run_id ?step:request.step_index
+          ~method_:output_chunk_method ~request error
+      in
+      Ok None
   | Ok chunk ->
       if output_chunk_matches_request request chunk then
-        relay_output_chunk server chunk
+        let classification = classify_output_chunk request chunk in
+        let* () = relay_output_chunk server chunk in
+        match classification with
+        | Advisory_output_chunk | Typed_incomplete_output_chunk -> Ok None
+        | Typed_final_output_chunk output -> Ok (Some output)
+        | Invalid_typed_output_chunk error ->
+            let* () =
+              send_diagnostic server ?run_id:request.run_id
+                ?step:request.step_index ~method_:output_chunk_method ~request
+                error
+            in
+            Ok None
       else
-        send_diagnostic server ?run_id:request.run_id ?step:request.step_index
-          ~method_:output_chunk_method ~request
-          "output chunk runId/step must match the active effect request"
+        let* () =
+          send_diagnostic server ?run_id:request.run_id ?step:request.step_index
+            ~method_:output_chunk_method ~request
+            "output chunk runId/step must match the active effect request"
+        in
+        Ok None
 
 let active_run_matches_request active request_id =
   match active.request_id with
@@ -431,6 +502,24 @@ let active_run_matches_effect_request active request_id =
   match active.waiting_effect_id with
   | Some active_request_id -> id_matches active_request_id request_id
   | None -> false
+
+let active_run_completed_effect_response active request_id =
+  let rec loop kept = function
+    | [] -> false
+    | completed_id :: rest ->
+        if id_matches completed_id request_id then (
+          active.stream_completed_effect_ids <- List.rev_append kept rest;
+          true)
+        else loop (completed_id :: kept) rest
+  in
+  loop [] active.stream_completed_effect_ids
+
+let mark_effect_completed_by_stream server request_id =
+  match server.active_run with
+  | Some active ->
+      active.stream_completed_effect_ids <-
+        request_id :: active.stream_completed_effect_ids
+  | None -> ()
 
 let request_cancellation server request_id =
   match server.active_run with
@@ -527,6 +616,12 @@ let rec drain_in_run_control_messages server =
               | None -> false
             then Ok ()
             else drain_in_run_control_messages server
+        | Ok request
+          when String.equal request.Rpc_protocol.request_method
+                 output_chunk_method
+               && Option.is_none request.Rpc_protocol.request_id ->
+            server.pending_message <- Some message;
+            Ok ()
         | Ok request when Option.is_none request.Rpc_protocol.request_id ->
             drain_in_run_control_messages server
         | Ok request ->
@@ -544,9 +639,16 @@ let rec drain_in_run_control_messages server =
             drain_in_run_control_messages server
         | Error _ -> (
             match Rpc_protocol.response_of_yojson message with
-            | Ok _ ->
-                server.pending_message <- Some message;
-                Ok ()
+            | Ok response -> (
+                match
+                  (server.active_run, response.Rpc_protocol.response_id)
+                with
+                | Some active, Some id
+                  when active_run_completed_effect_response active id ->
+                    drain_in_run_control_messages server
+                | _ ->
+                    server.pending_message <- Some message;
+                    Ok ())
             | Error error ->
                 let* () =
                   send_diagnostic server ~method_:"(invalid-in-run-message)"
@@ -588,39 +690,45 @@ let send_effect_request server (request : Effect_request.t) =
     let* message = read_json server in
     match Rpc_protocol.response_of_yojson message with
     | Ok response -> (
-        let* () =
-          match response.Rpc_protocol.response_id with
-          | Some id when id_matches id request_id -> Ok ()
-          | Some id ->
-              Error
-                (Printf.sprintf
-                   "unexpected JSON-RPC response id while waiting for effect \
-                    response: %s"
-                   (Rpc_protocol.string_of_id id))
-          | None -> Error "missing JSON-RPC response id for effect response"
-        in
-        match response.Rpc_protocol.response_error with
-        | Some error when error.Rpc_protocol.error_code = request_cancelled_code
-          ->
-            (match server.active_run with
-            | Some active -> active.cancellation_requested <- true
-            | None -> ());
-            let* () = ensure_run_not_cancelled server ?step ~request () in
-            Error cancellation_message
-        | Some error ->
-            Error
-              (Printf.sprintf "host returned JSON-RPC error %d for %s: %s"
-                 error.Rpc_protocol.error_code request.Effect_request.name
-                 error.Rpc_protocol.error_message)
-        | None -> (
-            match response.Rpc_protocol.response_result with
-            | Some (`Assoc fields) -> (
-                match List.assoc_opt "output" fields with
-                | Some json -> Ok json
-                | None ->
-                    Error "effect response result must contain output field")
-            | Some _ -> Error "effect response result must be an object"
-            | None -> Error "effect response missing result payload"))
+        match (server.active_run, response.Rpc_protocol.response_id) with
+        | Some active, Some id
+          when active_run_completed_effect_response active id ->
+            wait_for_response ()
+        | _ -> (
+            let* () =
+              match response.Rpc_protocol.response_id with
+              | Some id when id_matches id request_id -> Ok ()
+              | Some id ->
+                  Error
+                    (Printf.sprintf
+                       "unexpected JSON-RPC response id while waiting for \
+                        effect response: %s"
+                       (Rpc_protocol.string_of_id id))
+              | None -> Error "missing JSON-RPC response id for effect response"
+            in
+            match response.Rpc_protocol.response_error with
+            | Some error
+              when error.Rpc_protocol.error_code = request_cancelled_code ->
+                (match server.active_run with
+                | Some active -> active.cancellation_requested <- true
+                | None -> ());
+                let* () = ensure_run_not_cancelled server ?step ~request () in
+                Error cancellation_message
+            | Some error ->
+                Error
+                  (Printf.sprintf "host returned JSON-RPC error %d for %s: %s"
+                     error.Rpc_protocol.error_code request.Effect_request.name
+                     error.Rpc_protocol.error_message)
+            | None -> (
+                match response.Rpc_protocol.response_result with
+                | Some (`Assoc fields) -> (
+                    match List.assoc_opt "output" fields with
+                    | Some json -> Ok json
+                    | None ->
+                        Error "effect response result must contain output field"
+                    )
+                | Some _ -> Error "effect response result must be an object"
+                | None -> Error "effect response missing result payload")))
     | Error _ -> (
         match Rpc_protocol.request_of_yojson message with
         | Ok incoming
@@ -641,16 +749,21 @@ let send_effect_request server (request : Effect_request.t) =
         | Ok incoming
           when String.equal incoming.Rpc_protocol.request_method
                  output_chunk_method
-               && Option.is_none incoming.Rpc_protocol.request_id ->
+               && Option.is_none incoming.Rpc_protocol.request_id -> (
             let output_chunk_params =
               match incoming.Rpc_protocol.request_params with
               | Some params -> params
               | None -> `Assoc []
             in
-            let* () =
+            let* streamed_output =
               handle_in_run_output_chunk server request output_chunk_params
             in
-            wait_for_response ()
+            match streamed_output with
+            | Some output ->
+                let* () = ensure_run_not_cancelled server ?step ~request () in
+                mark_effect_completed_by_stream server request_id;
+                Ok output
+            | None -> wait_for_response ())
         | Ok incoming when Option.is_none incoming.Rpc_protocol.request_id ->
             wait_for_response ()
         | Ok incoming ->
@@ -1101,6 +1214,7 @@ let handle_request server (request : Rpc_protocol.request_message) =
               current_step = None;
               completed_steps = 0;
               waiting_effect_id = None;
+              stream_completed_effect_ids = [];
               cancellation_requested = false;
               cancellation_emitted = false;
             };

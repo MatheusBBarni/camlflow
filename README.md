@@ -235,7 +235,8 @@ Current transport and execution model:
 - `Content-Length` framing
 - one active workflow run per server instance
 - blocking host delegation for effect execution
-- advisory trace, diagnostic, progress, and output-chunk notifications
+- advisory trace, diagnostic, and progress notifications
+- `camlflow/outputChunk` notifications for effect-output streaming; legacy untyped chunks remain advisory, while typed final chunks with matching `declaredReturnType` and `outputSchema` can complete the active effect after normal output validation
 
 Current host-to-server methods:
 
@@ -297,7 +298,8 @@ The editor packages both expect a `camlflow` executable on `PATH` and launch
 - The JSON-RPC bridge is intentionally single-active-run; do not assume one
   `serve --stdio` process can multiplex concurrent runs.
 - CamlFlow does not currently offer durable suspend/resume or full streamed
-  workflow state.
+  workflow state. Typed final effect-output chunks over JSON-RPC can complete an
+  individual active effect, but the bridge remains single-active-run.
 
 ## Related Docs
 
