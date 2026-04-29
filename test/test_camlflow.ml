@@ -180,6 +180,22 @@ let expect_bool_field name expected json =
       Alcotest.failf "expected field %s to be a bool, got %s" name
         (Yojson.Safe.to_string other)
 
+let expect_float_field_non_negative name json =
+  match expect_assoc_field name json with
+  | `Float value -> Alcotest.(check bool) name true (value >= 0.0)
+  | `Int value -> Alcotest.(check bool) name true (value >= 0)
+  | other ->
+      Alcotest.failf "expected field %s to be numeric, got %s" name
+        (Yojson.Safe.to_string other)
+
+let expect_trace_node_common ~id ~step ~kind ~name json =
+  expect_string_field "id" id json;
+  expect_int_field "step" step json;
+  expect_string_field "kind" kind json;
+  expect_string_field "name" name json;
+  let timing = expect_assoc_field "timing" json in
+  expect_float_field_non_negative "elapsedMs" timing
+
 let tagged tag = `Assoc [ ("tag", `String tag) ]
 let tagged_value tag value = `Assoc [ ("tag", `String tag); ("value", value) ]
 
@@ -1330,13 +1346,23 @@ let main (name : string) : string =
   | None -> Alcotest.fail "missing initialize result");
   let run_response = find_rpc_response_by_id "2" output in
   (match run_response.Camlflow.Rpc_protocol.response_result with
-  | Some json ->
+  | Some json -> (
       (match expect_assoc_field "stepsRun" json with
       | `Int steps -> Alcotest.(check int) "steps run" 3 steps
       | other ->
           Alcotest.failf "expected int stepsRun, got %s"
             (Yojson.Safe.to_string other));
-      expect_string_field "output" "done" json
+      expect_string_field "output" "done" json;
+      match expect_assoc_field "traceNodes" json with
+      | `List (first :: _) ->
+          expect_trace_node_common ~id:"step-1" ~step:1 ~kind:"bound-agent"
+            ~name:"greeter" first;
+          expect_string_field "output" "hello Ada" first;
+          let validation = expect_assoc_field "validation" first in
+          expect_string_field "status" "ok" validation
+      | other ->
+          Alcotest.failf "expected non-empty traceNodes, got %s"
+            (Yojson.Safe.to_string other))
   | None -> Alcotest.fail "missing run result");
   let effect_requests =
     List.filter_map
@@ -1353,7 +1379,32 @@ let main (name : string) : string =
   let trace_request = find_rpc_request "camlflow/trace" output in
   Alcotest.(check bool)
     "trace params present" true
-    (Option.is_some trace_request.Camlflow.Rpc_protocol.request_params)
+    (Option.is_some trace_request.Camlflow.Rpc_protocol.request_params);
+  let effect_result_trace =
+    match
+      output
+      |> List.filter_map (fun json ->
+          match rpc_request_message json with
+          | Some request
+            when String.equal request.Camlflow.Rpc_protocol.request_method
+                   "camlflow/trace" -> (
+              match request.request_params with
+              | Some params -> (
+                  match assoc_field "event" params with
+                  | Some (`String "effect-result") -> Some params
+                  | _ -> None)
+              | None -> None)
+          | _ -> None)
+    with
+    | first :: _ -> first
+    | [] -> Alcotest.fail "effect-result trace not found"
+  in
+  let details = expect_assoc_field "details" effect_result_trace in
+  let trace_node = expect_assoc_field "traceNode" details in
+  expect_trace_node_common ~id:"step-1" ~step:1 ~kind:"bound-agent"
+    ~name:"greeter" trace_node;
+  expect_string_field "output" "hello Ada" trace_node;
+  expect_string_field "status" "ok" (expect_assoc_field "validation" trace_node)
 
 let test_rpc_server_end_to_end_progress_notifications () =
   with_temp_dir "camlflow-rpc-progress-" @@ fun dir ->
@@ -3064,6 +3115,41 @@ let main (name : string) : string =
     "roundtrip output" "!"
     (get_output_string result.output)
 
+let test_runtime_records_typed_trace_node () =
+  with_temp_dir "camlflow-trace-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  greeting
+|};
+  let program = check_file main in
+  let context =
+    Camlflow.Runtime.Context.with_agent_handler Camlflow.Runtime.Context.empty
+      "greeter" (fun ~name:_ ~input:_ ~return_type:_ ~types:_ ->
+        Ok (`String "hello Ada"))
+  in
+  let result = run_program ~context ~input:(`String "Ada") program in
+  Alcotest.(check int) "trace node count" 1 (List.length result.trace_nodes);
+  match result.trace_nodes with
+  | [ node ] ->
+      let json = Camlflow.Workflow_trace.to_yojson node in
+      expect_trace_node_common ~id:"step-1" ~step:1 ~kind:"bound-agent"
+        ~name:"greeter" json;
+      expect_string_field "declaredReturnType" "string" json;
+      expect_string_field "output" "hello Ada" json;
+      expect_string_field "name" "Ada" (expect_assoc_field "input" json);
+      Alcotest.(check bool)
+        "rendered prompt present" true
+        (match expect_assoc_field "renderedPrompt" json with
+        | `String value -> contains_substring value "Declared response contract"
+        | _ -> false);
+      expect_string_field "status" "ok" (expect_assoc_field "validation" json)
+  | _ -> Alcotest.fail "expected one trace node"
+
 let test_local_skill_resolution () =
   with_temp_dir "camlflow-skill-" @@ fun dir ->
   let main = Filename.concat dir "main.cml" in
@@ -3830,6 +3916,64 @@ let main (name : string) : string =
     "provider output for agent greeter does not match declared return type \
      string"
     (Camlflow.Runtime.execute ~context ~input:(`String "Ada") program)
+
+let test_runtime_trace_node_records_validation_error () =
+  with_temp_dir "camlflow-provider-shape-trace-" @@ fun dir ->
+  let main = Filename.concat dir "main.cml" in
+  write_file main
+    {|
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  greeting
+|};
+  let program = check_file main in
+  let observed_outputs = ref [] in
+  let observed_traces = ref [] in
+  let context =
+    Camlflow.Runtime.Context.empty |> fun context ->
+    Camlflow.Runtime.Context.with_agent_handler context "greeter"
+      (fun ~name:_ ~input:_ ~return_type:_ ~types:_ -> Ok (`Int 7))
+    |> fun context ->
+    Camlflow.Runtime.Context.with_effect_observer context
+      (fun _invocation ~output ->
+        observed_outputs := output :: !observed_outputs)
+    |> fun context ->
+    Camlflow.Runtime.Context.with_trace_observer context
+      (fun _invocation ~trace_node ->
+        observed_traces := trace_node :: !observed_traces)
+  in
+  expect_error_contains "invalid provider output shape"
+    "provider output for agent greeter does not match declared return type"
+    (Camlflow.Runtime.execute ~context ~input:(`String "Ada") program);
+  (match !observed_outputs with
+  | [ `Int 7 ] -> ()
+  | other ->
+      Alcotest.failf "expected observer to receive invalid output, got %s"
+        (Yojson.Safe.to_string (`List other)));
+  match !observed_traces with
+  | [ json ] -> (
+      expect_trace_node_common ~id:"step-1" ~step:1 ~kind:"bound-agent"
+        ~name:"greeter" json;
+      (match expect_assoc_field "output" json with
+      | `Int 7 -> ()
+      | other ->
+          Alcotest.failf "expected invalid int output in trace, got %s"
+            (Yojson.Safe.to_string other));
+      let validation = expect_assoc_field "validation" json in
+      expect_string_field "status" "error" validation;
+      match expect_assoc_field "message" validation with
+      | `String message ->
+          Alcotest.(check bool)
+            "validation message" true
+            (contains_substring message
+               "provider output for agent greeter does not match declared \
+                return type")
+      | other ->
+          Alcotest.failf "expected validation message, got %s"
+            (Yojson.Safe.to_string other))
+  | _ -> Alcotest.fail "expected one trace node"
 
 let test_provider_metadata_hooks () =
   with_temp_dir "camlflow-hooks-" @@ fun dir ->
@@ -4790,6 +4934,8 @@ let () =
             test_check_ignores_unrelated_broken_files;
           Alcotest.test_case "check run and IR roundtrip" `Quick
             test_check_run_and_ir_roundtrip;
+          Alcotest.test_case "runtime records typed trace node" `Quick
+            test_runtime_records_typed_trace_node;
           Alcotest.test_case "local skill resolution" `Quick
             test_local_skill_resolution;
           Alcotest.test_case "unresolved open fails" `Quick
@@ -4830,6 +4976,8 @@ let () =
             `Quick test_dev_workflow_example_completes_after_approval;
           Alcotest.test_case "invalid provider output shape" `Quick
             test_invalid_provider_output_shape;
+          Alcotest.test_case "runtime trace records validation error" `Quick
+            test_runtime_trace_node_records_validation_error;
           Alcotest.test_case "provider metadata hooks" `Quick
             test_provider_metadata_hooks;
         ] );

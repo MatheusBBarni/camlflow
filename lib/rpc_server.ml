@@ -282,6 +282,8 @@ let run_result run_id (result : Runtime.execution_result) =
       ("runId", `String run_id);
       ("stepsRun", `Int result.steps_run);
       ("output", match result.output with Some json -> json | None -> `Null);
+      ( "traceNodes",
+        `List (List.map Workflow_trace.to_yojson result.trace_nodes) );
     ]
 
 let write_json server json = Rpc_stdio.write_message server.output json
@@ -700,6 +702,7 @@ let build_host_context server ~working_directory ~skills_dir run_id =
         ~completed_steps ?known_steps:None ~cancellable:true "effect-start"
     in
     let* () = send_trace server ~run_id ~step ~request "effect-request" in
+    let started_at = Unix.gettimeofday () in
     let execution_result =
       Effect_bridge.execute_request
         ~executor:(send_effect_request server)
@@ -710,9 +713,21 @@ let build_host_context server ~working_directory ~skills_dir run_id =
       | Ok execution -> Ok execution
       | Error error when String.equal error cancellation_message -> Error error
       | Error error ->
+          let finished_at = Unix.gettimeofday () in
+          let trace_node =
+            Workflow_trace.create ~request ~output:None
+              ~validation:(Workflow_trace.validation_error error)
+              ~timing:(Workflow_trace.timing ~started_at ~finished_at)
+              ()
+          in
           let* () =
             send_trace server ~run_id ~step ~request
-              ~details:(`Assoc [ ("message", `String error) ])
+              ~details:
+                (`Assoc
+                   [
+                     ("message", `String error);
+                     ("traceNode", Workflow_trace.to_yojson trace_node);
+                   ])
               "effect-error"
           in
           let* () = send_diagnostic server ~run_id ~step ~request error in
@@ -722,9 +737,17 @@ let build_host_context server ~working_directory ~skills_dir run_id =
     let validation =
       Effect_bridge.validate_execution ~source:"host" invocation execution
     in
+    let finished_at = Unix.gettimeofday () in
+    let trace_node validation =
+      Workflow_trace.create ~request ~output:(Some execution.output_json)
+        ~validation
+        ~timing:(Workflow_trace.timing ~started_at ~finished_at)
+        ()
+    in
     let* () =
       match validation with
       | Ok _ ->
+          let trace_node = trace_node Workflow_trace.validation_ok in
           let* () =
             drain_and_ensure_run_not_cancelled server ~step ~request ()
           in
@@ -743,12 +766,23 @@ let build_host_context server ~working_directory ~skills_dir run_id =
               "effect-finish"
           in
           send_trace server ~run_id ~step ~request
-            ~details:(`Assoc [ ("status", `String "ok") ])
+            ~details:
+              (`Assoc
+                 [
+                   ("status", `String "ok");
+                   ("traceNode", Workflow_trace.to_yojson trace_node);
+                 ])
             "effect-result"
       | Error error ->
+          let trace_node = trace_node (Workflow_trace.validation_error error) in
           let* () =
             send_trace server ~run_id ~step ~request
-              ~details:(`Assoc [ ("message", `String error) ])
+              ~details:
+                (`Assoc
+                   [
+                     ("message", `String error);
+                     ("traceNode", Workflow_trace.to_yojson trace_node);
+                   ])
               "effect-error"
           in
           send_diagnostic server ~run_id ~step ~request error
@@ -757,7 +791,9 @@ let build_host_context server ~working_directory ~skills_dir run_id =
     Ok execution.Effect_bridge.output_json
   in
   let context =
-    Context.with_working_directory Context.empty working_directory
+    Context.empty |> fun context ->
+    Context.with_run_id context run_id |> fun context ->
+    Context.with_working_directory context working_directory
   in
   let context =
     match skills_dir with

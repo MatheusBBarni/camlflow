@@ -240,6 +240,7 @@ Server result fields:
 - `runId: string`
 - `stepsRun: int`
 - `output: json | null`
+- `traceNodes: object[]` optional typed observability snapshot for effect steps
 
 `input` is optional; if omitted, the workflow must not require an argument.
 
@@ -378,7 +379,7 @@ Changes that are intended to remain backward-compatible within the same protocol
 - adding new capability flags that default to ignorable behavior
 - adding optional notifications that hosts may ignore
 
-Hosts should ignore unknown capability keys, unknown optional fields, and unknown event-specific `details` keys.
+Hosts should ignore unknown capability keys, unknown optional fields, unknown trace-node fields, and unknown event-specific `details` keys.
 
 #### IR compatibility
 
@@ -471,6 +472,21 @@ A trace payload includes:
 - `step`
 - `effect` summary when relevant
 - optional `details`
+
+For `effect-result` and `effect-error`, `details.traceNode` may contain a typed workflow trace node. The same node shape may also appear in `camlflow/run` results under `traceNodes`. Trace nodes are observability data, not authoritative workflow output; the authoritative values remain the final `output` field and host `camlflow/executeEffect` responses.
+
+Trace node fields are lower-camel-case and currently include:
+
+- `id`: stable node id for the run, usually `step-<n>`
+- `runId`, `step`, `kind`, `role`, `name`
+- `input`, `declaredReturnType`, `outputSchema`, `renderedPrompt`
+- `requestedModel`
+- `provider`: object containing `name`, `model`, `reasoning`, `profile`, `sandbox`, and `unsupportedSettings` where available, with nulls or empty arrays otherwise
+- `output`: effect output JSON, or null when the effect failed before output was available
+- `validation`: `{ "status": "ok" | "error", "message": string | null }`
+- `timing`: `{ "startedAt": float, "finishedAt": float, "elapsedMs": float }`
+
+Hosts may ignore `details.traceNode`, `traceNodes`, and any unknown fields inside trace nodes.
 
 ### `camlflow/progress` notifications
 

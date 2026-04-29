@@ -10,6 +10,7 @@ module Provider_schema = Provider_schema
 module Provider_prompt = Provider_prompt
 module Effect_request = Effect_request
 module Effect_bridge = Effect_bridge
+module Workflow_trace = Workflow_trace
 module Rpc_protocol = Rpc_protocol
 module Rpc_stdio = Rpc_stdio
 module Rpc_server = Rpc_server

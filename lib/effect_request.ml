@@ -1,4 +1,4 @@
-type kind = Runtime.Context.invocation_kind
+type kind = Runtime_context.invocation_kind
 
 type t = {
   kind : kind;
@@ -20,14 +20,14 @@ type t = {
 let ( let* ) = Result.bind
 
 let kind_to_string = function
-  | Runtime.Context.Bound_agent -> "bound-agent"
-  | Runtime.Context.Bound_skill -> "bound-skill"
-  | Runtime.Context.Local_prompt_skill -> "local-prompt-skill"
-  | Runtime.Context.Inline_agent -> "inline-agent"
+  | Runtime_context.Bound_agent -> "bound-agent"
+  | Runtime_context.Bound_skill -> "bound-skill"
+  | Runtime_context.Local_prompt_skill -> "local-prompt-skill"
+  | Runtime_context.Inline_agent -> "inline-agent"
 
 let role_label = function
-  | Runtime.Context.Bound_agent | Runtime.Context.Inline_agent -> "agent"
-  | Runtime.Context.Bound_skill | Runtime.Context.Local_prompt_skill -> "skill"
+  | Runtime_context.Bound_agent | Runtime_context.Inline_agent -> "agent"
+  | Runtime_context.Bound_skill | Runtime_context.Local_prompt_skill -> "skill"
 
 let rec string_of_typ = function
   | Ir.TString -> "string"
@@ -55,11 +55,11 @@ let null_or to_json = function None -> `Null | Some value -> to_json value
 let string_option = null_or (fun value -> `String value)
 let int_option = null_or (fun value -> `Int value)
 
-let of_invocation ?step_index ?run_id (invocation : Runtime.Context.invocation)
+let of_invocation ?step_index ?run_id (invocation : Runtime_context.invocation)
     =
   let* output_schema =
-    Provider_schema.of_type ~types:invocation.Runtime.Context.invocation_types
-      invocation.Runtime.Context.invocation_return_type
+    Provider_schema.of_type ~types:invocation.Runtime_context.invocation_types
+      invocation.Runtime_context.invocation_return_type
   in
   let* rendered = Provider_prompt.render ~invocation ~output_schema in
   Ok
