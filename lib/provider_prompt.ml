@@ -3,14 +3,14 @@ module StringSet = Set.Make (String)
 let ( let* ) = Result.bind
 
 let string_of_kind = function
-  | Runtime.Context.Bound_agent -> "bound-agent"
-  | Runtime.Context.Bound_skill -> "bound-skill"
-  | Runtime.Context.Local_prompt_skill -> "local-prompt-skill"
-  | Runtime.Context.Inline_agent -> "inline-agent"
+  | Runtime_context.Bound_agent -> "bound-agent"
+  | Runtime_context.Bound_skill -> "bound-skill"
+  | Runtime_context.Local_prompt_skill -> "local-prompt-skill"
+  | Runtime_context.Inline_agent -> "inline-agent"
 
 let role_label = function
-  | Runtime.Context.Bound_agent | Runtime.Context.Inline_agent -> "agent"
-  | Runtime.Context.Bound_skill | Runtime.Context.Local_prompt_skill -> "skill"
+  | Runtime_context.Bound_agent | Runtime_context.Inline_agent -> "agent"
+  | Runtime_context.Bound_skill | Runtime_context.Local_prompt_skill -> "skill"
 
 let rec string_of_typ = function
   | Ir.TString -> "string"
@@ -177,8 +177,8 @@ let rec contract_detail_lines ~types ~seen depth typ =
   | Ir.TString | Ir.TInt | Ir.TBool | Ir.TFloat | Ir.TUnit | Ir.TFunc _ -> []
 
 let response_contract_lines invocation =
-  let types = invocation.Runtime.Context.invocation_types in
-  let return_type = invocation.Runtime.Context.invocation_return_type in
+  let types = invocation.Runtime_context.invocation_types in
+  let return_type = invocation.Runtime_context.invocation_return_type in
   let header_lines =
     [
       "Declared response contract:";
@@ -199,22 +199,22 @@ let response_contract_lines invocation =
   @ contract_detail_lines ~types ~seen:StringSet.empty 1 return_type
 
 let lines_of_invocation invocation output_schema =
-  let kind = string_of_kind invocation.Runtime.Context.invocation_kind in
-  let role = role_label invocation.Runtime.Context.invocation_kind in
+  let kind = string_of_kind invocation.Runtime_context.invocation_kind in
+  let role = role_label invocation.Runtime_context.invocation_kind in
   let base_lines =
     [
       Printf.sprintf "You are executing a CamlFlow %s step." role;
-      (match invocation.Runtime.Context.invocation_kind with
-      | Runtime.Context.Bound_agent ->
+      (match invocation.Runtime_context.invocation_kind with
+      | Runtime_context.Bound_agent ->
           "This is a bound agent with no inline prompt text. Infer intent from \
            the agent name and typed input."
-      | Runtime.Context.Bound_skill ->
+      | Runtime_context.Bound_skill ->
           "This is a bound skill with no local prompt markdown. Behave like a \
            narrow, tool-like operation."
-      | Runtime.Context.Local_prompt_skill ->
+      | Runtime_context.Local_prompt_skill ->
           "This is a local prompt-backed skill. Follow the provided SKILL.md \
            instructions closely."
-      | Runtime.Context.Inline_agent ->
+      | Runtime_context.Inline_agent ->
           "This is an inline agent definition. Follow the provided system \
            prompt and metadata closely.");
       "Return only JSON that matches the required schema exactly.";
@@ -223,32 +223,32 @@ let lines_of_invocation invocation output_schema =
       "Invocation:";
       Printf.sprintf "- kind: %s" kind;
       Printf.sprintf "- role: %s" role;
-      Printf.sprintf "- name: %s" invocation.Runtime.Context.invocation_name;
+      Printf.sprintf "- name: %s" invocation.Runtime_context.invocation_name;
       Printf.sprintf "- working_directory: %s"
-        (format_path invocation.Runtime.Context.invocation_working_directory);
+        (format_path invocation.Runtime_context.invocation_working_directory);
       Printf.sprintf "- skills_directory: %s"
-        (format_path invocation.Runtime.Context.invocation_skills_directory);
+        (format_path invocation.Runtime_context.invocation_skills_directory);
       Printf.sprintf "- declared_return_type: %s"
-        (string_of_typ invocation.Runtime.Context.invocation_return_type);
+        (string_of_typ invocation.Runtime_context.invocation_return_type);
       "";
       "Input JSON:";
-      Yojson.Safe.pretty_to_string invocation.Runtime.Context.invocation_input;
+      Yojson.Safe.pretty_to_string invocation.Runtime_context.invocation_input;
       "";
     ]
     @ response_contract_lines invocation
     @ [ ""; "Output JSON Schema:"; Yojson.Safe.pretty_to_string output_schema ]
   in
-  match invocation.Runtime.Context.invocation_kind with
-  | Runtime.Context.Local_prompt_skill -> (
+  match invocation.Runtime_context.invocation_kind with
+  | Runtime_context.Local_prompt_skill -> (
       base_lines
       @ [ ""; "Local skill specification (SKILL.md):" ]
       @
-      match invocation.Runtime.Context.invocation_markdown with
+      match invocation.Runtime_context.invocation_markdown with
       | Some markdown -> [ markdown ]
       | None -> [ "(missing SKILL.md content)" ])
-  | Runtime.Context.Inline_agent ->
+  | Runtime_context.Inline_agent ->
       let definition =
-        match invocation.Runtime.Context.invocation_definition with
+        match invocation.Runtime_context.invocation_definition with
         | Some definition -> definition
         | None ->
             {
@@ -277,11 +277,11 @@ let lines_of_invocation invocation output_schema =
           "Inline agent metadata (JSON):";
           Yojson.Safe.pretty_to_string (metadata_json definition);
         ]
-  | Runtime.Context.Bound_agent | Runtime.Context.Bound_skill -> base_lines
+  | Runtime_context.Bound_agent | Runtime_context.Bound_skill -> base_lines
 
 let render ~invocation ~output_schema =
   let requested_model, unsupported_settings =
-    match invocation.Runtime.Context.invocation_definition with
+    match invocation.Runtime_context.invocation_definition with
     | Some definition ->
         ( definition.Ir.define_model,
           match definition.Ir.define_temperature with

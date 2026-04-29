@@ -199,6 +199,8 @@ provider[1] ok elapsed=4.95s
 
 `stdout` remains reserved for the normal run result.
 
+Separately from `--trace-provider`, CamlFlow records a structured typed trace node for each effectful step. These nodes capture the typed input, rendered prompt, requested model and unsupported inline settings, output when available, validation status, and timing. JSON-RPC runs expose them through `camlflow/trace` `details.traceNode` and the final `camlflow/run` `traceNodes` result field. CLI runs keep normal stdout unchanged; trace nodes are runtime observability data, not authoritative workflow output.
+
 ## Capability summary
 
 ### `codex`

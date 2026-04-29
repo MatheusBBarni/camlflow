@@ -12,6 +12,7 @@ type effect_step = {
 type execution_result = {
   steps_run : int;
   effect_steps : effect_step list;
+  trace_nodes : Workflow_trace.t list;
   output : Yojson.Safe.t option;
 }
 
@@ -55,6 +56,7 @@ and runtime_state = {
   mutable module_envs : runtime_value StringMap.t StringMap.t;
   mutable evaluating_modules : StringSet.t;
   effect_steps : effect_step list ref;
+  trace_nodes : Workflow_trace.t list ref;
   mutable effect_steps_count : int;
 }
 
@@ -226,6 +228,7 @@ let build_state ?(context = Context.empty) (program : Ir.program) :
     module_envs = StringMap.empty;
     evaluating_modules = StringSet.empty;
     effect_steps = ref [];
+    trace_nodes = ref [];
     effect_steps_count = 0;
   }
 
@@ -731,7 +734,21 @@ and apply_callable env _loc callable args =
             invocation_definition = Some definition;
           }
     in
-    let* output =
+    let step_kind, step_name =
+      match invocation.Context.invocation_kind with
+      | Context.Bound_agent -> ("agent", invocation.invocation_name)
+      | Context.Bound_skill -> ("skill", invocation.invocation_name)
+      | Context.Local_prompt_skill -> ("local-skill", invocation.invocation_name)
+      | Context.Inline_agent -> ("inline-agent", invocation.invocation_name)
+    in
+    let step_index = env.state.effect_steps_count + 1 in
+    let* request =
+      Effect_request.of_invocation ~step_index ?run_id:env.state.context.run_id
+        invocation
+    in
+    env.state.effect_steps_count <- step_index;
+    let started_at = Unix.gettimeofday () in
+    let output_result =
       match callable.callable_impl with
       | BoundAgent target -> (
           match Context.find_agent_handler env.state.context target with
@@ -758,18 +775,32 @@ and apply_callable env _loc callable args =
             ~definition ~input ~return_type:callable.callable_return_type
             ~types:env.state.types
     in
-    let step_kind, step_name =
-      match invocation.Context.invocation_kind with
-      | Context.Bound_agent -> ("agent", invocation.invocation_name)
-      | Context.Bound_skill -> ("skill", invocation.invocation_name)
-      | Context.Local_prompt_skill -> ("local-skill", invocation.invocation_name)
-      | Context.Inline_agent -> ("inline-agent", invocation.invocation_name)
+    let finished_provider_at = Unix.gettimeofday () in
+    let record_trace ?output ~validation finished_at =
+      let trace_node =
+        Workflow_trace.create ~request ~output ~validation
+          ~timing:(Workflow_trace.timing ~started_at ~finished_at)
+          ()
+      in
+      env.state.trace_nodes := trace_node :: !(env.state.trace_nodes);
+      env.state.context.trace_observer invocation
+        ~trace_node:(Workflow_trace.to_yojson trace_node);
+      match output with
+      | Some output -> env.state.context.effect_observer invocation ~output
+      | None -> ()
+    in
+    let* output =
+      match output_result with
+      | Ok output -> Ok output
+      | Error error ->
+          record_trace
+            ~validation:(Workflow_trace.validation_error error)
+            finished_provider_at;
+          Error error
     in
     env.state.effect_steps :=
       { step_kind; step_name; input; output } :: !(env.state.effect_steps);
-    env.state.effect_steps_count <- env.state.effect_steps_count + 1;
-    env.state.context.effect_observer invocation ~output;
-    let* value =
+    let value_result =
       Value.of_json env.state.types callable.callable_return_type output
       |> Result.map_error (fun error ->
           Printf.sprintf
@@ -780,7 +811,17 @@ and apply_callable env _loc callable args =
             error
             (Yojson.Safe.to_string output))
     in
-    Ok (RData value)
+    let finished_at = Unix.gettimeofday () in
+    match value_result with
+    | Ok value ->
+        record_trace ~output ~validation:Workflow_trace.validation_ok
+          finished_at;
+        Ok (RData value)
+    | Error error ->
+        record_trace ~output
+          ~validation:(Workflow_trace.validation_error error)
+          finished_at;
+        Error error
 
 let execute ?(context = Context.empty) ?(entry = "main") ?input
     (program : Ir.program) : (execution_result, string) result =
@@ -838,5 +879,6 @@ let execute ?(context = Context.empty) ?(entry = "main") ?input
     {
       steps_run = state.effect_steps_count;
       effect_steps = List.rev !(state.effect_steps);
+      trace_nodes = List.rev !(state.trace_nodes);
       output;
     }

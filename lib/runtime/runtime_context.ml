@@ -41,9 +41,11 @@ type invocation = {
 
 type default_provider = invocation -> (Yojson.Safe.t, string) result
 type effect_observer = invocation -> output:Yojson.Safe.t -> unit
+type trace_observer = invocation -> trace_node:Yojson.Safe.t -> unit
 type cancellation_check = unit -> (unit, string) result
 
 type t = {
+  run_id : string option;
   working_directory : string option;
   skills_directory : string option;
   agent_handlers : (string * named_handler) list;
@@ -52,6 +54,7 @@ type t = {
   prompt_skill_provider : prompt_skill_provider;
   default_provider : default_provider;
   effect_observer : effect_observer;
+  trace_observer : trace_observer;
   cancellation_check : cancellation_check;
 }
 
@@ -71,10 +74,12 @@ let default_provider invocation =
     invocation.invocation_return_type
 
 let ignore_effect _invocation ~output:_ = ()
+let ignore_trace _invocation ~trace_node:_ = ()
 let default_cancellation_check () = Ok ()
 
 let empty =
   {
+    run_id = None;
     working_directory = None;
     skills_directory = None;
     agent_handlers = [];
@@ -83,11 +88,14 @@ let empty =
     prompt_skill_provider = default_prompt_skill_provider;
     default_provider;
     effect_observer = ignore_effect;
+    trace_observer = ignore_trace;
     cancellation_check = default_cancellation_check;
   }
 
 let with_working_directory context working_directory =
   { context with working_directory = Some working_directory }
+
+let with_run_id context run_id = { context with run_id = Some run_id }
 
 let with_skills_directory context skills_directory =
   { context with skills_directory = Some skills_directory }
@@ -109,6 +117,8 @@ let with_default_provider context default_provider =
 
 let with_effect_observer context effect_observer =
   { context with effect_observer }
+
+let with_trace_observer context trace_observer = { context with trace_observer }
 
 let with_cancellation_check context cancellation_check =
   { context with cancellation_check }

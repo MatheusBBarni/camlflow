@@ -12,26 +12,26 @@ let execute ?step_index ?run_id ~executor invocation =
   execute_request ~executor request
 
 let step_kind = function
-  | Runtime.Context.Bound_agent -> "agent"
-  | Runtime.Context.Bound_skill -> "skill"
-  | Runtime.Context.Local_prompt_skill -> "local-skill"
-  | Runtime.Context.Inline_agent -> "inline-agent"
+  | Runtime_context.Bound_agent -> "agent"
+  | Runtime_context.Bound_skill -> "skill"
+  | Runtime_context.Local_prompt_skill -> "local-skill"
+  | Runtime_context.Inline_agent -> "inline-agent"
 
 let output_mismatch_message ?(source = "effect") invocation output_json error =
   Printf.sprintf
     "%s output for %s %s does not match declared return type %s: %s (output: \
      %s)"
     source
-    (step_kind invocation.Runtime.Context.invocation_kind)
-    invocation.Runtime.Context.invocation_name
+    (step_kind invocation.Runtime_context.invocation_kind)
+    invocation.Runtime_context.invocation_name
     (Effect_request.string_of_typ
-       invocation.Runtime.Context.invocation_return_type)
+       invocation.Runtime_context.invocation_return_type)
     error
     (Yojson.Safe.to_string output_json)
 
 let validate_output ?source invocation output_json =
-  Value.of_json invocation.Runtime.Context.invocation_types
-    invocation.Runtime.Context.invocation_return_type output_json
+  Value.of_json invocation.Runtime_context.invocation_types
+    invocation.Runtime_context.invocation_return_type output_json
   |> Result.map_error (fun error ->
       output_mismatch_message ?source invocation output_json error)
 
