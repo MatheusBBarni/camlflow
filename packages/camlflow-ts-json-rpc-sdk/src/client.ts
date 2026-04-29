@@ -48,6 +48,8 @@ export interface CamlFlowEffectOutputChunk extends JsonObject {
   format: string;
   delta: JsonValue;
   done: boolean;
+  declaredReturnType?: string | null;
+  outputSchema?: JsonObject | null;
 }
 
 export interface CamlFlowRelayOutputChunksOptions<
@@ -235,13 +237,41 @@ export async function relayTextOutput(
   source: AsyncIterable<string> | Iterable<string>,
   options: CamlFlowRelayTextOutputOptions,
 ): Promise<string> {
-  const deltas = await relayOutputChunks<string, string>(context, source, {
-    streamId: options.streamId,
-    format: options.format ?? "text",
-    skipEmptyStringDeltas: options.skipEmptyChunks ?? true,
-  });
+  const format = options.format ?? "text";
+  const streamId = options.streamId;
+  const skipEmptyChunks = options.skipEmptyChunks ?? true;
+  const relayed: string[] = [];
+  let buffered: string | undefined;
 
-  return deltas.join("");
+  for await (const chunk of asAsyncIterable(source)) {
+    if (skipEmptyChunks && chunk.length === 0) {
+      continue;
+    }
+
+    if (buffered !== undefined) {
+      await context.emitOutputChunk({
+        streamId,
+        format,
+        delta: buffered,
+        done: false,
+      });
+    }
+
+    buffered = chunk;
+    relayed.push(chunk);
+  }
+
+  const output = relayed.join("");
+  if (buffered !== undefined) {
+    await context.emitOutputChunk({
+      streamId,
+      format,
+      delta: output,
+      done: true,
+    });
+  }
+
+  return output;
 }
 
 export class JsonRpcMethodError<
@@ -795,6 +825,14 @@ export class CamlFlowJsonRpcClient {
           format: chunk.format,
           delta: chunk.delta,
           done: chunk.done,
+          declaredReturnType:
+            chunk.declaredReturnType === undefined
+              ? params.effect.declaredReturnType
+              : chunk.declaredReturnType,
+          outputSchema:
+            chunk.outputSchema === undefined
+              ? params.effect.outputSchema
+              : chunk.outputSchema,
         },
       );
     };

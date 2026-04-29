@@ -180,6 +180,13 @@ let expect_bool_field name expected json =
       Alcotest.failf "expected field %s to be a bool, got %s" name
         (Yojson.Safe.to_string other)
 
+let expect_null_field name json =
+  match expect_assoc_field name json with
+  | `Null -> ()
+  | other ->
+      Alcotest.failf "expected field %s to be null, got %s" name
+        (Yojson.Safe.to_string other)
+
 let expect_float_field_non_negative name json =
   match expect_assoc_field name json with
   | `Float value -> Alcotest.(check bool) name true (value >= 0.0)
@@ -1262,7 +1269,19 @@ let test_rpc_server_output_chunk_payload () =
   expect_string_field "streamId" "stream-1" json;
   expect_string_field "format" "text" json;
   expect_string_field "delta" "hello" json;
-  expect_bool_field "done" false json
+  expect_bool_field "done" false json;
+  expect_null_field "declaredReturnType" json;
+  expect_null_field "outputSchema" json;
+  let schema = schema_for_type Camlflow.Ir.TString in
+  let typed_json =
+    Camlflow.Rpc_server.output_chunk_payload ~run_id:"run-1" ~step:2
+      ~stream_id:"stream-1" ~format:"text" ~delta:(`String "hello") ~done_:true
+      ~declared_return_type:"string" ~output_schema:schema ()
+  in
+  expect_string_field "declaredReturnType" "string" typed_json;
+  Alcotest.(check bool)
+    "typed output schema" true
+    (expect_assoc_field "outputSchema" typed_json = schema)
 
 let test_rpc_server_trace_payload () =
   let request =
@@ -1405,6 +1424,301 @@ let main (name : string) : string =
     ~name:"greeter" trace_node;
   expect_string_field "output" "hello Ada" trace_node;
   expect_string_field "status" "ok" (expect_assoc_field "validation" trace_node)
+
+let test_rpc_server_typed_final_output_chunk_completes_effect () =
+  with_temp_dir "camlflow-rpc-typed-output-chunk-" @@ fun dir ->
+  let workflow = Filename.concat dir "workflow.cml" in
+  write_file workflow
+    {|
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  greeting
+|};
+  let schema = schema_for_type Camlflow.Ir.TString in
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:(`Assoc []) "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String workflow);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+               ("entry", `String "main");
+               ("input", `String "Ada");
+             ])
+        "camlflow/run";
+      Camlflow.Rpc_protocol.request
+        ~params:
+          (`Assoc
+             [
+               ("runId", `String "run-1");
+               ("step", `Int 1);
+               ("streamId", `String "greeter-stream");
+               ("format", `String "text");
+               ("delta", `String "hello Ada");
+               ("done", `Bool true);
+               ("declaredReturnType", `String "string");
+               ("outputSchema", schema);
+             ])
+        "camlflow/outputChunk";
+      Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-1")
+        (`Assoc [ ("output", `String "late response") ]);
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  let response = find_rpc_response_by_id "2" output in
+  (match response.Camlflow.Rpc_protocol.response_result with
+  | Some json -> (
+      expect_int_field "stepsRun" 1 json;
+      expect_string_field "output" "hello Ada" json;
+      match expect_assoc_field "traceNodes" json with
+      | `List [ trace_node ] ->
+          expect_trace_node_common ~id:"step-1" ~step:1 ~kind:"bound-agent"
+            ~name:"greeter" trace_node;
+          expect_string_field "output" "hello Ada" trace_node
+      | other ->
+          Alcotest.failf "expected one trace node, got %s"
+            (Yojson.Safe.to_string other))
+  | None -> Alcotest.fail "missing run result");
+  let relayed_chunks = find_rpc_requests "camlflow/outputChunk" output in
+  (match relayed_chunks with
+  | [ chunk ] -> (
+      match chunk.Camlflow.Rpc_protocol.request_params with
+      | Some json ->
+          expect_string_field "declaredReturnType" "string" json;
+          Alcotest.(check bool)
+            "relayed schema" true
+            (expect_assoc_field "outputSchema" json = schema)
+      | None -> Alcotest.fail "missing relayed typed chunk params")
+  | _ -> Alcotest.fail "expected exactly one relayed typed chunk");
+  let effect_result_trace =
+    match
+      output
+      |> List.filter_map (fun json ->
+          match rpc_request_message json with
+          | Some request
+            when String.equal request.Camlflow.Rpc_protocol.request_method
+                   "camlflow/trace" -> (
+              match request.request_params with
+              | Some params -> (
+                  match assoc_field "event" params with
+                  | Some (`String "effect-result") -> Some params
+                  | _ -> None)
+              | None -> None)
+          | _ -> None)
+    with
+    | first :: _ -> first
+    | [] -> Alcotest.fail "effect-result trace not found"
+  in
+  let trace_node =
+    expect_assoc_field "traceNode"
+      (expect_assoc_field "details" effect_result_trace)
+  in
+  expect_string_field "output" "hello Ada" trace_node
+
+let test_rpc_server_untyped_output_chunk_remains_advisory () =
+  with_temp_dir "camlflow-rpc-untyped-output-chunk-" @@ fun dir ->
+  let workflow = Filename.concat dir "workflow.cml" in
+  write_file workflow
+    {|
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  greeting
+|};
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:(`Assoc []) "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String workflow);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+               ("entry", `String "main");
+               ("input", `String "Ada");
+             ])
+        "camlflow/run";
+      Camlflow.Rpc_protocol.request
+        ~params:
+          (`Assoc
+             [
+               ("runId", `String "run-1");
+               ("step", `Int 1);
+               ("streamId", `String "greeter-stream");
+               ("format", `String "text");
+               ("delta", `String "streamed Ada");
+               ("done", `Bool true);
+             ])
+        "camlflow/outputChunk";
+      Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-1")
+        (`Assoc [ ("output", `String "response Ada") ]);
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  let response = find_rpc_response_by_id "2" output in
+  match response.Camlflow.Rpc_protocol.response_result with
+  | Some json ->
+      expect_int_field "stepsRun" 1 json;
+      expect_string_field "output" "response Ada" json
+  | None -> Alcotest.fail "missing run result"
+
+let test_rpc_server_typed_final_output_chunk_validation_error () =
+  with_temp_dir "camlflow-rpc-invalid-typed-output-chunk-" @@ fun dir ->
+  let workflow = Filename.concat dir "workflow.cml" in
+  write_file workflow
+    {|
+agent number : name:string -> int = Agent.bind "number"
+
+let main (name : string) : int =
+  let* result = number ~name:name in
+  result
+|};
+  let schema = schema_for_type Camlflow.Ir.TInt in
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:(`Assoc []) "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String workflow);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+               ("entry", `String "main");
+               ("input", `String "Ada");
+             ])
+        "camlflow/run";
+      Camlflow.Rpc_protocol.request
+        ~params:
+          (`Assoc
+             [
+               ("runId", `String "run-1");
+               ("step", `Int 1);
+               ("streamId", `String "number-stream");
+               ("format", `String "json");
+               ("delta", `String "not an int");
+               ("done", `Bool true);
+               ("declaredReturnType", `String "int");
+               ("outputSchema", schema);
+             ])
+        "camlflow/outputChunk";
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  let response = find_rpc_response_by_id "2" output in
+  (match response.Camlflow.Rpc_protocol.response_error with
+  | Some error ->
+      Alcotest.(check int) "invalid stream run error" (-32012) error.error_code;
+      Alcotest.(check bool)
+        "validation error mentions declared type" true
+        (contains_substring error.error_message
+           "host output for agent number does not match declared return type \
+            int")
+  | None -> Alcotest.fail "missing run failure response");
+  let diagnostic = find_rpc_request "camlflow/diagnostic" output in
+  match diagnostic.Camlflow.Rpc_protocol.request_params with
+  | Some json ->
+      Alcotest.(check bool)
+        "diagnostic mentions invalid host output" true
+        (contains_substring
+           (match expect_assoc_field "message" json with
+           | `String message -> message
+           | other ->
+               Alcotest.failf "expected diagnostic message string, got %s"
+                 (Yojson.Safe.to_string other))
+           "host output for agent number does not match declared return type \
+            int")
+  | None -> Alcotest.fail "missing diagnostic params"
+
+let test_rpc_server_mismatched_typed_output_chunk_is_not_authoritative () =
+  with_temp_dir "camlflow-rpc-mismatched-output-chunk-" @@ fun dir ->
+  let workflow = Filename.concat dir "workflow.cml" in
+  write_file workflow
+    {|
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main (name : string) : string =
+  let* greeting = greeter ~name:name in
+  greeting
+|};
+  let messages =
+    [
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 1)
+        ~params:(`Assoc []) "initialize";
+      Camlflow.Rpc_protocol.request ~id:(Camlflow.Rpc_protocol.Int 2)
+        ~params:
+          (`Assoc
+             [
+               ( "program",
+                 `Assoc
+                   [
+                     ("path", `String workflow);
+                     ("includePaths", `List []);
+                     ("skillsDir", `Null);
+                   ] );
+               ("entry", `String "main");
+               ("input", `String "Ada");
+             ])
+        "camlflow/run";
+      Camlflow.Rpc_protocol.request
+        ~params:
+          (`Assoc
+             [
+               ("runId", `String "run-1");
+               ("step", `Int 1);
+               ("streamId", `String "greeter-stream");
+               ("format", `String "text");
+               ("delta", `String "streamed Ada");
+               ("done", `Bool true);
+               ("declaredReturnType", `String "int");
+               ("outputSchema", schema_for_type Camlflow.Ir.TInt);
+             ])
+        "camlflow/outputChunk";
+      Camlflow.Rpc_protocol.success (Camlflow.Rpc_protocol.String "effect-1")
+        (`Assoc [ ("output", `String "response Ada") ]);
+    ]
+  in
+  let output = run_rpc_server_with_messages messages in
+  let response = find_rpc_response_by_id "2" output in
+  (match response.Camlflow.Rpc_protocol.response_result with
+  | Some json ->
+      expect_int_field "stepsRun" 1 json;
+      expect_string_field "output" "response Ada" json
+  | None -> Alcotest.fail "missing run result");
+  let diagnostics = find_rpc_requests "camlflow/diagnostic" output in
+  Alcotest.(check bool)
+    "mismatched typed metadata diagnostic" true
+    (List.exists
+       (fun request ->
+         match request.Camlflow.Rpc_protocol.request_params with
+         | Some json -> (
+             match expect_assoc_field "message" json with
+             | `String message -> contains_substring message "typed metadata"
+             | _ -> false)
+         | None -> false)
+       diagnostics)
 
 let test_rpc_server_end_to_end_progress_notifications () =
   with_temp_dir "camlflow-rpc-progress-" @@ fun dir ->
@@ -2161,7 +2475,7 @@ let test_rpc_server_relays_output_chunk_notifications () =
                ("done", `Bool false);
              ])
       with
-      | Ok () -> (
+      | Ok None -> (
           Out_channel.flush output_channel;
           let output = read_rpc_messages output_path in
           let chunks = find_rpc_requests "camlflow/outputChunk" output in
@@ -2172,9 +2486,14 @@ let test_rpc_server_relays_output_chunk_notifications () =
               | Some json ->
                   expect_string_field "streamId" "stream-1" json;
                   expect_string_field "delta" "hello " json;
-                  expect_bool_field "done" false json
+                  expect_bool_field "done" false json;
+                  expect_null_field "declaredReturnType" json;
+                  expect_null_field "outputSchema" json
               | None -> Alcotest.fail "missing relayed output chunk params")
           | _ -> Alcotest.fail "expected relayed output chunk")
+      | Ok (Some output) ->
+          Alcotest.failf "unexpected authoritative output: %s"
+            (Yojson.Safe.to_string output)
       | Error error -> Alcotest.failf "output chunk relay failed: %s" error)
 
 let test_provider_schema_for_tuple_and_option () =
@@ -4804,6 +5123,18 @@ let () =
             test_rpc_server_trace_payload;
           Alcotest.test_case "rpc server end-to-end run" `Quick
             test_rpc_server_end_to_end_run;
+          Alcotest.test_case
+            "rpc server typed final output chunk completes effect" `Quick
+            test_rpc_server_typed_final_output_chunk_completes_effect;
+          Alcotest.test_case "rpc server untyped output chunk remains advisory"
+            `Quick test_rpc_server_untyped_output_chunk_remains_advisory;
+          Alcotest.test_case
+            "rpc server typed final output chunk validation error" `Quick
+            test_rpc_server_typed_final_output_chunk_validation_error;
+          Alcotest.test_case
+            "rpc server mismatched typed output chunk is not authoritative"
+            `Quick
+            test_rpc_server_mismatched_typed_output_chunk_is_not_authoritative;
           Alcotest.test_case "rpc server end-to-end progress notifications"
             `Quick test_rpc_server_end_to_end_progress_notifications;
           Alcotest.test_case "rpc server initialize notification preferences"

@@ -256,7 +256,7 @@ test('sdk effect handlers can emit output chunks', { timeout: 30000 }, async () 
         await context.emitOutputChunk({
           streamId: 'greeter-stream',
           format: 'text',
-          delta: String(name),
+          delta: `hello ${name}`,
           done: true,
         });
         return effectOutput(`hello ${name}`);
@@ -289,11 +289,61 @@ test('sdk effect handlers can emit output chunks', { timeout: 30000 }, async () 
     const result = await runPromise;
     assert.equal(result.output, 'hello Ada!');
     assert.equal(chunks.length, 2);
-    assert.deepEqual(chunks.map((chunk) => chunk.delta), ['hello ', 'Ada']);
+    assert.deepEqual(chunks.map((chunk) => chunk.delta), ['hello ', 'hello Ada']);
     assert.deepEqual(chunks.map((chunk) => chunk.done), [false, true]);
     assert.ok(chunks.every((chunk) => chunk.runId === 'run-1'));
     assert.ok(chunks.every((chunk) => chunk.step === 1));
     assert.ok(chunks.every((chunk) => chunk.streamId === 'greeter-stream'));
+    assert.ok(chunks.every((chunk) => chunk.declaredReturnType === 'string'));
+    assert.ok(chunks.every((chunk) => chunk.outputSchema?.type === 'string'));
+  } finally {
+    await client.shutdownAndExit();
+  }
+});
+
+test('sdk effect handlers can emit explicit advisory output chunks', { timeout: 30000 }, async () => {
+  const chunks = [];
+
+  const client = spawnCamlFlowClient({
+    command: 'dune',
+    args: ['exec', './bin/main.exe', '--', 'serve', '--stdio'],
+    cwd: repoRoot,
+    effectHandler: async ({ effect }, _request, context) => {
+      if (`${effect.kind}:${effect.name}` === 'bound-agent:greeter') {
+        const name = effect.input?.name ?? 'friend';
+        await context.emitOutputChunk({
+          streamId: 'greeter-stream',
+          format: 'text',
+          delta: 'advisory output',
+          done: true,
+          declaredReturnType: null,
+          outputSchema: null,
+        });
+        return effectOutput(`hello ${name}`);
+      }
+      return effectOutput('');
+    },
+    onOutputChunk: async (chunk) => {
+      chunks.push(chunk);
+    },
+  });
+
+  try {
+    await client.initialize();
+    const result = await client.run({
+      program: {
+        path: 'examples/basic/main.cml',
+        includePaths: [],
+        skillsDir: null,
+      },
+      entry: 'main',
+      input: 'Ada',
+    });
+
+    assert.equal(result.output, 'hello Ada!');
+    assert.equal(chunks.length, 1);
+    assert.equal(chunks[0].declaredReturnType, null);
+    assert.equal(chunks[0].outputSchema, null);
   } finally {
     await client.shutdownAndExit();
   }
@@ -351,9 +401,11 @@ test('sdk effect handlers can relay async text streams', { timeout: 30000 }, asy
     const result = await resultPromise;
     assert.equal(result.output, 'hello Ada!');
     assert.equal(chunks.length, 2);
-    assert.deepEqual(chunks.map((chunk) => chunk.delta), ['hello ', 'Ada']);
+    assert.deepEqual(chunks.map((chunk) => chunk.delta), ['hello ', 'hello Ada']);
     assert.deepEqual(chunks.map((chunk) => chunk.done), [false, true]);
     assert.ok(chunks.every((chunk) => chunk.streamId === 'greeter-stream'));
+    assert.ok(chunks.every((chunk) => chunk.declaredReturnType === 'string'));
+    assert.ok(chunks.every((chunk) => chunk.outputSchema?.type === 'string'));
   } finally {
     await client.shutdownAndExit();
   }
