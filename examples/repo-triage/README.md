@@ -40,7 +40,10 @@ From the `camlflow` repo root:
 ./scripts/run-pi-mono-repo-triage.sh
 ```
 
-That launches `pi-mono` with a prefilled `/camlflow-run ...` command aimed at this workflow.
+That launches the historical `pi-mono` prototype with a prefilled
+`/camlflow-run ...` command aimed at this workflow. New Pi integrations should
+use `packages/camlflow-pi-sdk` and call the typed `runWorkflow(...)` API from a
+native Pi UI surface instead.
 
 ## Why this example matters
 

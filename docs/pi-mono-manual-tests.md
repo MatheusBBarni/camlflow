@@ -1,5 +1,10 @@
 # `pi-mono` Manual Tests
 
+Historical/manual-only note: these tests cover the original `/camlflow-run`
+prototype and shell launchers. The supported CamlFlow-owned adapter is now
+`packages/camlflow-pi-sdk`, which exposes a typed programmatic API and does not
+parse slash-command text.
+
 This document turns the existing `pi-mono` integration docs and launcher scripts
 into an operator-ready manual test list.
 

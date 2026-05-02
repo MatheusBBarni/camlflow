@@ -147,6 +147,11 @@ They now cover:
 
 ## `pi-mono` harness scaffold
 
+This harness is historical/manual validation coverage for the original
+`/camlflow-run` prototype. New Pi integrations should use
+[`../camlflow-pi-sdk`](../camlflow-pi-sdk), which wraps this JSON-RPC SDK behind
+a typed programmatic API and leaves command/UI registration to `pi-mono`.
+
 The package now also includes a small Node-based harness for automating the
 `pi-mono` host checks described in the repository docs.
 
