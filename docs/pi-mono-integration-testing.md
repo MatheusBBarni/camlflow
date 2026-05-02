@@ -1,5 +1,10 @@
 # `pi-mono` Integration Testing Guide
 
+Historical/manual-only note: this guide validates the original `/camlflow-run`
+prototype and helper scripts. The current CamlFlow-owned integration surface is
+the programmatic `packages/camlflow-pi-sdk` package; `pi-mono` may still choose a
+slash command or another native UI entrypoint on top of that package.
+
 This document explains how to validate the CamlFlow ↔ `pi-mono` integration from the `camlflow` repo, and how to use the helper scripts in `scripts/`.
 
 Related docs:

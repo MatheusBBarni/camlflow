@@ -1,5 +1,10 @@
 # `pi-mono` Host Integration Plan
 
+Historical note: this document records the original `pi-mono` fork plan that
+proved the integration path with a `/camlflow-run` command. The maintained
+CamlFlow-owned integration boundary is now the programmatic
+`packages/camlflow-pi-sdk` package; Pi UI registration remains in `pi-mono`.
+
 This document turns the Beta 1 real-host validation goal into a concrete first-host plan.
 
 Recommendation: start with `pi-mono`.

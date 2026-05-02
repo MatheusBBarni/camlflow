@@ -33,6 +33,8 @@ The important boundary is simple:
 - JSON-RPC 2.0 bridge over stdio with `Content-Length` framing
 - TypeScript SDK in
   [`packages/camlflow-ts-json-rpc-sdk`](./packages/camlflow-ts-json-rpc-sdk)
+- Pi host adapter SDK in
+  [`packages/camlflow-pi-sdk`](./packages/camlflow-pi-sdk)
 - editor support in
   [`packages/camlflow-vscode`](./packages/camlflow-vscode) and
   [`packages/camlflow-zed`](./packages/camlflow-zed)
@@ -257,6 +259,18 @@ Important compatibility note:
 - `irVersion` covers compiled artifact compatibility
 
 Protocol details live in [`docs/json-rpc.md`](./docs/json-rpc.md).
+
+## Pi SDK Adapter
+
+`packages/camlflow-pi-sdk` is the maintained `pi-mono` integration boundary.
+It wraps `camlflow-ts-json-rpc-sdk`, declares
+`@mariozechner/pi-coding-agent` as a peer dependency, and exposes a typed
+`createPiCamlFlowHostSession(...).runWorkflow(...)` API for native Pi command,
+palette, or UI surfaces.
+
+The package does not parse `/camlflow-run`. Existing slash-command launcher
+docs and scripts are historical/manual validation scaffolding for the old
+prototype path.
 
 If you want a host-side client instead of hand-rolling the protocol, start
 with

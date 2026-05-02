@@ -1,5 +1,10 @@
 # `pi-mono` Implementation Checklist
 
+Historical note: this checklist describes the first fork-local prototype that
+registered `/camlflow-run`. New CamlFlow-side integration work should start from
+`packages/camlflow-pi-sdk`, which exposes a typed programmatic API and leaves
+command or UI registration to `pi-mono`.
+
 This is the concrete implementation checklist for the first real-host CamlFlow validation inside a `pi-mono` fork.
 
 It assumes the strategy already documented in:
