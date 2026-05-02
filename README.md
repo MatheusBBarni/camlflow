@@ -63,6 +63,25 @@ practice, the basic example currently produces `"!"`, not `"Hello Ada!"`.
 
 ## Quickstart
 
+For a complete install and usage walkthrough, including opam switch setup,
+optional local CLI installation, SDK packages, editor setup, and
+troubleshooting, see
+[`docs/how-to-run-and-install.md`](./docs/how-to-run-and-install.md).
+
+Prerequisites:
+
+- OCaml 5.4 or newer
+- Dune 3.22 or newer
+- Node.js 18 or newer for TypeScript SDK and editor packages
+
+If your default opam switch is older than OCaml 5.4, create or select a
+compatible switch first:
+
+```sh
+opam switch create 5.4.0 ocaml-base-compiler.5.4.0
+eval "$(opam env --switch 5.4.0)"
+```
+
 Install dependencies and build:
 
 ```sh
@@ -79,6 +98,14 @@ opam exec -- dune exec camlflow -- run examples/basic/main.cml --input-json '"Ad
 opam exec -- dune exec camlflow -- run examples/recursion/main.cml --input-json '4'
 opam exec -- dune exec camlflow -- run examples/variants-match/main.cml
 opam exec -- dune exec camlflow -- serve --stdio
+```
+
+If you did not activate the OCaml 5.4 switch in your shell, run the same
+commands through it explicitly:
+
+```sh
+opam exec --switch 5.4.0 -- dune exec camlflow -- --help
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/basic/main.cml --input-json '"Ada"'
 ```
 
 Try a local skill:
@@ -321,4 +348,5 @@ The editor packages both expect a `camlflow` executable on `PATH` and launch
 - [`docs/provider-execution.md`](./docs/provider-execution.md)
 - [`docs/provider-hooks.md`](./docs/provider-hooks.md)
 - [`docs/json-rpc-status.md`](./docs/json-rpc-status.md)
+- [`docs/how-to-run-and-install.md`](./docs/how-to-run-and-install.md)
 - [`packages/camlflow-ts-json-rpc-sdk/README.md`](./packages/camlflow-ts-json-rpc-sdk/README.md)
