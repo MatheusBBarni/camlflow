@@ -22,6 +22,10 @@ exact Pi SDK version.
 
 ## Usage
 
+For complete, compile-checked host-side examples, see
+[`examples/`](./examples). The examples cover a native Pi command or palette
+action, streamed worker output, and user cancellation.
+
 ```ts
 import { createPiCamlFlowHostSession } from "camlflow-pi-sdk";
 

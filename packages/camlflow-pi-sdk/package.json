@@ -13,11 +13,14 @@
   },
   "files": [
     "dist",
+    "examples",
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "clean": "rm -rf dist",
+    "build:sdk": "tsc -p tsconfig.json",
+    "build:examples": "tsc -p examples/tsconfig.json",
+    "build": "npm run build:sdk && npm run build:examples",
+    "clean": "rm -rf dist examples-dist",
     "test": "npm run build && node --test test/*.test.mjs"
   },
   "keywords": [
