@@ -33,7 +33,7 @@ The important boundary is simple:
 - JSON-RPC 2.0 bridge over stdio with `Content-Length` framing
 - TypeScript SDK in
   [`packages/camlflow-ts-json-rpc-sdk`](./packages/camlflow-ts-json-rpc-sdk)
-- Pi host adapter SDK in
+- Pi host adapter SDK and Flue-style sandbox harness in
   [`packages/camlflow-pi-sdk`](./packages/camlflow-pi-sdk)
 - editor support in
   [`packages/camlflow-vscode`](./packages/camlflow-vscode) and
@@ -294,6 +294,14 @@ It wraps `camlflow-ts-json-rpc-sdk`, declares
 `@mariozechner/pi-coding-agent` as a peer dependency, and exposes a typed
 `createPiCamlFlowHostSession(...).runWorkflow(...)` API for native Pi command,
 palette, or UI surfaces.
+
+It also exposes a programmable harness shaped around
+`createPiCamlFlowHarness(...).init({ sandbox, model })`,
+`agent.session(id?)`, and `session.prompt/skill/task/shell`. Supported sandbox
+presets are `local` / `workspace-write`, `read-only`, `ephemeral`, and custom
+host-owned configs or factories. `session.shell(...)` runs as trusted host code,
+so secrets can be passed through explicit environment variables without placing
+them in model-visible prompts.
 
 The package does not parse `/camlflow-run`. Existing slash-command launcher
 docs and scripts are historical/manual validation scaffolding for the old

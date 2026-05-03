@@ -41,6 +41,18 @@ Demonstrates:
 - streaming `camlflow/outputChunk` text into UI state
 - normalizing success, cancellation, and failure states
 
+### Flue-style harness
+
+Source: `examples/flue-style-harness.ts`
+
+Demonstrates:
+
+- initializing a sandbox-aware agent with `createPiCamlFlowHarness`
+- opening a named session and calling `session.skill(...)`
+- running a one-shot detached child session with `session.task(...)`
+- running trusted host shell commands with explicit environment variables
+- invoking a typed CamlFlow workflow from the same agent runtime
+
 ## Validation
 
 `npm test` builds these examples before running the SDK tests, so type drift in
