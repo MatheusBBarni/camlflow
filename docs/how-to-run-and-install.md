@@ -220,10 +220,21 @@ npm install
 npm test
 ```
 
-This package wraps the JSON-RPC SDK and exposes
-`createPiCamlFlowHostSession(...).runWorkflow(...)` for native Pi command,
-palette, or panel code. It intentionally does not parse `/camlflow-run`; Pi UI
-registration remains in `pi-mono`.
+This package wraps the JSON-RPC SDK and exposes two host-side APIs:
+
+- `createPiCamlFlowHostSession(...).runWorkflow(...)` for native Pi command,
+  palette, or panel code
+- `createPiCamlFlowHarness(...).init({ sandbox, model })` for Flue-style
+  `agent.session(...).prompt/skill/task/shell` orchestration
+
+Supported harness sandbox presets are `local` / `workspace-write`,
+`read-only`, `ephemeral`, and custom host-owned configs or factories. The
+package constrains trusted shell `cwd` values to the sandbox root and
+checks built-in local shell paths after symlink resolution. Automatic directory
+removal and the `cleanup` flag are limited to `ephemeral`; use `dispose` for
+custom sandbox cleanup.
+The package intentionally does not parse `/camlflow-run`; Pi UI registration
+remains in `pi-mono`.
 
 Compile-checked host sketches are in
 [`packages/camlflow-pi-sdk/examples`](../packages/camlflow-pi-sdk/examples).
