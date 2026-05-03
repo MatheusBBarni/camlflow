@@ -3,6 +3,12 @@
 CamlFlow can run with deterministic local defaults, or it can route unresolved
 agent/skill effects through an external provider.
 
+For the full authoring path from `.cml` scripts through deterministic CLI,
+provider CLI, JSON-RPC host mode, and the Pi SDK harness, see
+[`writing-and-running-camlflow.md`](./writing-and-running-camlflow.md).
+For the JSON shapes providers must return for declared CamlFlow types, see
+[`json-encoding.md`](./json-encoding.md).
+
 Beta 1 introduces an opt-in provider-backed execution path in the CLI.
 
 ## Current providers
@@ -25,7 +31,7 @@ camlflow run <file.cml|artifact.json> --provider codex ...
 Run from source:
 
 ```sh
-dune exec camlflow -- run examples/basic/main.cml \
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/basic/main.cml \
   --input-json '"Ada"' \
   --provider codex \
   --model gpt-5.4-mini \
@@ -35,8 +41,8 @@ dune exec camlflow -- run examples/basic/main.cml \
 Run from compiled IR:
 
 ```sh
-dune exec camlflow -- compile examples/basic/main.cml -o /tmp/basic.ir.json
-dune exec camlflow -- run /tmp/basic.ir.json \
+opam exec --switch 5.4.0 -- dune exec camlflow -- compile examples/basic/main.cml -o /tmp/basic.ir.json
+opam exec --switch 5.4.0 -- dune exec camlflow -- run /tmp/basic.ir.json \
   --input-json '"Ada"' \
   --provider codex \
   --model gpt-5.4-mini
@@ -183,7 +189,7 @@ The Claude Code and Claude CLI adapters behave the same way for unsupported inli
 Use `--trace-provider` to print provider-step metadata to `stderr`:
 
 ```sh
-dune exec camlflow -- run examples/basic/main.cml \
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/basic/main.cml \
   --input-json '"Ada"' \
   --provider codex \
   --model gpt-5.4-mini \
@@ -308,7 +314,7 @@ This keeps failure modes explicit and easier to debug when integrating a new hos
 Codex:
 
 ```sh
-dune exec camlflow -- run examples/codex/main.cml \
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/codex/main.cml \
   --skills examples/codex/skills \
   --input-json '"Ada"' \
   --provider codex \
@@ -318,7 +324,7 @@ dune exec camlflow -- run examples/codex/main.cml \
 Opencode:
 
 ```sh
-dune exec camlflow -- run examples/codex/main.cml \
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/codex/main.cml \
   --skills examples/codex/skills \
   --input-json '"Ada"' \
   --provider opencode \
@@ -328,7 +334,7 @@ dune exec camlflow -- run examples/codex/main.cml \
 Claude Code:
 
 ```sh
-dune exec camlflow -- run examples/codex/main.cml \
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/codex/main.cml \
   --skills examples/codex/skills \
   --input-json '"Ada"' \
   --provider claude-code \
@@ -339,7 +345,7 @@ dune exec camlflow -- run examples/codex/main.cml \
 Claude CLI:
 
 ```sh
-ANTHROPIC_API_KEY=... dune exec camlflow -- run examples/codex/main.cml \
+ANTHROPIC_API_KEY=... opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/codex/main.cml \
   --skills examples/codex/skills \
   --input-json '"Ada"' \
   --provider claude-cli \

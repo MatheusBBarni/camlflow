@@ -31,7 +31,7 @@ This works without any provider and is useful to verify parsing, typing, module
 resolution, JSON encoding, and deterministic runtime defaults.
 
 ```sh
-dune exec camlflow -- run examples/interview-pipeline/main.cml \
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/interview-pipeline/main.cml \
   --skills examples/interview-pipeline/skills \
   --input examples/interview-pipeline/input.json
 ```
@@ -39,7 +39,7 @@ dune exec camlflow -- run examples/interview-pipeline/main.cml \
 ## Codex-backed run
 
 ```sh
-dune exec camlflow -- run examples/interview-pipeline/main.cml \
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/interview-pipeline/main.cml \
   --skills examples/interview-pipeline/skills \
   --input examples/interview-pipeline/input.json \
   --provider codex \
@@ -51,7 +51,7 @@ dune exec camlflow -- run examples/interview-pipeline/main.cml \
 Optional trace:
 
 ```sh
-dune exec camlflow -- run examples/interview-pipeline/main.cml \
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/interview-pipeline/main.cml \
   --skills examples/interview-pipeline/skills \
   --input examples/interview-pipeline/input.json \
   --provider codex \

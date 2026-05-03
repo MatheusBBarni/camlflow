@@ -7,6 +7,7 @@
 - Run `opam exec -- dune build` when CLI entrypoints, install surfaces, or dune wiring changes.
 - Run `cd packages/camlflow-ts-json-rpc-sdk && npm install && opam exec -- npm test` for RPC, schema, SDK, or host-example changes.
 - Run `cd packages/camlflow-vscode && npm run smoke:highlight` for syntax, schema, or editor package changes.
+- Run the focused checklist in `docs/docs-validation.md` for user-facing docs, examples, SDK READMEs, and editor README changes.
 
 ## Test-Shape Guidance
 - `test/test_camlflow.ml` is intentionally central; extend nearby sections instead of spinning out a second harness by default.

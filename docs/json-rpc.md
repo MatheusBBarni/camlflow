@@ -13,7 +13,16 @@ The goal of this phase is not to finalize every request payload, but to lock the
 - `docs/json-rpc-deferred-extensions.md` — formalized design-only notes for later protocol work
 - `docs/json-rpc-status.md` — current progress snapshot and fuller summary
 - `docs/json-rpc-checklist.md` — concise remaining-task checklist
+- `docs/writing-and-running-camlflow.md` — author-facing workflow guide before
+  host integration
+- `docs/cli-reference.md` — exact CLI forms for source, IR, and `serve --stdio`
+  runs
+- `docs/json-encoding.md` — CamlFlow type to JSON shape reference for run inputs
+  and effect outputs
+- `docs/pi-sdk-harness.md` — maintained Pi host-session and Flue-style harness
+  guide
 - `packages/camlflow-ts-json-rpc-sdk/README.md` — SDK guide and runnable client examples
+- `packages/camlflow-pi-sdk/README.md` — Pi adapter and Flue-style harness guide
 
 ---
 
@@ -32,6 +41,11 @@ The intended workflow is:
 - CamlFlow continues until final output is produced
 
 In this model, CamlFlow is a **typed orchestration engine**, not the owner of the surrounding tool UX.
+
+If you are deciding between integration surfaces, use direct CLI/provider runs
+for terminal validation, JSON-RPC when a host owns effect execution, and the Pi
+SDK harness when the host wants Flue-style agent sessions, sandbox ownership,
+trusted shell, and Pi skill orchestration.
 
 ---
 

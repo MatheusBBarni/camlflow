@@ -9,6 +9,7 @@ This is the concrete implementation checklist for the first real-host CamlFlow v
 
 It assumes the strategy already documented in:
 
+- `docs/pi-sdk-harness.md`
 - `docs/host-adapter-architecture.md`
 - `docs/pi-mono-host-integration-plan.md`
 - `docs/pi-mono-integration-testing.md`

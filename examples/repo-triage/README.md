@@ -24,13 +24,56 @@ Files:
 
 ## Deterministic local run
 
-This validates parsing, typing, module resolution, JSON encoding, and effect wiring, but the result will use deterministic placeholder effect behavior unless you run through a real host.
+This validates parsing, typing, module resolution, JSON encoding, and effect
+wiring. It does not inspect the repository or call a model. Without a provider,
+JSON-RPC host, or Pi worker, CamlFlow uses deterministic placeholder effect
+behavior.
 
 ```sh
-dune exec camlflow -- run examples/repo-triage/main.cml \
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/repo-triage/main.cml \
   --skills examples/repo-triage/skills \
   --input examples/repo-triage/input.json
 ```
+
+Expected deterministic output is structurally valid but empty:
+
+```text
+steps: 4
+{
+  "title": "",
+  "summary": "",
+  "relevant_files": [],
+  "findings": [],
+  "root_causes": [],
+  "patch_plan": [],
+  "validation_steps": [],
+  "follow_up_questions": []
+}
+```
+
+That output means the workflow contract is valid and all four effect boundaries
+were reached. It is not a meaningful triage report.
+
+## Meaningful host or provider run
+
+To get repository-grounded findings, run this workflow through a host that can
+inspect files, such as the Pi SDK harness or the historical `pi-mono` prototype.
+For a direct terminal smoke, use a configured provider:
+
+```sh
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/repo-triage/main.cml \
+  --skills examples/repo-triage/skills \
+  --input examples/repo-triage/input.json \
+  --provider codex \
+  --model gpt-5.4-mini \
+  --reasoning low \
+  --sandbox workspace-write \
+  --trace-provider
+```
+
+Provider runs require the provider CLI and credentials to be configured outside
+CamlFlow. The best Pi path is `packages/camlflow-pi-sdk`, where host code can
+call `agent.runWorkflow(...)` inside a selected sandbox.
 
 ## `pi-mono` host run
 

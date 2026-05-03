@@ -26,6 +26,16 @@ runtime separate from trusted host orchestration code.
 See
 [`docs/adr/0001-programmatic-camlflow-pi-sdk.md`](../../docs/adr/0001-programmatic-camlflow-pi-sdk.md)
 for the integration boundary decision.
+For the CamlFlow authoring path before you embed workflows in Pi, see
+[`docs/writing-and-running-camlflow.md`](../../docs/writing-and-running-camlflow.md).
+For the supported `.cml` syntax surface, see
+[`docs/language-reference.md`](../../docs/language-reference.md).
+For shared CamlFlow/Pi terminology, see
+[`docs/glossary.md`](../../docs/glossary.md).
+For the JSON shapes Pi workers must return for typed workflow effects, see
+[`docs/json-encoding.md`](../../docs/json-encoding.md).
+For a focused host-session vs Flue-style harness guide, see
+[`docs/pi-sdk-harness.md`](../../docs/pi-sdk-harness.md).
 
 ## Install
 
@@ -38,9 +48,11 @@ exact Pi SDK version.
 
 ## Usage
 
-For complete, compile-checked host-side examples, see
+For complete, compile-checked host-side examples and guidance on choosing
+between a workflow host session and the Flue-style harness, see
 [`examples/`](./examples). The examples cover a native Pi command or palette
-action, streamed worker output, and user cancellation.
+action, streamed worker output, user cancellation, and sandbox-aware agent
+orchestration.
 
 ```ts
 import { createPiCamlFlowHostSession } from "camlflow-pi-sdk";
@@ -172,7 +184,7 @@ try {
 
   await session.shell("git add -A && git commit --file -", {
     stdin: `fix: ${summary}`,
-    env: { GITHUB_TOKEN: process.env.GITHUB_TOKEN },
+    env: { GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? "" },
   });
 
   const workflow = await agent.runWorkflow({
