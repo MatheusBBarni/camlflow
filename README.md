@@ -67,6 +67,33 @@ For a complete install and usage walkthrough, including opam switch setup,
 optional local CLI installation, SDK packages, editor setup, and
 troubleshooting, see
 [`docs/how-to-run-and-install.md`](./docs/how-to-run-and-install.md).
+For a map of all current and historical docs, see
+[`docs/README.md`](./docs/README.md).
+For the authoring path from `.cml` syntax to CLI, provider, JSON-RPC, and Pi
+harness execution, see
+[`docs/writing-and-running-camlflow.md`](./docs/writing-and-running-camlflow.md).
+For a step-by-step first workflow tutorial, see
+[`docs/first-workflow.md`](./docs/first-workflow.md).
+For supported `.cml` declarations, types, expressions, and effects, see
+[`docs/language-reference.md`](./docs/language-reference.md).
+For copyable workflow patterns, see
+[`docs/workflow-cookbook.md`](./docs/workflow-cookbook.md).
+For choosing between deterministic CLI, provider CLI, JSON-RPC, and Pi harness
+runs, see [`docs/run-modes.md`](./docs/run-modes.md).
+For shared terminology across the language, runtime, and host integrations, see
+[`docs/glossary.md`](./docs/glossary.md).
+For exact command shapes and flag precedence, see
+[`docs/cli-reference.md`](./docs/cli-reference.md).
+For `camlflow.json` fields and path resolution, see
+[`docs/project-config.md`](./docs/project-config.md).
+For JSON input and output encoding rules, see
+[`docs/json-encoding.md`](./docs/json-encoding.md).
+For VS Code and Zed language-server setup, see
+[`docs/editor-support.md`](./docs/editor-support.md).
+For Pi host integration and the Flue-style harness, see
+[`docs/pi-sdk-harness.md`](./docs/pi-sdk-harness.md).
+For common failures and fixes, see
+[`docs/troubleshooting.md`](./docs/troubleshooting.md).
 
 Prerequisites:
 
@@ -127,6 +154,9 @@ Try project-local defaults from `camlflow.json`:
 
 Run all commands through `opam exec -- dune exec camlflow -- ...` inside the
 repo.
+For exact flag examples, provider options, project defaults, JSON-RPC bridge
+startup, and common CLI troubleshooting, see
+[`docs/cli-reference.md`](./docs/cli-reference.md).
 
 Available commands:
 
@@ -143,6 +173,9 @@ current directory or a parent contains a `camlflow.json` with a `program`
 field. The nearest config wins.
 
 ## Examples Worth Running
+
+The full examples learning path is in
+[`examples/README.md`](./examples/README.md).
 
 - [`examples/basic`](./examples/basic): smallest bound-agent example
 - [`examples/recursion`](./examples/recursion): pure typed computation
@@ -310,6 +343,8 @@ prototype path.
 If you want a host-side client instead of hand-rolling the protocol, start
 with
 [`packages/camlflow-ts-json-rpc-sdk`](./packages/camlflow-ts-json-rpc-sdk).
+For the maintained Pi harness path, see
+[`docs/pi-sdk-harness.md`](./docs/pi-sdk-harness.md).
 
 ## Editor Support
 
@@ -352,9 +387,20 @@ The editor packages both expect a `camlflow` executable on `PATH` and launch
 
 ## Related Docs
 
+- [`docs/README.md`](./docs/README.md)
 - [`docs/json-rpc.md`](./docs/json-rpc.md)
 - [`docs/provider-execution.md`](./docs/provider-execution.md)
 - [`docs/provider-hooks.md`](./docs/provider-hooks.md)
 - [`docs/json-rpc-status.md`](./docs/json-rpc-status.md)
 - [`docs/how-to-run-and-install.md`](./docs/how-to-run-and-install.md)
+- [`docs/cli-reference.md`](./docs/cli-reference.md)
+- [`docs/language-reference.md`](./docs/language-reference.md)
+- [`docs/glossary.md`](./docs/glossary.md)
+- [`docs/run-modes.md`](./docs/run-modes.md)
+- [`docs/writing-and-running-camlflow.md`](./docs/writing-and-running-camlflow.md)
+- [`docs/workflow-cookbook.md`](./docs/workflow-cookbook.md)
+- [`docs/project-config.md`](./docs/project-config.md)
+- [`docs/json-encoding.md`](./docs/json-encoding.md)
+- [`docs/pi-sdk-harness.md`](./docs/pi-sdk-harness.md)
+- [`docs/troubleshooting.md`](./docs/troubleshooting.md)
 - [`packages/camlflow-ts-json-rpc-sdk/README.md`](./packages/camlflow-ts-json-rpc-sdk/README.md)

@@ -14,7 +14,7 @@ Files:
 Run:
 
 ```sh
-dune exec camlflow -- run examples/codex/main.cml \
+opam exec -- dune exec camlflow -- run examples/codex/main.cml \
   --skills examples/codex/skills \
   --input-json '"Ada"' \
   --provider codex \
@@ -26,7 +26,7 @@ dune exec camlflow -- run examples/codex/main.cml \
 Optional trace:
 
 ```sh
-dune exec camlflow -- run examples/codex/main.cml \
+opam exec -- dune exec camlflow -- run examples/codex/main.cml \
   --skills examples/codex/skills \
   --input-json '"Ada"' \
   --provider codex \
@@ -39,7 +39,7 @@ dune exec camlflow -- run examples/codex/main.cml \
 OpenCode variant:
 
 ```sh
-dune exec camlflow -- run examples/codex/main.cml \
+opam exec -- dune exec camlflow -- run examples/codex/main.cml \
   --skills examples/codex/skills \
   --input-json '"Ada"' \
   --provider opencode \
@@ -50,7 +50,7 @@ dune exec camlflow -- run examples/codex/main.cml \
 Claude Code variant:
 
 ```sh
-dune exec camlflow -- run examples/codex/main.cml \
+opam exec -- dune exec camlflow -- run examples/codex/main.cml \
   --skills examples/codex/skills \
   --input-json '"Ada"' \
   --provider claude-code \
@@ -61,7 +61,7 @@ dune exec camlflow -- run examples/codex/main.cml \
 Claude CLI variant:
 
 ```sh
-ANTHROPIC_API_KEY=... dune exec camlflow -- run examples/codex/main.cml \
+ANTHROPIC_API_KEY=... opam exec -- dune exec camlflow -- run examples/codex/main.cml \
   --skills examples/codex/skills \
   --input-json '"Ada"' \
   --provider claude-cli \

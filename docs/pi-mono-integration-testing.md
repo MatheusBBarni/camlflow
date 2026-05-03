@@ -9,6 +9,7 @@ This document explains how to validate the CamlFlow ↔ `pi-mono` integration fr
 
 Related docs:
 
+- `docs/pi-sdk-harness.md`
 - `docs/pi-mono-host-integration-plan.md`
 - `docs/pi-mono-implementation-checklist.md`
 - `docs/json-rpc.md`

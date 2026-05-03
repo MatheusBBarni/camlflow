@@ -7,6 +7,17 @@ TypeScript SDK for the current CamlFlow JSON-RPC bridge implemented in:
 - `lib/rpc_server.ml`
 - `lib/effect_request.ml`
 
+If you are starting from `.cml` authoring rather than host integration code,
+read
+[`docs/writing-and-running-camlflow.md`](../../docs/writing-and-running-camlflow.md)
+first. For the supported `.cml` syntax surface, see
+[`docs/language-reference.md`](../../docs/language-reference.md). For shared
+host/runtime terminology, see
+[`docs/glossary.md`](../../docs/glossary.md). For the JSON shapes hosts must
+pass into `run(...)` and return from
+effect handlers, see
+[`docs/json-encoding.md`](../../docs/json-encoding.md).
+
 The SDK targets the bridge as it exists today:
 
 - JSON-RPC 2.0 over stdio

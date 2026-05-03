@@ -8,6 +8,9 @@ The built-in CLI providers (`codex`, `opencode`, `claude-code`, and
 `claude-cli`) are layered on top of the same runtime invocation metadata shown
 here. For the CLI-facing execution flow and provider-specific behavior, see
 `docs/provider-execution.md`.
+For author-facing `.cml` examples before embedding hooks, see
+`docs/writing-and-running-camlflow.md`; for exact command forms, see
+`docs/cli-reference.md`.
 
 ## Available runtime hooks
 

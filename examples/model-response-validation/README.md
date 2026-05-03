@@ -20,7 +20,7 @@ declared `code_response` shape, so the example still proves parsing, typing,
 JSON decoding, and typed branching over the response object.
 
 ```sh
-dune exec ./bin/main.exe -- run examples/model-response-validation/main.cml \
+opam exec -- dune exec camlflow -- run examples/model-response-validation/main.cml \
   --input-json '"let x = 1"'
 ```
 
@@ -57,7 +57,7 @@ The workflow then branches on `response.accuracy` and `response.action`.
 Example:
 
 ```sh
-dune exec ./bin/main.exe -- run examples/model-response-validation/main.cml \
+opam exec -- dune exec camlflow -- run examples/model-response-validation/main.cml \
   --input-json '"let x = 1"' \
   --provider codex \
   --model gpt-5.4-mini \

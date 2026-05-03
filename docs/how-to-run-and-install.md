@@ -2,6 +2,25 @@
 
 This guide is for installing CamlFlow from this repository checkout and running
 the maintained CLI, JSON-RPC bridge, SDK examples, and editor integrations.
+For a map of all current and historical docs, see
+[`README.md`](./README.md).
+For `.cml` authoring patterns, JSON input shapes, and choosing between CLI,
+provider, JSON-RPC, and Pi harness execution, see
+[`writing-and-running-camlflow.md`](./writing-and-running-camlflow.md).
+For a step-by-step first workflow tutorial, see
+[`first-workflow.md`](./first-workflow.md).
+For a compact command and flag reference, see
+[`cli-reference.md`](./cli-reference.md).
+For `camlflow.json` fields and path resolution, see
+[`project-config.md`](./project-config.md).
+For JSON input and output encoding rules, see
+[`json-encoding.md`](./json-encoding.md).
+For VS Code and Zed language-server setup, see
+[`editor-support.md`](./editor-support.md).
+For Pi host integration and the Flue-style harness, see
+[`pi-sdk-harness.md`](./pi-sdk-harness.md).
+For common failures and fixes, see
+[`troubleshooting.md`](./troubleshooting.md).
 
 CamlFlow is not published here as a binary release. The supported local path is
 to clone the repository, install the OCaml dependencies with `opam`, and run the
@@ -17,6 +36,15 @@ Install these first:
 - Dune 3.22 or newer
 - Node.js 18 or newer for TypeScript SDK and editor packages
 - `npm` for packages under `packages/`
+
+The `dune` binary on your shell `PATH` may be older than the one installed in
+the opam switch. If `dune exec ...` reports that `(lang dune 3.22)` is not
+supported, run commands through the switch explicitly:
+
+```sh
+opam exec --switch 5.4.0 -- dune --version
+opam exec --switch 5.4.0 -- dune exec camlflow -- --help
+```
 
 The core package requires OCaml 5.4 or newer. If your default opam switch is
 older, create or select a compatible switch before installing dependencies:
@@ -74,6 +102,10 @@ opam exec -- dune exec camlflow -- run examples/recursion/main.cml --input-json 
 opam exec -- dune exec camlflow -- run examples/variants-match/main.cml
 ```
 
+For a guided path through pure workflows, local skills, project config,
+structured examples, JSON-RPC hosts, and Pi SDK harness examples, see
+[`examples/README.md`](../examples/README.md).
+
 The default runtime is deterministic. Bound agents and skills produce
 placeholder values until you configure a provider or host effect handler, so the
 basic example currently returns `"!"`.
@@ -101,6 +133,13 @@ Editor packages and external host tools expect this installed `camlflow`
 executable, or an equivalent wrapper, to be available on `PATH`.
 
 ## Common CLI Tasks
+
+For a fuller explanation of `.cml` syntax, `let*`, agents, skills, modules,
+JSON input encoding, provider-backed runs, and the Pi SDK harness, use the
+authoring guide:
+[`writing-and-running-camlflow.md`](./writing-and-running-camlflow.md).
+For exact command forms and flag precedence, use the CLI reference:
+[`cli-reference.md`](./cli-reference.md).
 
 Parse and type-check a source file:
 
@@ -227,6 +266,9 @@ This package wraps the JSON-RPC SDK and exposes two host-side APIs:
 - `createPiCamlFlowHarness(...).init({ sandbox, model })` for Flue-style
   `agent.session(...).prompt/skill/task/shell` orchestration
 
+The maintained Pi integration guide is
+[`pi-sdk-harness.md`](./pi-sdk-harness.md).
+
 Supported harness sandbox presets are `local` / `workspace-write`,
 `read-only`, `ephemeral`, and custom host-owned configs or factories. The
 package constrains trusted shell `cwd` values to the sandbox root and
@@ -272,7 +314,13 @@ See the package READMEs for editor-specific configuration:
 - [`packages/camlflow-vscode/README.md`](../packages/camlflow-vscode/README.md)
 - [`packages/camlflow-zed/README.md`](../packages/camlflow-zed/README.md)
 
+For a maintained editor setup and smoke-test guide, see
+[`editor-support.md`](./editor-support.md).
+
 ## Troubleshooting
+
+For the full troubleshooting guide, see
+[`troubleshooting.md`](./troubleshooting.md).
 
 ### `ocaml-base-compiler` conflict during `opam install`
 

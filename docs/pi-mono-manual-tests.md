@@ -14,6 +14,7 @@ what to type, and what the answer should look like.
 
 Related docs:
 
+- `docs/pi-sdk-harness.md`
 - `docs/pi-mono-host-integration-plan.md`
 - `docs/pi-mono-implementation-checklist.md`
 - `docs/pi-mono-integration-testing.md`

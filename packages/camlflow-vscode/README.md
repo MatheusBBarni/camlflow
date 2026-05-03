@@ -12,6 +12,21 @@ This package contains VS Code support for CamlFlow:
 - semantic editor features from the LSP:
   diagnostics, hover, go-to-definition, references, rename, and document outline
 
+## Workflow Authoring Docs
+
+The extension handles editing, highlighting, LSP features, and
+`camlflow.json` validation. Use the main docs for language and runtime
+behavior:
+
+- [Docs map](../../docs/README.md)
+- [Language reference](../../docs/language-reference.md)
+- [Writing and running CamlFlow](../../docs/writing-and-running-camlflow.md)
+- [Workflow cookbook](../../docs/workflow-cookbook.md)
+- [`camlflow.json` project config](../../docs/project-config.md)
+- [JSON encoding reference](../../docs/json-encoding.md)
+- [Editor support](../../docs/editor-support.md)
+- [Troubleshooting](../../docs/troubleshooting.md)
+
 ## Layout
 
 - `language-configuration.json`: editor behavior for `.cml`

@@ -34,7 +34,7 @@ Files:
 ## Deterministic local run
 
 ```sh
-dune exec camlflow -- run examples/problem-coach/main.cml \
+opam exec -- dune exec camlflow -- run examples/problem-coach/main.cml \
   --skills examples/problem-coach/skills \
   --input examples/problem-coach/input.json
 ```
@@ -42,7 +42,7 @@ dune exec camlflow -- run examples/problem-coach/main.cml \
 ## Codex-backed run
 
 ```sh
-dune exec camlflow -- run examples/problem-coach/main.cml \
+opam exec -- dune exec camlflow -- run examples/problem-coach/main.cml \
   --skills examples/problem-coach/skills \
   --input examples/problem-coach/input.json \
   --provider codex \

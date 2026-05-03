@@ -1,0 +1,10 @@
+type request = {
+  name : string;
+  punctuation : string;
+}
+
+agent greeter : name:string -> string = Agent.bind "greeter"
+
+let main (request : request) : string =
+  let* greeting = greeter ~name:request.name in
+  greeting ^ request.punctuation

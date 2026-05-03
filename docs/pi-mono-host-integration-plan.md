@@ -18,6 +18,7 @@ Why:
 
 Related docs:
 
+- `docs/pi-sdk-harness.md`
 - `docs/host-adapter-architecture.md`
 - `docs/pi-mono-implementation-checklist.md`
 - `docs/pi-mono-integration-testing.md`

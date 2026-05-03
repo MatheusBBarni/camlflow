@@ -14,6 +14,20 @@ The Zed extension expects a `camlflow` executable to be available on the worktre
 camlflow lsp
 ```
 
+## Workflow Authoring Docs
+
+The extension handles editing, LSP startup, and points Zed at the shared
+`camlflow.json` schema. Use the main docs for language and runtime behavior:
+
+- [Docs map](../../docs/README.md)
+- [Language reference](../../docs/language-reference.md)
+- [Writing and running CamlFlow](../../docs/writing-and-running-camlflow.md)
+- [Workflow cookbook](../../docs/workflow-cookbook.md)
+- [`camlflow.json` project config](../../docs/project-config.md)
+- [JSON encoding reference](../../docs/json-encoding.md)
+- [Editor support](../../docs/editor-support.md)
+- [Troubleshooting](../../docs/troubleshooting.md)
+
 ## Layout
 
 - `extension.toml`: Zed extension manifest

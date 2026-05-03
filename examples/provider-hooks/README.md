@@ -12,5 +12,5 @@ Files:
 Run:
 
 ```sh
-dune exec examples/provider-hooks/host.exe
+opam exec -- dune exec examples/provider-hooks/host.exe
 ```
