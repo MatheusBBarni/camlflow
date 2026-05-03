@@ -27,7 +27,7 @@ Files:
 Approved path:
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/dev-workflow/main.cml \
+opam exec -- dune exec camlflow -- run examples/dev-workflow/main.cml \
   --skills examples/dev-workflow/skills \
   --input examples/dev-workflow/input-approved.json
 ```
@@ -41,7 +41,7 @@ make run-dev-workflow
 Pending-approval path:
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/dev-workflow/main.cml \
+opam exec -- dune exec camlflow -- run examples/dev-workflow/main.cml \
   --skills examples/dev-workflow/skills \
   --input examples/dev-workflow/input-pending.json
 ```
@@ -53,7 +53,7 @@ encoding, approval branching, and final report assembly.
 ## Provider-backed run
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/dev-workflow/main.cml \
+opam exec -- dune exec camlflow -- run examples/dev-workflow/main.cml \
   --skills examples/dev-workflow/skills \
   --input examples/dev-workflow/input-approved.json \
   --provider codex \

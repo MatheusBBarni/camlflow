@@ -24,7 +24,7 @@ That forces the recursive retry path until the example exhausts its max
 attempts.
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/model-response-retry/main.cml \
+opam exec -- dune exec camlflow -- run examples/model-response-retry/main.cml \
   --input-json '"let x = 1"'
 ```
 
@@ -58,7 +58,7 @@ The workflow validates that response with `needs_retry`, derives retry text with
 `unwrap_or`, and uses a recursive helper today instead of `for` / `while`.
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/model-response-retry/main.cml \
+opam exec -- dune exec camlflow -- run examples/model-response-retry/main.cml \
   --input-json '"let x = 1"' \
   --provider codex \
   --model gpt-5.4-mini \

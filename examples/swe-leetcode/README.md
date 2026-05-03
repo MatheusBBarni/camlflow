@@ -17,7 +17,7 @@ Files:
 Run:
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/swe-leetcode/main.cml \
+opam exec -- dune exec camlflow -- run examples/swe-leetcode/main.cml \
   --skills examples/swe-leetcode/skills \
   --input-json '"two sum"' \
   --provider codex \
@@ -27,7 +27,7 @@ opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/swe-leetcode/main
 Optional trace:
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/swe-leetcode/main.cml \
+opam exec -- dune exec camlflow -- run examples/swe-leetcode/main.cml \
   --skills examples/swe-leetcode/skills \
   --input-json '"binary search"' \
   --provider codex \

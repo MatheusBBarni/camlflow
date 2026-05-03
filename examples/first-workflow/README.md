@@ -16,8 +16,8 @@ this example validates workflow wiring rather than model quality.
 From the repository root:
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- check examples/first-workflow/main.cml
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/first-workflow/main.cml \
+opam exec -- dune exec camlflow -- check examples/first-workflow/main.cml
+opam exec -- dune exec camlflow -- run examples/first-workflow/main.cml \
   --input examples/first-workflow/input.json
 ```
 
@@ -31,8 +31,8 @@ steps: 1
 From this directory, use the project config:
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- check
-opam exec --switch 5.4.0 -- dune exec camlflow -- run --input input.json
+opam exec -- dune exec camlflow -- check
+opam exec -- dune exec camlflow -- run --input input.json
 ```
 
 `camlflow.json` supplies the program and entrypoint. Input payloads still come

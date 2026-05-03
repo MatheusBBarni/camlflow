@@ -30,7 +30,7 @@ JSON-RPC host, or Pi worker, CamlFlow uses deterministic placeholder effect
 behavior.
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/repo-triage/main.cml \
+opam exec -- dune exec camlflow -- run examples/repo-triage/main.cml \
   --skills examples/repo-triage/skills \
   --input examples/repo-triage/input.json
 ```
@@ -61,7 +61,7 @@ inspect files, such as the Pi SDK harness or the historical `pi-mono` prototype.
 For a direct terminal smoke, use a configured provider:
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/repo-triage/main.cml \
+opam exec -- dune exec camlflow -- run examples/repo-triage/main.cml \
   --skills examples/repo-triage/skills \
   --input examples/repo-triage/input.json \
   --provider codex \

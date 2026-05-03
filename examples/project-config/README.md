@@ -10,13 +10,13 @@ For the full config field reference, see
 From this directory:
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- check
-opam exec --switch 5.4.0 -- dune exec camlflow -- run --input input.json
-opam exec --switch 5.4.0 -- dune exec camlflow -- compile -o /tmp/project-config.ir.json
+opam exec -- dune exec camlflow -- check
+opam exec -- dune exec camlflow -- run --input input.json
+opam exec -- dune exec camlflow -- compile -o /tmp/project-config.ir.json
 ```
 
 From the repo root:
 
 ```sh
-(cd examples/project-config && opam exec --switch 5.4.0 -- dune exec camlflow -- run --input input.json)
+(cd examples/project-config && opam exec -- dune exec camlflow -- run --input input.json)
 ```

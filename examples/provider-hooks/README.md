@@ -12,5 +12,5 @@ Files:
 Run:
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec examples/provider-hooks/host.exe
+opam exec -- dune exec examples/provider-hooks/host.exe
 ```
