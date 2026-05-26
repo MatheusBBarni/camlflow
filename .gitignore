@@ -6,3 +6,5 @@ _build/
 .utop-history
 *.swp
 *.swo
+
+.DS_STORE
