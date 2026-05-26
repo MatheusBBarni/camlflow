@@ -182,6 +182,70 @@ export interface WorkflowRunResult<TOutput extends JsonValue = JsonValue> {
   metadata: JsonObject;
 }
 
+export type WorkflowRunner = (run: WorkflowRunContext) => MaybePromise<WorkflowRunResult>;
+
+export interface RoleOverlays {
+  workflow?: string;
+  agent?: string;
+  skill?: string;
+  hostCall?: string;
+}
+
+export interface HarnessOptions<TSandboxConfig = unknown, TAgentSession = unknown, TMessage = JsonValue> {
+  sandboxProvider: SandboxProvider<TSandboxConfig>;
+  sandbox: TSandboxConfig;
+  agentProvider: AgentProvider<TAgentSession, TMessage>;
+  workflowRunner?: WorkflowRunner;
+  promptResolver?: PromptResolver;
+  hooks?: LifecycleHooks;
+  roles?: RoleOverlays;
+  signal?: AbortSignal;
+}
+
+export interface HarnessInitOptions {
+  runId?: string;
+  workflowPath?: string;
+  signal?: AbortSignal;
+}
+
+export interface OrchestratorAgent {
+  readonly sandbox: SandboxHandle;
+  session(id?: string, options?: OrchestratorSessionOptions): Promise<OrchestratorSession>;
+  runWorkflow<TOutput extends JsonValue = JsonValue>(options: OrchestratorWorkflowRunOptions): Promise<WorkflowRunResult<TOutput>>;
+  close(): Promise<SandboxCloseResult>;
+}
+
+export interface OrchestratorSessionOptions {
+  role?: string;
+  model?: string;
+  signal?: AbortSignal;
+}
+
+export interface OrchestratorPromptOptions<TOutput = JsonValue> {
+  result?: ResultParser<TOutput>;
+  role?: string;
+  signal?: AbortSignal;
+}
+
+export interface OrchestratorSkillOptions<TOutput = JsonValue> extends OrchestratorPromptOptions<TOutput> {
+  args?: JsonObject;
+}
+
+export interface OrchestratorWorkflowRunOptions {
+  workflowPath: string;
+  entrypoint?: string;
+  input?: JsonValue;
+  signal?: AbortSignal;
+}
+
+export interface OrchestratorSession {
+  readonly id: string;
+  prompt<TOutput = JsonValue>(prompt: string, options?: OrchestratorPromptOptions<TOutput>): Promise<TOutput>;
+  skill<TOutput = JsonValue>(name: string, options?: OrchestratorSkillOptions<TOutput>): Promise<TOutput>;
+  task<TOutput = JsonValue>(prompt: string, options?: OrchestratorPromptOptions<TOutput>): Promise<TOutput>;
+  close(): Promise<void>;
+}
+
 export interface OutputChunk {
   delta: string;
   done: boolean;
@@ -344,6 +408,121 @@ export async function relayOutputChunk(
   if (listener) {
     await listener(chunk);
   }
+}
+
+export function resolveRoleOverlay(roles: RoleOverlays = {}, callRole?: string): string | undefined {
+  return callRole ?? roles.hostCall ?? roles.skill ?? roles.agent ?? roles.workflow;
+}
+
+export function createOrchestratorHarness<TSandboxConfig, TAgentSession, TMessage extends JsonValue = JsonValue>(
+  options: HarnessOptions<TSandboxConfig, TAgentSession, TMessage>,
+): { init(initOptions?: HarnessInitOptions): Promise<OrchestratorAgent> } {
+  return {
+    async init(initOptions = {}) {
+      const signal = composeAbortSignals([options.signal, initOptions.signal]);
+      const runId = initOptions.runId ?? `run-${Date.now().toString(36)}`;
+      const createContext: SandboxCreateContext = {
+        workflowPath: initOptions.workflowPath,
+        runId,
+        signal,
+      };
+      await options.hooks?.beforeSandboxCreate?.(createContext);
+      const sandbox = await options.sandboxProvider.create(options.sandbox, createContext);
+      await options.hooks?.afterSandboxReady?.(sandbox);
+      const openSessions = new Set<Promise<void> | OrchestratorSession>();
+      let closed = false;
+
+      const agent: OrchestratorAgent = {
+        sandbox,
+        async session(id = `session-${Date.now().toString(36)}`, sessionOptions = {}) {
+          if (closed) {
+            throw new CamlFlowOrchestratorError("orchestrator agent is closed");
+          }
+          const sessionSignal = composeAbortSignals([signal, sessionOptions.signal]);
+          const providerSession = await options.agentProvider.createSession({
+            sandbox,
+            model: sessionOptions.model,
+            role: resolveRoleOverlay(options.roles, sessionOptions.role),
+            signal: sessionSignal,
+          });
+          let sessionClosed = false;
+          const closeSession = async () => {
+            if (!sessionClosed) {
+              sessionClosed = true;
+              await options.agentProvider.closeSession(providerSession);
+            }
+          };
+          const orchestratorSession: OrchestratorSession = {
+            id,
+            async prompt(prompt, promptOptions = {}) {
+              if (sessionClosed) {
+                throw new CamlFlowOrchestratorError("orchestrator session is closed");
+              }
+              const text = assertNonEmptyString(prompt, "prompt");
+              const message = await options.agentProvider.prompt(providerSession, text, {
+                signal: composeAbortSignals([sessionSignal, promptOptions.signal]),
+              });
+              return parseResult(message, promptOptions.result);
+            },
+            async skill(name, skillOptions = {}) {
+              const skillName = assertNonEmptyString(name, "skill name");
+              const args = skillOptions.args ? (assertJsonValue(skillOptions.args, "skill args") as JsonObject) : {};
+              const prompt = options.promptResolver
+                ? await options.promptResolver.resolve({ name: skillName }, { args, sandbox })
+                : `Run skill ${skillName} with JSON args: ${JSON.stringify(args)}`;
+              return orchestratorSession.prompt(prompt, {
+                ...skillOptions,
+                role: resolveRoleOverlay({ ...options.roles, hostCall: skillOptions.role }, skillOptions.role),
+              });
+            },
+            async task(prompt, taskOptions = {}) {
+              const child = await agent.session(`${id}:task-${Date.now().toString(36)}`, {
+                role: taskOptions.role,
+                signal: taskOptions.signal,
+              });
+              try {
+                return await child.prompt(prompt, taskOptions);
+              } finally {
+                await child.close();
+              }
+            },
+            close: closeSession,
+          };
+          openSessions.add(orchestratorSession);
+          return orchestratorSession;
+        },
+        async runWorkflow<TOutput extends JsonValue = JsonValue>(runOptions: OrchestratorWorkflowRunOptions) {
+          if (!options.workflowRunner) {
+            throw new CamlFlowOrchestratorError("workflow runner is not configured");
+          }
+          const workflowPath = assertNonEmptyString(runOptions.workflowPath, "workflow path");
+          const run: WorkflowRunContext = {
+            runId,
+            workflowPath,
+            entrypoint: runOptions.entrypoint ?? "main",
+            input: runOptions.input === undefined ? null : assertJsonValue(runOptions.input, "workflow input"),
+            sandbox,
+            signal: composeAbortSignals([signal, runOptions.signal]),
+          };
+          await options.hooks?.beforeRun?.(run);
+          const result = await options.workflowRunner(run);
+          await options.hooks?.afterRun?.(run, result);
+          return result as WorkflowRunResult<TOutput>;
+        },
+        async close() {
+          closed = true;
+          for (const session of Array.from(openSessions)) {
+            if ("close" in session) {
+              await session.close();
+            }
+          }
+          await options.hooks?.beforeClose?.(sandbox);
+          return sandbox.close();
+        },
+      };
+      return agent;
+    },
+  };
 }
 
 export function createMemorySessionStore<TData extends JsonObject = JsonObject>(): SessionStore<TData> {

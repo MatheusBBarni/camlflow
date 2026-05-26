@@ -14,9 +14,11 @@ import {
   createEphemeralSandboxProvider,
   createLocalSandboxProvider,
   createMemorySessionStore,
+  createOrchestratorHarness,
   createReadOnlySandboxProvider,
   parseResult,
   relayOutputChunk,
+  resolveRoleOverlay,
   resolveSandboxPath,
 } from "../dist/index.js";
 
@@ -136,4 +138,70 @@ test("sandbox path resolution blocks symlink escapes", async () => {
   } finally {
     await sandbox.close();
   }
+});
+
+test("orchestrator harness shares sandbox across sessions, tasks, skills, and workflow runs", async () => {
+  const calls = [];
+  let sessionCounter = 0;
+  const provider = createEphemeralSandboxProvider();
+  const agentProvider = {
+    name: "fake-agent",
+    async createSession(options) {
+      sessionCounter += 1;
+      const session = { id: `agent-${sessionCounter}`, sandbox: options.sandbox, role: options.role };
+      calls.push(["createSession", session.id, options.sandbox.cwd, options.role]);
+      return session;
+    },
+    async prompt(session, prompt) {
+      calls.push(["prompt", session.id, session.sandbox.cwd, prompt]);
+      return { session: session.id, prompt, cwd: session.sandbox.cwd };
+    },
+    async closeSession(session) {
+      calls.push(["closeSession", session.id]);
+    },
+  };
+  const hooks = [];
+  const harness = createOrchestratorHarness({
+    sandboxProvider: provider,
+    sandbox: {},
+    agentProvider,
+    roles: { workflow: "workflow-role", agent: "agent-role" },
+    promptResolver: {
+      resolve: ({ name }, { args }) => `skill:${name}:${JSON.stringify(args)}`,
+    },
+    hooks: {
+      beforeRun: (run) => hooks.push(["beforeRun", run.workflowPath, run.sandbox.cwd]),
+      afterRun: (run, result) => hooks.push(["afterRun", run.runId, result.output]),
+    },
+    workflowRunner: (run) => ({
+      runId: run.runId,
+      output: { workflowPath: run.workflowPath, input: run.input, cwd: run.sandbox.cwd },
+      diagnostics: [],
+      metadata: {},
+    }),
+  });
+
+  const agent = await harness.init({ runId: "run-1" });
+  const session = await agent.session("parent");
+  const promptResult = await session.prompt("hello", { result: (value) => value.prompt });
+  assert.equal(promptResult, "hello");
+  const skillResult = await session.skill("triage", { args: { issue: 16 } });
+  assert.equal(skillResult.prompt, "skill:triage:{\"issue\":16}");
+  const taskResult = await session.task("child work");
+  assert.equal(taskResult.prompt, "child work");
+  const runResult = await agent.runWorkflow({ workflowPath: "flows/main.cml", input: { ok: true } });
+  assert.equal(runResult.output.workflowPath, "flows/main.cml");
+  assert.equal(runResult.output.cwd, agent.sandbox.cwd);
+  await agent.close();
+
+  assert.equal(calls.filter((call) => call[0] === "createSession").length, 2);
+  assert.equal(new Set(calls.filter((call) => call[0] === "prompt").map((call) => call[2])).size, 1);
+  assert.deepEqual(hooks.map((hook) => hook[0]), ["beforeRun", "afterRun"]);
+});
+
+test("role overlays use host call, skill, agent, then workflow precedence", () => {
+  assert.equal(resolveRoleOverlay({ workflow: "workflow", agent: "agent" }), "agent");
+  assert.equal(resolveRoleOverlay({ workflow: "workflow", skill: "skill" }), "skill");
+  assert.equal(resolveRoleOverlay({ workflow: "workflow", hostCall: "host" }), "host");
+  assert.equal(resolveRoleOverlay({ workflow: "workflow" }, "call"), "call");
 });

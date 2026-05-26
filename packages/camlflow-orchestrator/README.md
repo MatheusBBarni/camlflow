@@ -31,6 +31,22 @@ All built-in providers return a `SandboxHandle` with `resolvePath(...)`, close
 results, approved tools, optional shell execution, and cleanup/preservation
 metadata. Path resolution rejects escapes outside the sandbox root.
 
+## Harness lifecycle
+
+`createOrchestratorHarness(...)` binds a sandbox provider, agent provider,
+optional prompt resolver, lifecycle hooks, role overlays, and optional workflow
+runner into one host-owned lifecycle:
+
+- `agent.session(...)` creates isolated message history over the same sandbox
+- `session.prompt(...)` sends model/provider prompts and parses typed results
+- `session.skill(...)` resolves named skill prompts under host policy
+- `session.task(...)` creates a detached child session sharing the sandbox
+- `agent.runWorkflow(...)` runs a `.cml` workflow through the configured runner
+- `agent.close()` closes open sessions and returns the sandbox close result
+
+Role overlays resolve from workflow -> agent -> skill -> host call, with explicit
+call roles taking precedence.
+
 The Pi compatibility package remains `camlflow-pi-sdk`. During migration, Pi
 worker creation, Pi model registry access, Pi auth checks, and Pi tool creation
 stay there while shared lifecycle code moves here.
