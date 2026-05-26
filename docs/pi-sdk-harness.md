@@ -12,6 +12,10 @@ TypeScript APIs:
 
 The package does not parse `/camlflow-run` or own Pi UI registration. Pi or any
 other host owns commands, menus, panels, auth UX, and model selection.
+The generic sandbox/session/task lifecycle boundary is documented in
+[`orchestrator-project-layout.md`](./orchestrator-project-layout.md) and
+implemented by `packages/camlflow-orchestrator`; the Pi SDK remains the
+Pi-specific compatibility adapter over that direction.
 For the supported `.cml` syntax surface, see
 [`language-reference.md`](./language-reference.md).
 For common host, sandbox, and package-test failures, see

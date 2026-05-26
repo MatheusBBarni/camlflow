@@ -1,0 +1,36 @@
+type review_request = {
+  issue_number : int;
+  task : string;
+  goals : string list;
+}
+
+type research_report = {
+  summary : string;
+  risky_files : string list;
+  evidence : string list;
+}
+
+type triage_plan = {
+  summary : string;
+  next_steps : string list;
+  validation : string list;
+}
+
+agent repo_researcher :
+  task:string -> goals:string list -> research_report =
+  Agent.define
+    ~name:"repo-researcher"
+    ~system_prompt:"Inspect the sandboxed checkout and return concrete file-backed findings."
+
+skill triage :
+  issue_number:int -> research:research_report -> triage_plan =
+  Skill.bind "triage"
+
+let main (request : review_request) : triage_plan =
+  let* research =
+    repo_researcher ~task:request.task ~goals:request.goals
+  in
+  let* plan =
+    triage ~issue_number:request.issue_number ~research:research
+  in
+  plan

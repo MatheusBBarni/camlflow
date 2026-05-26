@@ -1,13 +1,16 @@
 # CamlFlow
 
-CamlFlow is a typed workflow language and runtime for AI orchestration.
+CamlFlow is a `.cml`-first sandbox orchestrator with a typed workflow core.
 
 You write workflows in `.cml` using an OCaml-style syntax, type-check them,
-compile them to JSON IR, and run them either:
+compile them to JSON IR, and run them inside either the deterministic core or a
+host-owned sandbox/orchestrator layer:
 
 - directly through the CLI
 - through a host process over JSON-RPC 2.0 on stdio
 - through built-in provider adapters for external coding/model CLIs
+- through host SDKs that manage sandboxes, sessions, tasks, skills, logs,
+  cancellation, and resume around the `.cml` workflow contract
 
 The important boundary is simple:
 
@@ -35,6 +38,8 @@ The important boundary is simple:
   [`packages/camlflow-ts-json-rpc-sdk`](./packages/camlflow-ts-json-rpc-sdk)
 - Pi host adapter SDK and Flue-style sandbox harness in
   [`packages/camlflow-pi-sdk`](./packages/camlflow-pi-sdk)
+- generic sandbox orchestrator primitives in
+  [`packages/camlflow-orchestrator`](./packages/camlflow-orchestrator)
 - editor support in
   [`packages/camlflow-vscode`](./packages/camlflow-vscode) and
   [`packages/camlflow-zed`](./packages/camlflow-zed)
@@ -78,8 +83,12 @@ For supported `.cml` declarations, types, expressions, and effects, see
 [`docs/language-reference.md`](./docs/language-reference.md).
 For copyable workflow patterns, see
 [`docs/workflow-cookbook.md`](./docs/workflow-cookbook.md).
-For choosing between deterministic CLI, provider CLI, JSON-RPC, and Pi harness
-runs, see [`docs/run-modes.md`](./docs/run-modes.md).
+For choosing between deterministic CLI, provider CLI, JSON-RPC, generic
+orchestrator SDK, and Pi harness runs, see [`docs/run-modes.md`](./docs/run-modes.md).
+For `.cml`-first sandbox orchestrator project layout, see
+[`docs/orchestrator-project-layout.md`](./docs/orchestrator-project-layout.md).
+For orchestrator events, cancellation, resume, and structured failure metadata,
+see [`docs/orchestrator-observability.md`](./docs/orchestrator-observability.md).
 For shared terminology across the language, runtime, and host integrations, see
 [`docs/glossary.md`](./docs/glossary.md).
 For exact command shapes and flag precedence, see

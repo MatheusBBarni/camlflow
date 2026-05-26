@@ -1,7 +1,8 @@
 # Run Modes
 
-CamlFlow workflows can run in four practical modes. The `.cml` contract stays
-the same; the difference is who handles effects such as agents and skills.
+CamlFlow workflows can run in five practical modes. The `.cml` contract stays
+the same; the difference is who handles effects such as agents and skills and
+who owns sandbox/session lifecycle.
 
 Use this guide when deciding how to execute a workflow after it type-checks.
 
@@ -12,6 +13,7 @@ Use this guide when deciding how to execute a workflow after it type-checks.
 | Deterministic CLI | authoring, parser/type/runtime checks, CI smoke | built-in placeholder runtime |
 | Provider CLI | quick terminal-owned model runs | configured provider CLI |
 | JSON-RPC host | custom applications and non-Pi hosts | host process callback |
+| Generic orchestrator SDK | sandboxed app/CI/coding-agent flows | host SDK around JSON-RPC/core runner |
 | Pi SDK harness | Flue-style Pi agent orchestration | Pi worker session in a sandbox |
 
 ## Deterministic CLI
@@ -91,6 +93,22 @@ Start with:
 - [TypeScript JSON-RPC SDK](../packages/camlflow-ts-json-rpc-sdk/README.md)
 - [JSON-RPC host example](../examples/json-rpc-host/README.md)
 
+## Generic Orchestrator SDK
+
+Use `packages/camlflow-orchestrator` when host code needs one lifecycle for
+sandboxes, sessions, tasks, skills, logs, cancellation, resume metadata, and
+`.cml` workflow runs.
+
+The generic SDK does not change `.cml` syntax or JSON-RPC method names. It
+provides TypeScript interfaces and built-in local/read-only/ephemeral sandbox
+providers that an application, CI job, or coding-agent host can bind to a `.cml`
+workflow.
+
+Start host projects from the `.camlflow/` layout in
+[`orchestrator-project-layout.md`](./orchestrator-project-layout.md), and record
+events/resume metadata as described in
+[`orchestrator-observability.md`](./orchestrator-observability.md).
+
 ## Pi SDK Harness
 
 Use the Pi SDK harness when TypeScript host code wants a Flue-style API:
@@ -138,7 +156,8 @@ Use this order when bringing up a workflow:
 3. Add `camlflow.json` only for stable repeated defaults.
 4. Use provider CLI for terminal-owned model smoke tests.
 5. Use JSON-RPC for application-owned effect execution.
-6. Use Pi SDK harness for Flue-style agent sessions and sandboxed Pi workflows.
+6. Use the generic orchestrator SDK for app/CI/coding-agent sandbox lifecycle.
+7. Use Pi SDK harness for Flue-style agent sessions and sandboxed Pi workflows.
 
 If a workflow fails before the first effect, fix `.cml`, config, or input JSON.
 If it fails at an effect boundary, inspect the provider, host, or Pi worker

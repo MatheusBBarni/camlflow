@@ -1,6 +1,7 @@
 # camlflow-pi-sdk
 
-Programmatic Pi adapter and sandbox-aware agent harness for CamlFlow workflows.
+Programmatic Pi compatibility adapter and sandbox-aware agent harness for
+CamlFlow workflows.
 
 This package wraps `camlflow-ts-json-rpc-sdk` and maps each
 `camlflow/executeEffect` request onto an ephemeral in-memory Pi worker session.
@@ -22,6 +23,11 @@ export Pi slash-command parsers; skill execution stays behind `session.skill(...
 
 The harness keeps CamlFlow's typed workflow execution and Pi's model/tool
 runtime separate from trusted host orchestration code.
+
+The generic host lifecycle boundary now lives in
+[`packages/camlflow-orchestrator`](../camlflow-orchestrator). This package stays
+Pi-specific: Pi worker-session creation, Pi model registry access, Pi auth
+checks, and Pi tool construction remain here during migration.
 
 See
 [`docs/adr/0001-programmatic-camlflow-pi-sdk.md`](../../docs/adr/0001-programmatic-camlflow-pi-sdk.md)

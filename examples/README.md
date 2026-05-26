@@ -1,8 +1,8 @@
 # CamlFlow Examples
 
 This directory is the quickest way to learn CamlFlow by running real workflows.
-Start with pure examples, then add skills, providers, JSON-RPC hosts, and the
-Pi SDK harness.
+Start with pure examples, then add skills, providers, JSON-RPC hosts, the generic
+orchestrator SDK, and the Pi SDK harness.
 
 Run commands from the repository root unless a section says otherwise. If your
 active opam switch is not OCaml 5.4, replace `opam exec --` with
@@ -22,6 +22,8 @@ active opam switch is not OCaml 5.4, replace `opam exec --` with
 8. [`problem-coach`](./problem-coach): practical structured-output workflow.
 9. [`repo-triage`](./repo-triage): repository-grounded workflow suited for a
    Pi-style coding agent host.
+10. [`orchestrator-session`](./orchestrator-session): `.cml` workflow intended
+    to run inside a host-owned sandbox/session/task lifecycle.
 
 ## Small Syntax Examples
 
@@ -87,6 +89,8 @@ Use these when you want examples closer to real host use:
   workflow planning and review.
 - [`repo-triage`](./repo-triage): repository investigation and triage report,
   designed for a tool-using coding agent host.
+- [`orchestrator-session`](./orchestrator-session): issue triage workflow shaped
+  for a generic sandbox orchestrator session.
 
 Run one deterministic structured workflow:
 
