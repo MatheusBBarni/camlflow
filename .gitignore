@@ -8,3 +8,6 @@ _build/
 *.swo
 
 .DS_STORE
+
+node_modules/
+dist/
