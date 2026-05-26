@@ -22,6 +22,7 @@ import {
   createCancellationScope,
   parseResult,
   relayOutputChunk,
+  normalizeWorktreeStrategy,
   resolveRoleOverlay,
   resolveSandboxPath,
   scaffoldCamlFlowProject,
@@ -143,6 +144,23 @@ test("sandbox path resolution blocks symlink escapes", async () => {
   } finally {
     await sandbox.close();
   }
+});
+
+test("normalizes direct head and explicit branch worktree strategies", () => {
+  assert.deepEqual(normalizeWorktreeStrategy({ kind: "direct" }), { kind: "direct", preservesHead: false });
+  assert.deepEqual(normalizeWorktreeStrategy({ kind: "head" }), { kind: "head", preservesHead: false });
+  assert.deepEqual(normalizeWorktreeStrategy({ kind: "branch", branch: "issue-16" }), {
+    kind: "branch",
+    branch: "issue-16",
+    preservesHead: true,
+  });
+  assert.deepEqual(normalizeWorktreeStrategy({ kind: "merge-to-head", branch: "issue-16" }), {
+    kind: "merge-to-head",
+    branch: "issue-16",
+    preservesHead: true,
+    mergeTarget: "head",
+  });
+  assert.throws(() => normalizeWorktreeStrategy({ kind: "branch", branch: "" }), /worktree branch/);
 });
 
 test("orchestrator harness shares sandbox across sessions, tasks, skills, and workflow runs", async () => {

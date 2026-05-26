@@ -30,6 +30,8 @@ The package includes first-class filesystem sandbox providers:
 All built-in providers return a `SandboxHandle` with `resolvePath(...)`, close
 results, approved tools, optional shell execution, and cleanup/preservation
 metadata. Path resolution rejects escapes outside the sandbox root.
+`normalizeWorktreeStrategy(...)` defines direct/head, explicit branch, and
+merge-to-head strategy metadata for hosts that create worktrees themselves.
 
 ## Harness lifecycle
 

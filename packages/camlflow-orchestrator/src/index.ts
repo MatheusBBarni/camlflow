@@ -92,6 +92,13 @@ export type WorktreeStrategy =
   | { kind: "branch"; branch: string }
   | { kind: "merge-to-head"; branch: string };
 
+export interface NormalizedWorktreeStrategy {
+  kind: "direct" | "head" | "branch" | "merge-to-head";
+  branch?: string;
+  preservesHead: boolean;
+  mergeTarget?: "head";
+}
+
 export interface LocalSandboxConfig<TTool = unknown> {
   kind?: "local" | "workspace-write" | "read-only" | "ephemeral";
   cwd?: string;
@@ -760,6 +767,26 @@ export function createLocalSandboxProvider<TTool = unknown>(): SandboxProvider<L
       return createFilesystemSandbox("local", config, context, { allowShell: true, ephemeral: false });
     },
   };
+}
+
+export function normalizeWorktreeStrategy(strategy: WorktreeStrategy = { kind: "direct" }): NormalizedWorktreeStrategy {
+  switch (strategy.kind) {
+    case "direct":
+      return { kind: "direct", preservesHead: false };
+    case "head":
+      return { kind: "head", preservesHead: false };
+    case "branch":
+      return { kind: "branch", branch: assertNonEmptyString(strategy.branch, "worktree branch"), preservesHead: true };
+    case "merge-to-head":
+      return {
+        kind: "merge-to-head",
+        branch: assertNonEmptyString(strategy.branch, "worktree branch"),
+        preservesHead: true,
+        mergeTarget: "head",
+      };
+    default:
+      throw new CamlFlowValidationError("unknown worktree strategy");
+  }
 }
 
 export function createReadOnlySandboxProvider<TTool = unknown>(): SandboxProvider<LocalSandboxConfig<TTool>, TTool> {
