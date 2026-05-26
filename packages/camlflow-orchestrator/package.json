@@ -1,0 +1,38 @@
+{
+  "name": "camlflow-orchestrator",
+  "version": "0.1.0",
+  "description": "Generic sandbox orchestrator primitives for .cml CamlFlow workflows",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "keywords": [
+    "camlflow",
+    "orchestrator",
+    "sandbox",
+    "workflow",
+    "harness"
+  ],
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "typescript": "^5.9.3"
+  }
+}
