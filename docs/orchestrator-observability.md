@@ -5,10 +5,14 @@ changing the JSON-RPC protocol.
 
 ## Event stream
 
-`createOrchestratorHarness({ eventSink })` emits timestamped events for sandbox
-creation, sandbox readiness, session creation, prompt start/finish, workflow
-start/finish, session close, and sandbox close. Additional event kinds cover
-prompt chunks, shell start/finish, cancellation, resume capture, and failures.
+`createOrchestratorHarness({ eventSink })` automatically emits timestamped
+events for sandbox creation, sandbox readiness, session creation, prompt
+start/finish/error, workflow start/finish/error, session close, and sandbox
+close.
+
+Hosts can also emit the remaining event kinds themselves when they integrate
+their own hooks or manual instrumentation: prompt chunks, shell start/finish,
+cancellation, and resume capture.
 
 These events are host logs, not `.cml` syntax. Hosts can write them to stdout,
 files, telemetry callbacks, or test assertions.

@@ -127,6 +127,7 @@ export interface AgentSessionCreateOptions {
 }
 
 export interface AgentPromptOptions {
+  role?: string;
   signal?: AbortSignal;
   onChunk?: (chunk: OutputChunk) => MaybePromise<void>;
 }
@@ -515,10 +516,11 @@ export function createOrchestratorHarness<TSandboxConfig, TAgentSession, TMessag
             throw new CamlFlowOrchestratorError("orchestrator agent is closed");
           }
           const sessionSignal = composeAbortSignals([signal, sessionOptions.signal]);
+          const sessionRole = resolveRoleOverlay(options.roles, sessionOptions.role);
           const providerSession = await options.agentProvider.createSession({
             sandbox,
             model: sessionOptions.model,
-            role: resolveRoleOverlay(options.roles, sessionOptions.role),
+            role: sessionRole,
             signal: sessionSignal,
           });
           await emitOrchestratorEvent(options.eventSink, { kind: "session:create", runId, sessionId: id });
@@ -538,11 +540,34 @@ export function createOrchestratorHarness<TSandboxConfig, TAgentSession, TMessag
               }
               const text = assertNonEmptyString(prompt, "prompt");
               await emitOrchestratorEvent(options.eventSink, { kind: "prompt:start", runId, sessionId: id });
-              const message = await options.agentProvider.prompt(providerSession, text, {
-                signal: composeAbortSignals([sessionSignal, promptOptions.signal]),
-              });
-              await emitOrchestratorEvent(options.eventSink, { kind: "prompt:finish", runId, sessionId: id });
-              return parseResult(message, promptOptions.result);
+              let message: TMessage;
+              try {
+                message = await options.agentProvider.prompt(providerSession, text, {
+                  role: promptOptions.role ?? sessionRole,
+                  signal: composeAbortSignals([sessionSignal, promptOptions.signal]),
+                });
+              } catch (error) {
+                await emitOrchestratorEvent(options.eventSink, {
+                  kind: "prompt:error",
+                  runId,
+                  sessionId: id,
+                  message: error instanceof Error ? error.message : undefined,
+                }).catch(() => undefined);
+                throw error;
+              }
+              try {
+                const result = parseResult(message, promptOptions.result);
+                await emitOrchestratorEvent(options.eventSink, { kind: "prompt:finish", runId, sessionId: id });
+                return result;
+              } catch (error) {
+                await emitOrchestratorEvent(options.eventSink, {
+                  kind: "prompt:error",
+                  runId,
+                  sessionId: id,
+                  message: error instanceof Error ? error.message : undefined,
+                }).catch(() => undefined);
+                throw error;
+              }
             },
             async skill(name, skillOptions = {}) {
               const skillName = assertNonEmptyString(name, "skill name");
@@ -550,10 +575,8 @@ export function createOrchestratorHarness<TSandboxConfig, TAgentSession, TMessag
               const prompt = options.promptResolver
                 ? await options.promptResolver.resolve({ name: skillName }, { args, sandbox })
                 : `Run skill ${skillName} with JSON args: ${JSON.stringify(args)}`;
-              return orchestratorSession.prompt(prompt, {
-                ...skillOptions,
-                role: resolveRoleOverlay({ ...options.roles, hostCall: skillOptions.role }, skillOptions.role),
-              });
+              const { args: _args, ...promptOptions } = skillOptions;
+              return orchestratorSession.prompt(prompt, promptOptions);
             },
             async task(prompt, taskOptions = {}) {
               const child = await agent.session(`${id}:task-${Date.now().toString(36)}`, {
@@ -586,10 +609,23 @@ export function createOrchestratorHarness<TSandboxConfig, TAgentSession, TMessag
           };
           await options.hooks?.beforeRun?.(run);
           await emitOrchestratorEvent(options.eventSink, { kind: "workflow:start", runId, data: { workflowPath } });
-          const result = await options.workflowRunner(run);
-          await options.hooks?.afterRun?.(run, result);
+          let result: WorkflowRunResult<TOutput>;
+          try {
+            result = (await options.workflowRunner(run)) as WorkflowRunResult<TOutput>;
+            await options.hooks?.afterRun?.(run, result);
+          } catch (error) {
+            await emitOrchestratorEvent(options.eventSink, {
+              kind: "workflow:error",
+              runId,
+              data: {
+                workflowPath,
+                ...(error instanceof Error ? { message: error.message } : {}),
+              },
+            }).catch(() => undefined);
+            throw error;
+          }
           await emitOrchestratorEvent(options.eventSink, { kind: "workflow:finish", runId });
-          return result as WorkflowRunResult<TOutput>;
+          return result;
         },
         async close() {
           closed = true;
@@ -680,7 +716,7 @@ export async function scaffoldCamlFlowProject(
 ): Promise<ScaffoldProjectResult> {
   const projectRoot = resolve(assertNonEmptyString(root, "project root"));
   const workflowName = options.workflowName ?? "main";
-  assertNonEmptyString(workflowName, "workflow name");
+  assertSafeFilenameStem(workflowName, "workflow name");
   const entrypoint = options.entrypoint ?? "main";
   assertNonEmptyString(entrypoint, "entrypoint");
   const workflowRelativePath = `.camlflow/workflows/${workflowName}.cml`;
@@ -726,6 +762,17 @@ export async function scaffoldCamlFlowProject(
     created,
     skipped,
   };
+}
+
+function assertSafeFilenameStem(value: string, label: string): string {
+  const stem = assertNonEmptyString(value, label);
+  if (!/^[A-Za-z0-9_-]+$/.test(stem)) {
+    throw new CamlFlowValidationError(`${label} must be a safe filename stem (letters, numbers, _ or -)`);
+  }
+  if (isAbsolute(stem) || stem === "." || stem === "..") {
+    throw new CamlFlowValidationError(`${label} must be a safe filename stem (letters, numbers, _ or -)`);
+  }
+  return stem;
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -871,19 +918,33 @@ export function resolveSandboxPath(root: string, path: string): string {
   const cleanRoot = realpathSync(resolve(assertNonEmptyString(root, "sandbox root")));
   const cleanPath = assertNonEmptyString(path, "sandbox path");
   const target = isAbsolute(cleanPath) ? cleanPath : resolve(cleanRoot, cleanPath);
-  let normalized = resolve(target);
-  try {
-    normalized = realpathSync(normalized);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw error;
-    }
-  }
+  const normalized = resolveSandboxTarget(target);
   const rel = relative(cleanRoot, normalized);
   if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) {
     return normalized;
   }
   throw new CamlFlowValidationError(`sandbox path escapes sandbox root: ${path}`);
+}
+
+function resolveSandboxTarget(target: string): string {
+  let current = resolve(target);
+  const missingSegments: string[] = [];
+  while (true) {
+    try {
+      const resolvedCurrent = realpathSync(current);
+      return missingSegments.length === 0 ? resolvedCurrent : resolve(resolvedCurrent, ...missingSegments);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+      const parent = resolve(current, "..");
+      if (parent === current) {
+        return resolve(current, ...missingSegments);
+      }
+      missingSegments.unshift(relative(parent, current));
+      current = parent;
+    }
+  }
 }
 
 function createBoundShell(root: string, baseEnv?: Record<string, string | undefined>): SandboxShellExecutor {

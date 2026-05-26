@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { mkdtemp, symlink } from "node:fs/promises";
+import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -141,7 +141,17 @@ test("sandbox path resolution blocks symlink escapes", async () => {
   try {
     await symlink(outside, linkPath);
     assert.throws(() => sandbox.resolvePath("camlflow-orchestrator-outside-link"), /escapes sandbox root/);
+    assert.throws(
+      () => sandbox.resolvePath("camlflow-orchestrator-outside-link/new-file.txt"),
+      /escapes sandbox root/,
+    );
+    assert.equal(
+      sandbox.resolvePath("new-dir/new-file.txt"),
+      join(sandbox.cwd, "new-dir/new-file.txt"),
+    );
   } finally {
+    await rm(linkPath, { force: true });
+    await rm(outside, { force: true, recursive: true });
     await sandbox.close();
   }
 });
@@ -175,8 +185,8 @@ test("orchestrator harness shares sandbox across sessions, tasks, skills, and wo
       calls.push(["createSession", session.id, options.sandbox.cwd, options.role]);
       return session;
     },
-    async prompt(session, prompt) {
-      calls.push(["prompt", session.id, session.sandbox.cwd, prompt]);
+    async prompt(session, prompt, options) {
+      calls.push(["prompt", session.id, session.sandbox.cwd, prompt, options?.role]);
       return { session: session.id, prompt, cwd: session.sandbox.cwd };
     },
     async closeSession(session) {
@@ -206,9 +216,12 @@ test("orchestrator harness shares sandbox across sessions, tasks, skills, and wo
 
   const agent = await harness.init({ runId: "run-1" });
   const session = await agent.session("parent");
-  const promptResult = await session.prompt("hello", { result: (value) => value.prompt });
+  const promptResult = await session.prompt("hello", {
+    role: "prompt-role",
+    result: (value) => value.prompt,
+  });
   assert.equal(promptResult, "hello");
-  const skillResult = await session.skill("triage", { args: { issue: 16 } });
+  const skillResult = await session.skill("triage", { role: "skill-role", args: { issue: 16 } });
   assert.equal(skillResult.prompt, "skill:triage:{\"issue\":16}");
   const taskResult = await session.task("child work");
   assert.equal(taskResult.prompt, "child work");
@@ -219,7 +232,112 @@ test("orchestrator harness shares sandbox across sessions, tasks, skills, and wo
 
   assert.equal(calls.filter((call) => call[0] === "createSession").length, 2);
   assert.equal(new Set(calls.filter((call) => call[0] === "prompt").map((call) => call[2])).size, 1);
+  assert.deepEqual(
+    calls.filter((call) => call[0] === "prompt").map((call) => call[4]),
+    ["prompt-role", "skill-role", "agent-role"],
+  );
   assert.deepEqual(hooks.map((hook) => hook[0]), ["beforeRun", "afterRun"]);
+});
+
+test("session prompts emit error events for provider and parse failures", async () => {
+  const events = [];
+  const promptCalls = [];
+  const harness = createOrchestratorHarness({
+    sandboxProvider: createEphemeralSandboxProvider(),
+    sandbox: {},
+    eventSink: (event) => events.push(event),
+    roles: { agent: "agent-role" },
+    agentProvider: {
+      name: "fake",
+      createSession: async (options) => ({ sandbox: options.sandbox }),
+      prompt: async (_session, prompt, options) => {
+        promptCalls.push([prompt, options?.role]);
+        if (prompt === "fail") {
+          throw new Error("prompt failed");
+        }
+        return { ok: true };
+      },
+      closeSession: async () => {},
+    },
+  });
+  const agent = await harness.init({ runId: "run-prompt-error" });
+  const session = await agent.session("session-prompt-error");
+  await assert.rejects(() => session.prompt("fail"), /prompt failed/);
+  await assert.rejects(() => session.prompt("parse", { result: () => { throw new Error("parse failed"); } }), /parse failed/);
+  assert.deepEqual(promptCalls, [
+    ["fail", "agent-role"],
+    ["parse", "agent-role"],
+  ]);
+  assert.deepEqual(events.map((event) => event.kind), [
+    "sandbox:create",
+    "sandbox:ready",
+    "session:create",
+    "prompt:start",
+    "prompt:error",
+    "prompt:start",
+    "prompt:error",
+  ]);
+  await agent.close();
+});
+
+test("workflow runs emit error events for runner and after-run failures", async () => {
+  const runnerEvents = [];
+  const runnerHarness = createOrchestratorHarness({
+    sandboxProvider: createEphemeralSandboxProvider(),
+    sandbox: {},
+    eventSink: (event) => runnerEvents.push(event),
+    agentProvider: {
+      name: "fake",
+      createSession: async () => ({}),
+      prompt: async () => ({}),
+      closeSession: async () => {},
+    },
+    workflowRunner: async () => {
+      throw new Error("workflow failed");
+    },
+  });
+  const runnerAgent = await runnerHarness.init({ runId: "run-workflow-runner" });
+  await assert.rejects(() => runnerAgent.runWorkflow({ workflowPath: "flows/main.cml" }), /workflow failed/);
+  assert.deepEqual(runnerEvents.map((event) => event.kind), [
+    "sandbox:create",
+    "sandbox:ready",
+    "workflow:start",
+    "workflow:error",
+  ]);
+  await runnerAgent.close();
+
+  const hookEvents = [];
+  const hookHarness = createOrchestratorHarness({
+    sandboxProvider: createEphemeralSandboxProvider(),
+    sandbox: {},
+    eventSink: (event) => hookEvents.push(event),
+    agentProvider: {
+      name: "fake",
+      createSession: async () => ({}),
+      prompt: async () => ({}),
+      closeSession: async () => {},
+    },
+    hooks: {
+      afterRun: () => {
+        throw new Error("after-run failed");
+      },
+    },
+    workflowRunner: async (run) => ({
+      runId: run.runId,
+      output: { ok: true },
+      diagnostics: [],
+      metadata: {},
+    }),
+  });
+  const hookAgent = await hookHarness.init({ runId: "run-workflow-hook" });
+  await assert.rejects(() => hookAgent.runWorkflow({ workflowPath: "flows/main.cml" }), /after-run failed/);
+  assert.deepEqual(hookEvents.map((event) => event.kind), [
+    "sandbox:create",
+    "sandbox:ready",
+    "workflow:start",
+    "workflow:error",
+  ]);
+  await hookAgent.close();
 });
 
 test("role overlays use host call, skill, agent, then workflow precedence", () => {
@@ -227,6 +345,31 @@ test("role overlays use host call, skill, agent, then workflow precedence", () =
   assert.equal(resolveRoleOverlay({ workflow: "workflow", skill: "skill" }), "skill");
   assert.equal(resolveRoleOverlay({ workflow: "workflow", hostCall: "host" }), "host");
   assert.equal(resolveRoleOverlay({ workflow: "workflow" }, "call"), "call");
+});
+
+test("session role is the default prompt role unless prompt overrides it", async () => {
+  const promptRoles = [];
+  const harness = createOrchestratorHarness({
+    sandboxProvider: createEphemeralSandboxProvider(),
+    sandbox: {},
+    agentProvider: {
+      name: "fake",
+      createSession: async (options) => ({ sandbox: options.sandbox, role: options.role }),
+      prompt: async (_session, _prompt, options) => {
+        promptRoles.push(options?.role);
+        return { ok: true };
+      },
+      closeSession: async () => {},
+    },
+  });
+
+  const agent = await harness.init({ runId: "run-session-role" });
+  const session = await agent.session("session-role", { role: "reviewer" });
+  await session.prompt("default role");
+  await session.prompt("override role", { role: "critic" });
+  await agent.close();
+
+  assert.deepEqual(promptRoles, ["reviewer", "critic"]);
 });
 
 test("scaffolds .camlflow project layout without overwriting by default", async () => {
@@ -244,6 +387,13 @@ test("scaffolds .camlflow project layout without overwriting by default", async 
   const second = await scaffoldCamlFlowProject(root, { workflowName: "triage" });
   assert.ok(second.skipped.includes("camlflow.json"));
   assert.ok(second.skipped.includes(".camlflow/workflows/triage.cml"));
+});
+
+test("rejects unsafe workflow names when scaffolding", async () => {
+  const root = await mkdtemp(join(tmpdir(), "camlflow-scaffold-invalid-"));
+  for (const workflowName of ["../oops", "bad/name", ".hidden", "main.cml", "/abs", "C:drive"]) {
+    await assert.rejects(() => scaffoldCamlFlowProject(root, { workflowName }), /safe filename stem/);
+  }
 });
 
 test("records normalized orchestrator events and harness lifecycle logs", async () => {
