@@ -82,8 +82,8 @@ Completed:
 
 - `examples/json-rpc-host/host.js`
 - `examples/json-rpc-host/README.md`
-- `examples/json-rpc-problem-coach/host.js`
-- `examples/json-rpc-problem-coach/README.md`
+- `examples/json-rpc-host/host.js`
+- `examples/json-rpc-host/README.md`
 
 These prove the end-to-end model for both simple and structured-output workflows.
 
@@ -161,7 +161,7 @@ Completed in `packages/camlflow-ts-json-rpc-sdk`:
 - `npm test` now runs Node smoke tests against:
   - the SDK client itself
   - `examples/json-rpc-host/host.js`
-  - `examples/json-rpc-problem-coach/host.js`
+  - `examples/json-rpc-host/host.js`
 - README instructions now mention `npm test` and the current version fields
 
 ### 12. A second direct CLI provider adapter landed after protocol stabilization
@@ -188,7 +188,7 @@ Completed:
   - `dune test`
   - SDK smoke tests in `packages/camlflow-ts-json-rpc-sdk`
   - `examples/json-rpc-host/host.js`
-  - `examples/json-rpc-problem-coach/host.js`
+  - `examples/json-rpc-host/host.js`
 
 ### 14. SDK-backed runnable examples now complement the raw host examples
 
@@ -196,7 +196,7 @@ Completed in `packages/camlflow-ts-json-rpc-sdk`:
 
 - `examples/provider-hooks.ts`
 - `examples/attach-streams.ts`
-- `examples/problem-coach.ts`
+- `examples/orchestrator-session.ts`
 - `examples/cancellation.ts`
 - `examples/README.md`
 - smoke coverage that executes those example scripts

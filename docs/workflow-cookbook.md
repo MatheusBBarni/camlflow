@@ -77,8 +77,8 @@ skills/
 Run:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/local-skill/main.cml \
-  --skills examples/local-skill/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"hello"'
 ```
 
@@ -228,8 +228,8 @@ When a provider-backed run fails, keep the `.cml` workflow stable and inspect
 the effect boundary:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/codex/main.cml \
-  --skills examples/codex/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"Ada"' \
   --provider codex \
   --model gpt-5.4-mini \
@@ -259,8 +259,8 @@ try {
   });
 
   const workflow = await agent.runWorkflow({
-    workflowPath: "examples/repo-triage/main.cml",
-    skillsDir: "examples/repo-triage/skills",
+    workflowPath: "examples/orchestrator-session/main.cml",
+    skillsDir: "examples/provider-hooks/skills",
     input: {
       task: "Triage the current repository.",
       suspected_area: "runtime and Pi harness",

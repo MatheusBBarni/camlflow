@@ -23,6 +23,11 @@ implementation internals.
   `.cml` workflow shapes.
 - [`run-modes.md`](./run-modes.md): choose between deterministic CLI, provider
   CLI, JSON-RPC host, and Pi SDK harness execution.
+- [`orchestrator-project-layout.md`](./orchestrator-project-layout.md): proposed
+  `.camlflow/` workflow, role, skill, and connector scaffold for orchestrator
+  host projects.
+- [`orchestrator-observability.md`](./orchestrator-observability.md): host-side
+  event, cancellation, resume, and structured failure metadata conventions.
 - [`glossary.md`](./glossary.md): shared vocabulary for workflows, effects,
   hosts, providers, JSON-RPC, Pi harness sessions, and sandboxes.
 - [`editor-support.md`](./editor-support.md): VS Code and Zed setup, LSP
@@ -41,6 +46,10 @@ implementation internals.
   inputs and provider/host/Pi outputs.
 - [`run-modes.md`](./run-modes.md): execution-mode comparison and bring-up
   order for workflows.
+- [`orchestrator-project-layout.md`](./orchestrator-project-layout.md): SDK
+  scaffold conventions for `.cml`-first sandbox orchestrator projects.
+- [`orchestrator-observability.md`](./orchestrator-observability.md): event log,
+  cancellation, and resume primitives for orchestrator hosts.
 - [`glossary.md`](./glossary.md): terminology used across authoring, runtime,
   host, provider, and Pi harness docs.
 - [`provider-execution.md`](./provider-execution.md): direct CLI provider
@@ -56,6 +65,9 @@ implementation internals.
   Flue-style harness guide.
 - [`host-adapter-architecture.md`](./host-adapter-architecture.md): host adapter
   architecture notes.
+- [`adr/0002-camlflow-sandbox-orchestrator-boundaries.md`](./adr/0002-camlflow-sandbox-orchestrator-boundaries.md):
+  canonical terms and package boundaries for the `.cml` sandbox orchestrator
+  direction.
 - [`../packages/camlflow-ts-json-rpc-sdk/README.md`](../packages/camlflow-ts-json-rpc-sdk/README.md):
   TypeScript JSON-RPC SDK.
 - [`../packages/camlflow-pi-sdk/README.md`](../packages/camlflow-pi-sdk/README.md):
@@ -100,6 +112,7 @@ prototype, manual launchers, and fork-local implementation plan:
 - [`agent-context/api-conventions.md`](./agent-context/api-conventions.md)
 - [`agent-context/testing-guide.md`](./agent-context/testing-guide.md)
 - [`adr/0001-programmatic-camlflow-pi-sdk.md`](./adr/0001-programmatic-camlflow-pi-sdk.md)
+- [`adr/0002-camlflow-sandbox-orchestrator-boundaries.md`](./adr/0002-camlflow-sandbox-orchestrator-boundaries.md)
 - [`docs-validation.md`](./docs-validation.md)
 
 ## Documentation Maintenance

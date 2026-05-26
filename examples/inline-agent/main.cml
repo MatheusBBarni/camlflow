@@ -1,6 +1,0 @@
-agent reviewer : code:string -> string =
-  Agent.define ~model:"stub" ~system_prompt:"Review code tersely"
-
-let main (code : string) : string =
-  let* review = reviewer ~code:code in
-  review

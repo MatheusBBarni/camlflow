@@ -56,15 +56,15 @@ Demonstrates:
 ### 3. Structured-output workflow
 
 ```sh
-npm run example:problem-coach
+npm run example:orchestrator-session
 ```
 
-Source: `examples/problem-coach.ts`
+Source: `examples/orchestrator-session.ts`
 
 Demonstrates:
 
 - a multi-step workflow with structured JSON outputs
-- reading JSON input from `examples/problem-coach/input.json`
+- reading JSON input from `examples/orchestrator-session/input.json`
 - routing multiple effect kinds through one SDK effect handler
 
 ### 4. Cancellation with progress callbacks

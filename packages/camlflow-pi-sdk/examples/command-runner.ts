@@ -80,14 +80,13 @@ export async function runProblemCoachFromPiCommand(
   });
 
   return runCamlFlow({
-    workflowPath: "examples/problem-coach/main.cml",
+    workflowPath: "examples/orchestrator-session/main.cml",
     entrypoint: "main",
     input: {
-      problem_name: "two sum",
-      language: { tag: "Python" },
-      audience: { tag: "Interview" },
+      issue_number: 16,
+      task: "Triage the sandbox orchestrator workflow.",
+      goals: ["ground the plan in the .cml contract"],
     },
-    skillsDir: "examples/problem-coach/skills",
     signal,
   });
 }

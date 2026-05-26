@@ -127,7 +127,7 @@ The repository also includes maintained SDK-backed TypeScript example sources in
 
 - `examples/provider-hooks.ts`
 - `examples/attach-streams.ts`
-- `examples/problem-coach.ts`
+- `examples/orchestrator-session.ts`
 - `examples/cancellation.ts`
 - `examples/shared.ts`
 - `examples/README.md`
@@ -137,7 +137,7 @@ From `packages/camlflow-ts-json-rpc-sdk/` you can run:
 ```sh
 npm run example:provider-hooks
 npm run example:attach-streams
-npm run example:problem-coach
+npm run example:orchestrator-session
 npm run example:cancellation
 ```
 

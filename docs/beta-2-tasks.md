@@ -69,10 +69,10 @@ an optional project-local `camlflow.json`.
 
 ```json
 {
-  "program": "examples/codex/main.cml",
+  "program": "examples/provider-hooks/workflow.cml",
   "entry": "main",
   "includePaths": ["."],
-  "skillsDir": "examples/codex/skills",
+  "skillsDir": "examples/provider-hooks/skills",
   "provider": "codex",
   "model": "gpt-5.4-mini",
   "reasoning": "low",

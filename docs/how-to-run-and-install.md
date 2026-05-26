@@ -98,8 +98,8 @@ Small examples:
 
 ```sh
 opam exec -- dune exec camlflow -- run examples/basic/main.cml --input-json '"Ada"'
-opam exec -- dune exec camlflow -- run examples/recursion/main.cml --input-json '4'
-opam exec -- dune exec camlflow -- run examples/variants-match/main.cml
+opam exec -- dune exec camlflow -- run examples/basic/main.cml --input-json '4'
+opam exec -- dune exec camlflow -- run examples/orchestrator-session/main.cml
 ```
 
 For a guided path through pure workflows, local skills, project config,
@@ -158,8 +158,8 @@ opam exec -- dune exec camlflow -- run /tmp/basic.ir.json --input-json '"Ada"'
 Run with local prompt-backed skills:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/local-skill/main.cml \
-  --skills examples/local-skill/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"hello"'
 ```
 
@@ -193,8 +193,8 @@ Supported provider names:
 Example:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/codex/main.cml \
-  --skills examples/codex/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"Ada"' \
   --provider codex \
   --model gpt-5.4-mini \
@@ -240,7 +240,7 @@ Run the maintained examples:
 ```sh
 npm run example:provider-hooks
 npm run example:attach-streams
-npm run example:problem-coach
+npm run example:orchestrator-session
 npm run example:cancellation
 ```
 

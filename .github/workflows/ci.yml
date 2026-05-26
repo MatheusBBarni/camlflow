@@ -77,6 +77,3 @@ jobs:
 
       - name: Run JSON-RPC host example
         run: opam exec -- node examples/json-rpc-host/host.js
-
-      - name: Run JSON-RPC problem-coach example
-        run: opam exec -- node examples/json-rpc-problem-coach/host.js

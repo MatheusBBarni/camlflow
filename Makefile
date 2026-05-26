@@ -1,6 +1,6 @@
-.PHONY: help build test clean cli-help completion-bash completion-zsh completion-fish parse-basic check-basic compile-basic run run-basic run-local-skill run-qualified run-recursion run-variants-match run-inline-agent run-model-response-validation run-model-response-retry run-dev-workflow run-provider-hooks all
+.PHONY: help build test clean cli-help completion-bash completion-zsh completion-fish parse-basic check-basic compile-basic run run-basic run-orchestrator run-project-config run-provider-hooks all
 
-DUNE ?= dune
+DUNE ?= opam exec -- dune
 BINARY ?= ./bin/main.exe
 FILE ?= examples/basic/main.cml
 ENTRY ?= main
@@ -9,10 +9,8 @@ INPUT_FILE ?=
 SKILLS ?=
 INCLUDE_DIRS ?=
 BASIC_INPUT ?= "Ada"
-RECURSION_INPUT ?= 4
-LOCAL_SKILL_INPUT ?= "hello"
-INLINE_AGENT_INPUT ?= "code"
-DEV_WORKFLOW_INPUT ?= examples/dev-workflow/input-approved.json
+ORCHESTRATOR_INPUT ?= examples/orchestrator-session/input.json
+PROJECT_CONFIG_INPUT ?= examples/project-config/input.json
 
 help:
 	@printf "CamlFlow Make targets\n\n"
@@ -24,19 +22,13 @@ help:
 	@printf "  make completion-fish      Print fish completion script\n"
 	@printf "  make run FILE=...         Generic runner for source/artifact inputs\n"
 	@printf "  make run-basic            Run examples/basic/main.cml\n"
-	@printf "  make run-local-skill      Run examples/local-skill/main.cml\n"
-	@printf "  make run-qualified        Run examples/qualified-imports/main.cml\n"
-	@printf "  make run-recursion        Run examples/recursion/main.cml\n"
-	@printf "  make run-variants-match   Run examples/variants-match/main.cml\n"
-	@printf "  make run-inline-agent     Run examples/inline-agent/main.cml\n"
-	@printf "  make run-model-response-validation  Run examples/model-response-validation/main.cml\n"
-	@printf "  make run-model-response-retry  Run examples/model-response-retry/main.cml\n"
-	@printf "  make run-dev-workflow     Run examples/dev-workflow/main.cml\n"
-	@printf "  make run-provider-hooks   Run embedded OCaml provider-hooks host example\n"
+	@printf "  make run-orchestrator     Run examples/orchestrator-session/main.cml\n"
+	@printf "  make run-project-config   Run examples/project-config/main.cml\n"
+	@printf "  make run-provider-hooks   Run Node JSON-RPC provider-hooks host example\n"
 	@printf "  make clean                Clean dune build artifacts\n\n"
 	@printf "Generic run variables:\n"
 	@printf "  FILE=examples/basic/main.cml INPUT_JSON='\"Ada\"'\n"
-	@printf "  ENTRY=main INPUT_FILE=input.json SKILLS=examples/local-skill/skills\n"
+	@printf "  ENTRY=main INPUT_FILE=input.json SKILLS=examples/provider-hooks/skills\n"
 	@printf "  INCLUDE_DIRS='dir1 dir2'\n"
 
 all: build test
@@ -94,29 +86,11 @@ compile-basic:
 run-basic:
 	$(DUNE) exec $(BINARY) -- run examples/basic/main.cml --input-json '$(BASIC_INPUT)'
 
-run-local-skill:
-	$(DUNE) exec $(BINARY) -- run examples/local-skill/main.cml --skills examples/local-skill/skills --input-json '$(LOCAL_SKILL_INPUT)'
+run-orchestrator:
+	$(DUNE) exec $(BINARY) -- run examples/orchestrator-session/main.cml --input $(ORCHESTRATOR_INPUT)
 
-run-qualified:
-	$(DUNE) exec $(BINARY) -- run examples/qualified-imports/main.cml --input-json '$(BASIC_INPUT)'
-
-run-recursion:
-	$(DUNE) exec $(BINARY) -- run examples/recursion/main.cml --input-json '$(RECURSION_INPUT)'
-
-run-variants-match:
-	$(DUNE) exec $(BINARY) -- run examples/variants-match/main.cml
-
-run-inline-agent:
-	$(DUNE) exec $(BINARY) -- run examples/inline-agent/main.cml --input-json '$(INLINE_AGENT_INPUT)'
-
-run-model-response-validation:
-	$(DUNE) exec $(BINARY) -- run examples/model-response-validation/main.cml --input-json '$(INLINE_AGENT_INPUT)'
-
-run-model-response-retry:
-	$(DUNE) exec $(BINARY) -- run examples/model-response-retry/main.cml --input-json '$(INLINE_AGENT_INPUT)'
-
-run-dev-workflow:
-	$(DUNE) exec $(BINARY) -- run examples/dev-workflow/main.cml --skills examples/dev-workflow/skills --input $(DEV_WORKFLOW_INPUT)
+run-project-config:
+	$(DUNE) exec $(BINARY) -- run examples/project-config/main.cml --input $(PROJECT_CONFIG_INPUT)
 
 run-provider-hooks:
-	$(DUNE) exec examples/provider-hooks/host.exe
+	node examples/json-rpc-host/host.js

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -3244,7 +3244,7 @@ test("local trusted shell reports missing cwd without poisoning the session", as
     const result = await session.shell("pwd");
 
     assert.equal(result.code, 0);
-    assert.equal(result.stdout.trim(), root);
+    assert.equal(result.stdout.trim(), realpathSync(root));
     await agent.close();
   } finally {
     await rm(root, { recursive: true, force: true });

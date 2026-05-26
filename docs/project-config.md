@@ -139,8 +139,8 @@ Provider defaults in `camlflow.json` behave like CLI provider flags. This config
 
 ```json
 {
-  "program": "examples/codex/main.cml",
-  "skillsDir": "examples/codex/skills",
+  "program": "examples/provider-hooks/workflow.cml",
+  "skillsDir": "examples/provider-hooks/skills",
   "provider": "codex",
   "model": "gpt-5.4-mini",
   "reasoning": "low",
@@ -152,8 +152,8 @@ Provider defaults in `camlflow.json` behave like CLI provider flags. This config
 is equivalent to:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/codex/main.cml \
-  --skills examples/codex/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --provider codex \
   --model gpt-5.4-mini \
   --reasoning low \

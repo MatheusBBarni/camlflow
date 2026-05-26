@@ -4,14 +4,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pi-mono-message-lib.sh"
 
-WORKFLOW="${CAMLFLOW_WORKFLOW:-examples/problem-coach/main.cml}"
+WORKFLOW="${CAMLFLOW_WORKFLOW:-examples/orchestrator-session/main.cml}"
 ENTRY="${CAMLFLOW_ENTRY:-main}"
 if [[ -n "${CAMLFLOW_INPUT_JSON:-}" ]]; then
   INPUT_JSON="$CAMLFLOW_INPUT_JSON"
 else
-  INPUT_JSON='{"problem_name":"two sum","language":{"tag":"Python"},"audience":{"tag":"Interview"},"must_cover":["hash map approach","time complexity","duplicate values edge case"]}'
+  INPUT_JSON='{"issue_number":16,"task":"Triage the sandbox orchestrator workflow.","goals":["ground the plan in the .cml contract"]}'
 fi
-SKILLS_DIR="${CAMLFLOW_SKILLS_DIR:-examples/problem-coach/skills}"
+SKILLS_DIR="${CAMLFLOW_SKILLS_DIR:-}"
 
 INITIAL_MESSAGE="$(build_camlflow_run_message "$WORKFLOW" "$ENTRY" "$INPUT_JSON" "$SKILLS_DIR")"
 

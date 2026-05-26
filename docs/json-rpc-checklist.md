@@ -38,7 +38,7 @@ For the fuller narrative summary, see `docs/json-rpc-status.md`.
 ## Host / SDK validation
 
 - [x] Re-validate `examples/json-rpc-host/host.js` against the current docs
-- [x] Re-validate `examples/json-rpc-problem-coach/host.js` against the current docs
+- [x] Re-validate `examples/json-rpc-host/host.js` against the current docs
 - [x] Re-validate any TypeScript SDK examples or smoke tests against the current docs
 - [x] Add stronger external smoke tests for JS/TS host integrations
 

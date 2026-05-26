@@ -1,0 +1,9 @@
+{
+  "issue_number": 16,
+  "task": "Refactor CamlFlow into a sandbox orchestrator",
+  "goals": [
+    "keep .cml as the authoring surface",
+    "share one sandbox policy across agents skills tasks and workflow runs",
+    "return typed triage output"
+  ]
+}

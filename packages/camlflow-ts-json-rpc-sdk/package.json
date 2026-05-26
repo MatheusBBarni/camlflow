@@ -13,13 +13,13 @@
     "build:examples": "tsc -p examples/tsconfig.json",
     "build": "npm run build:sdk && npm run build:examples",
     "clean": "rm -rf dist examples-dist",
-    "test": "npm run build && node --test test/*.test.js",
+    "test": "npm run build && node --test --test-concurrency=1 test/*.test.js",
     "test:pi-mono:launchers": "node --test test/pi-mono-script-launchers.test.js",
     "test:pi-mono": "node --test test/pi-mono-e2e.test.js",
     "doctor:pi-mono": "node test/pi-mono-doctor.js --check-camlflow-build",
     "example:provider-hooks": "npm run build && node examples-dist/provider-hooks.js",
     "example:attach-streams": "npm run build && node examples-dist/attach-streams.js",
-    "example:problem-coach": "npm run build && node examples-dist/problem-coach.js",
+    "example:orchestrator-session": "npm run build && node examples-dist/orchestrator-session.js",
     "example:cancellation": "npm run build && node examples-dist/cancellation.js"
   },
   "keywords": [

@@ -58,15 +58,15 @@ Use `--input-json` for small inline JSON values:
 
 ```sh
 opam exec -- dune exec camlflow -- run examples/basic/main.cml --input-json '"Ada"'
-opam exec -- dune exec camlflow -- run examples/recursion/main.cml --input-json '4'
+opam exec -- dune exec camlflow -- run examples/basic/main.cml --input-json '4'
 ```
 
 Use `--input` for structured payloads:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/problem-coach/main.cml \
-  --skills examples/problem-coach/skills \
-  --input examples/problem-coach/input.json
+opam exec -- dune exec camlflow -- run examples/orchestrator-session/main.cml \
+  --skills examples/provider-hooks/skills \
+  --input examples/orchestrator-session/input.json
 ```
 
 If `--input` and `--input-json` are both omitted, the entrypoint must take no
@@ -77,15 +77,15 @@ argument.
 Add module search paths with repeated `-I` flags:
 
 ```sh
-opam exec -- dune exec camlflow -- check examples/qualified-imports/main.cml \
-  -I examples/qualified-imports
+opam exec -- dune exec camlflow -- check examples/orchestrator-session/main.cml \
+  -I examples/orchestrator-session
 ```
 
 Use local prompt-backed skills with `--skills`:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/local-skill/main.cml \
-  --skills examples/local-skill/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"hello"'
 ```
 
@@ -132,8 +132,8 @@ resolve from the config file directory.
 Provider-backed runs delegate each effectful `let*` step to an external tool:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/codex/main.cml \
-  --skills examples/codex/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"Ada"' \
   --provider codex \
   --model gpt-5.4-mini \

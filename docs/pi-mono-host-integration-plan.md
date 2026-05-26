@@ -330,7 +330,7 @@ Run at least:
 
 - `examples/basic/main.cml`
 - `examples/provider-hooks/workflow.cml`
-- `examples/problem-coach/main.cml`
+- `examples/orchestrator-session/main.cml`
 
 For each run, record:
 

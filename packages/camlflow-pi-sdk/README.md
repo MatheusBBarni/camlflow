@@ -1,6 +1,7 @@
 # camlflow-pi-sdk
 
-Programmatic Pi adapter and sandbox-aware agent harness for CamlFlow workflows.
+Programmatic Pi compatibility adapter and sandbox-aware agent harness for
+CamlFlow workflows.
 
 This package wraps `camlflow-ts-json-rpc-sdk` and maps each
 `camlflow/executeEffect` request onto an ephemeral in-memory Pi worker session.
@@ -22,6 +23,11 @@ export Pi slash-command parsers; skill execution stays behind `session.skill(...
 
 The harness keeps CamlFlow's typed workflow execution and Pi's model/tool
 runtime separate from trusted host orchestration code.
+
+The generic host lifecycle boundary now lives in
+[`packages/camlflow-orchestrator`](../camlflow-orchestrator). This package stays
+Pi-specific: Pi worker-session creation, Pi model registry access, Pi auth
+checks, and Pi tool construction remain here during migration.
 
 See
 [`docs/adr/0001-programmatic-camlflow-pi-sdk.md`](../../docs/adr/0001-programmatic-camlflow-pi-sdk.md)
@@ -86,13 +92,13 @@ const host = createPiCamlFlowHostSession({
 
 const controller = new AbortController();
 const result = await host.runWorkflow({
-  workflowPath: "examples/problem-coach/main.cml",
+  workflowPath: "examples/orchestrator-session/main.cml",
   entrypoint: "main",
   input: {
-    problem_name: "two sum",
-    language: { tag: "Python" },
+    issue_number: 16,
+    task: "Triage the sandbox orchestrator workflow.",
+    goals: ["ground the plan in the .cml contract"],
   },
-  skillsDir: "examples/problem-coach/skills",
   signal: controller.signal,
 });
 
@@ -188,7 +194,7 @@ try {
   });
 
   const workflow = await agent.runWorkflow({
-    workflowPath: "examples/repo-triage/main.cml",
+    workflowPath: "examples/orchestrator-session/main.cml",
     input: { task: "Summarize the current checkout." },
   });
 

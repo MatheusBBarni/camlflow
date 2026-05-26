@@ -4,14 +4,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pi-mono-message-lib.sh"
 
-WORKFLOW="${CAMLFLOW_WORKFLOW:-examples/interview-pipeline/main.cml}"
+WORKFLOW="${CAMLFLOW_WORKFLOW:-examples/orchestrator-session/main.cml}"
 ENTRY="${CAMLFLOW_ENTRY:-main}"
 if [[ -n "${CAMLFLOW_INPUT_JSON:-}" ]]; then
   INPUT_JSON="$CAMLFLOW_INPUT_JSON"
 else
-  INPUT_JSON='{"algorithm_name":"longest increasing subsequence","preferred_language":{"tag":"Python"},"target_difficulty":{"tag":"Hard"},"focus":[{"tag":"Pattern","value":"dynamic programming"},{"tag":"Constraint","value":"n up to 10^5"}]}'
+  INPUT_JSON='{"issue_number":16,"task":"Plan a sandboxed workflow review.","goals":["typed workflow design","JSON-RPC hosts","sandbox policy"]}'
 fi
-SKILLS_DIR="${CAMLFLOW_SKILLS_DIR:-examples/interview-pipeline/skills}"
+SKILLS_DIR="${CAMLFLOW_SKILLS_DIR:-}"
 
 INITIAL_MESSAGE="$(build_camlflow_run_message "$WORKFLOW" "$ENTRY" "$INPUT_JSON" "$SKILLS_DIR")"
 

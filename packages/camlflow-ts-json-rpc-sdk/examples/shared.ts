@@ -173,6 +173,20 @@ export function makeProblemCoachEffectHandler(): CamlFlowEffectHandler {
           ],
         });
       }
+      case "inline-agent:repo_researcher":
+      case "inline-agent:repo-researcher":
+      case "bound-agent:repo-researcher":
+        return effectOutput({
+          summary: "Sandbox checkout needs focused triage before implementation.",
+          risky_files: ["packages/camlflow-orchestrator/src/index.ts"],
+          evidence: ["issue input requested a shared sandbox policy"],
+        });
+      case "bound-skill:triage":
+        return effectOutput({
+          summary: "Plan the work around the .cml contract and host sandbox policy.",
+          next_steps: ["inspect the workflow", "choose sandbox policy", "run verification"],
+          validation: ["type-check the workflow", "run the host smoke test"],
+        });
       default:
         return effectOutput("");
     }
@@ -181,6 +195,6 @@ export function makeProblemCoachEffectHandler(): CamlFlowEffectHandler {
 
 export function loadProblemCoachInput(): JsonObject {
   return JSON.parse(
-    fs.readFileSync(path.join(repoRoot, "examples/problem-coach/input.json"), "utf8"),
+    fs.readFileSync(path.join(repoRoot, "examples/orchestrator-session/input.json"), "utf8"),
   ) as JsonObject;
 }

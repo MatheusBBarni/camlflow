@@ -1,13 +1,16 @@
 # CamlFlow
 
-CamlFlow is a typed workflow language and runtime for AI orchestration.
+CamlFlow is a `.cml`-first sandbox orchestrator with a typed workflow core.
 
 You write workflows in `.cml` using an OCaml-style syntax, type-check them,
-compile them to JSON IR, and run them either:
+compile them to JSON IR, and run them inside either the deterministic core or a
+host-owned sandbox/orchestrator layer:
 
 - directly through the CLI
 - through a host process over JSON-RPC 2.0 on stdio
 - through built-in provider adapters for external coding/model CLIs
+- through host SDKs that manage sandboxes, sessions, tasks, skills, logs,
+  cancellation, and resume around the `.cml` workflow contract
 
 The important boundary is simple:
 
@@ -35,6 +38,8 @@ The important boundary is simple:
   [`packages/camlflow-ts-json-rpc-sdk`](./packages/camlflow-ts-json-rpc-sdk)
 - Pi host adapter SDK and Flue-style sandbox harness in
   [`packages/camlflow-pi-sdk`](./packages/camlflow-pi-sdk)
+- generic sandbox orchestrator primitives in
+  [`packages/camlflow-orchestrator`](./packages/camlflow-orchestrator)
 - editor support in
   [`packages/camlflow-vscode`](./packages/camlflow-vscode) and
   [`packages/camlflow-zed`](./packages/camlflow-zed)
@@ -78,8 +83,12 @@ For supported `.cml` declarations, types, expressions, and effects, see
 [`docs/language-reference.md`](./docs/language-reference.md).
 For copyable workflow patterns, see
 [`docs/workflow-cookbook.md`](./docs/workflow-cookbook.md).
-For choosing between deterministic CLI, provider CLI, JSON-RPC, and Pi harness
-runs, see [`docs/run-modes.md`](./docs/run-modes.md).
+For choosing between deterministic CLI, provider CLI, JSON-RPC, generic
+orchestrator SDK, and Pi harness runs, see [`docs/run-modes.md`](./docs/run-modes.md).
+For `.cml`-first sandbox orchestrator project layout, see
+[`docs/orchestrator-project-layout.md`](./docs/orchestrator-project-layout.md).
+For orchestrator events, cancellation, resume, and structured failure metadata,
+see [`docs/orchestrator-observability.md`](./docs/orchestrator-observability.md).
 For shared terminology across the language, runtime, and host integrations, see
 [`docs/glossary.md`](./docs/glossary.md).
 For exact command shapes and flag precedence, see
@@ -122,8 +131,8 @@ Inspect the CLI and run the smallest examples:
 ```sh
 opam exec -- dune exec camlflow -- --help
 opam exec -- dune exec camlflow -- run examples/basic/main.cml --input-json '"Ada"'
-opam exec -- dune exec camlflow -- run examples/recursion/main.cml --input-json '4'
-opam exec -- dune exec camlflow -- run examples/variants-match/main.cml
+opam exec -- dune exec camlflow -- run examples/orchestrator-session/main.cml \
+  --input examples/orchestrator-session/input.json
 opam exec -- dune exec camlflow -- serve --stdio
 ```
 
@@ -135,12 +144,12 @@ opam exec --switch 5.4.0 -- dune exec camlflow -- --help
 opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/basic/main.cml --input-json '"Ada"'
 ```
 
-Try a local skill:
+Try a host-shaped effect workflow:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/local-skill/main.cml \
-  --skills examples/local-skill/skills \
-  --input-json '"hello"'
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
+  --input-json '"Ada"'
 ```
 
 Try project-local defaults from `camlflow.json`:
@@ -177,24 +186,15 @@ field. The nearest config wins.
 The full examples learning path is in
 [`examples/README.md`](./examples/README.md).
 
-- [`examples/basic`](./examples/basic): smallest bound-agent example
-- [`examples/recursion`](./examples/recursion): pure typed computation
-- [`examples/variants-match`](./examples/variants-match): records, variants,
-  and `match`
-- [`examples/qualified-imports`](./examples/qualified-imports): multi-file
-  loading and qualified references
-- [`examples/local-skill`](./examples/local-skill): `Skill.bind` plus local
-  `SKILL.md`
+- [`examples/basic`](./examples/basic): smallest typed workflow
+- [`examples/orchestrator-session`](./examples/orchestrator-session): `.cml`
+  contract for sandboxed agents and skills
 - [`examples/project-config`](./examples/project-config): nearest
   `camlflow.json` fallback behavior
-- [`examples/codex`](./examples/codex): bound agent + local skill + inline
-  agent through a provider-backed CLI run
-- [`examples/provider-hooks`](./examples/provider-hooks): embedding CamlFlow in
-  an OCaml host with runtime hooks
-- [`examples/problem-coach`](./examples/problem-coach),
-  [`examples/repo-triage`](./examples/repo-triage), and
-  [`examples/dev-workflow`](./examples/dev-workflow): larger structured-output
-  workflows closer to real host use
+- [`examples/provider-hooks`](./examples/provider-hooks): host-owned effect
+  handling for bound agents, local skills, and inline agents
+- [`examples/json-rpc-host`](./examples/json-rpc-host): Node host over
+  `camlflow serve --stdio`
 
 ## Provider-Backed Runs
 
@@ -211,8 +211,8 @@ Currently supported providers:
 Example with Codex:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/codex/main.cml \
-  --skills examples/codex/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"Ada"' \
   --provider codex \
   --model gpt-5.4-mini \
