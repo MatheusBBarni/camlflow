@@ -18,6 +18,19 @@ typed workflows inside sandbox policy.
 - abort-signal composition and output-chunk relay helpers
 - an in-memory session store for tests and ephemeral hosts
 
+## Sandbox providers
+
+The package includes first-class filesystem sandbox providers:
+
+- `createLocalSandboxProvider()` for cwd-bound local execution with trusted shell
+- `createReadOnlySandboxProvider()` for cwd-bound execution without trusted shell
+- `createEphemeralSandboxProvider()` for temporary workspaces that clean up on
+  close unless `preserveOnDirtyWorktree` reports unsafe cleanup
+
+All built-in providers return a `SandboxHandle` with `resolvePath(...)`, close
+results, approved tools, optional shell execution, and cleanup/preservation
+metadata. Path resolution rejects escapes outside the sandbox root.
+
 The Pi compatibility package remains `camlflow-pi-sdk`. During migration, Pi
 worker creation, Pi model registry access, Pi auth checks, and Pi tool creation
 stay there while shared lifecycle code moves here.

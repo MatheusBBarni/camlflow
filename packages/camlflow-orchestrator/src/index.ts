@@ -1,3 +1,9 @@
+import { spawn } from "node:child_process";
+import { realpathSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { isAbsolute, relative, resolve } from "node:path";
+
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | JsonObject;
 export interface JsonObject {
@@ -78,6 +84,25 @@ export interface SandboxCreateContext {
   workflowPath?: string;
   runId?: string;
   signal?: AbortSignal;
+}
+
+export type WorktreeStrategy =
+  | { kind: "direct" }
+  | { kind: "head" }
+  | { kind: "branch"; branch: string }
+  | { kind: "merge-to-head"; branch: string };
+
+export interface LocalSandboxConfig<TTool = unknown> {
+  kind?: "local" | "workspace-write" | "read-only" | "ephemeral";
+  cwd?: string;
+  env?: Record<string, string | undefined>;
+  tools?: readonly TTool[];
+  shell?: SandboxShellExecutor | false;
+  cleanup?: boolean;
+  preserveOnDirtyWorktree?: boolean;
+  isDirty?: () => MaybePromise<boolean>;
+  worktree?: WorktreeStrategy;
+  dispose?: () => MaybePromise<void>;
 }
 
 export interface AgentProvider<TSession = unknown, TMessage = unknown> {
@@ -339,4 +364,200 @@ export function createMemorySessionStore<TData extends JsonObject = JsonObject>(
       records.delete(id);
     },
   };
+}
+
+export function createLocalSandboxProvider<TTool = unknown>(): SandboxProvider<LocalSandboxConfig<TTool>, TTool> {
+  return {
+    name: "local",
+    async create(config, context) {
+      return createFilesystemSandbox("local", config, context, { allowShell: true, ephemeral: false });
+    },
+  };
+}
+
+export function createReadOnlySandboxProvider<TTool = unknown>(): SandboxProvider<LocalSandboxConfig<TTool>, TTool> {
+  return {
+    name: "read-only",
+    async create(config, context) {
+      return createFilesystemSandbox("read-only", { ...config, kind: "read-only", shell: false }, context, {
+        allowShell: false,
+        ephemeral: false,
+      });
+    },
+  };
+}
+
+export function createEphemeralSandboxProvider<TTool = unknown>(): SandboxProvider<LocalSandboxConfig<TTool>, TTool> {
+  return {
+    name: "ephemeral",
+    async create(config, context) {
+      return createFilesystemSandbox("ephemeral", { ...config, kind: "ephemeral", cleanup: true }, context, {
+        allowShell: true,
+        ephemeral: true,
+      });
+    },
+  };
+}
+
+async function createFilesystemSandbox<TTool>(
+  fallbackKind: "local" | "read-only" | "ephemeral",
+  config: LocalSandboxConfig<TTool>,
+  context: SandboxCreateContext,
+  defaults: { allowShell: boolean; ephemeral: boolean },
+): Promise<SandboxHandle<TTool>> {
+  if (context.signal?.aborted) {
+    throw new CamlFlowOrchestratorError("sandbox creation aborted");
+  }
+  const kind = config.kind ?? fallbackKind;
+  const cwd = defaults.ephemeral
+    ? await mkdtemp(resolve(tmpdir(), "camlflow-orchestrator-"))
+    : realpathSync(resolve(config.cwd ?? process.cwd()));
+  const root = realpathSync(cwd);
+  const cleanup = config.cleanup ?? defaults.ephemeral;
+  if (cleanup && !defaults.ephemeral) {
+    throw new CamlFlowValidationError("cleanup is only supported for ephemeral sandboxes");
+  }
+  const shell = config.shell === false || !defaults.allowShell ? undefined : config.shell ?? createBoundShell(root, config.env);
+
+  let closed = false;
+  const handle: SandboxHandle<TTool> = {
+    kind,
+    cwd: root,
+    tools: config.tools ?? [],
+    resolvePath(path) {
+      return resolveSandboxPath(root, path);
+    },
+    shell,
+    async close() {
+      if (closed) {
+        return { kind, cwd: root, cleaned: false, reason: "already-closed" };
+      }
+      closed = true;
+      await config.dispose?.();
+      if (config.preserveOnDirtyWorktree && (await config.isDirty?.())) {
+        return {
+          kind,
+          cwd: root,
+          cleaned: false,
+          preservedPath: root,
+          reason: "dirty-worktree",
+        };
+      }
+      if (cleanup) {
+        await rm(root, { force: true, recursive: true });
+        return { kind, cwd: root, cleaned: true };
+      }
+      return { kind, cwd: root, cleaned: false };
+    },
+  };
+  return handle;
+}
+
+export function resolveSandboxPath(root: string, path: string): string {
+  const cleanRoot = realpathSync(resolve(assertNonEmptyString(root, "sandbox root")));
+  const cleanPath = assertNonEmptyString(path, "sandbox path");
+  const target = isAbsolute(cleanPath) ? cleanPath : resolve(cleanRoot, cleanPath);
+  let normalized = resolve(target);
+  try {
+    normalized = realpathSync(normalized);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+  const rel = relative(cleanRoot, normalized);
+  if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) {
+    return normalized;
+  }
+  throw new CamlFlowValidationError(`sandbox path escapes sandbox root: ${path}`);
+}
+
+function createBoundShell(root: string, baseEnv?: Record<string, string | undefined>): SandboxShellExecutor {
+  return async (command, options = {}) => {
+    const shellCommand = assertNonEmptyString(command, "shell command");
+    const cwd = options.cwd ? resolveSandboxPath(root, options.cwd) : root;
+    validateShellOptions(options);
+    const signal = composeAbortSignals([options.signal]);
+    if (signal?.aborted) {
+      throw new CamlFlowOrchestratorError("shell command aborted before start");
+    }
+    return runShell(shellCommand, {
+      ...options,
+      cwd,
+      env: { ...baseEnv, ...options.env },
+      signal,
+    });
+  };
+}
+
+function validateShellOptions(options: SandboxShellOptions): void {
+  if (options.timeoutMs !== undefined && (!Number.isFinite(options.timeoutMs) || options.timeoutMs < 0)) {
+    throw new CamlFlowValidationError("shell timeoutMs must be a finite non-negative number");
+  }
+  if (options.stdin !== undefined) {
+    assertNonEmptyNulFree(options.stdin, "shell stdin", { allowEmpty: true });
+  }
+  if (options.env !== undefined) {
+    const env = assertPlainObject(options.env, "shell env");
+    for (const [name, value] of Object.entries(env)) {
+      assertNonEmptyString(name, "shell env name");
+      if (name.includes("=")) {
+        throw new CamlFlowValidationError("shell env names must not contain =");
+      }
+      if (value !== undefined && typeof value !== "string") {
+        throw new CamlFlowValidationError(`shell env value for ${name} must be a string or undefined`);
+      }
+      if (typeof value === "string") {
+        assertNonEmptyNulFree(value, `shell env value for ${name}`, { allowEmpty: true });
+      }
+    }
+  }
+}
+
+function assertNonEmptyNulFree(value: string, label: string, options?: { allowEmpty?: boolean }): string {
+  if (!options?.allowEmpty && value.trim() === "") {
+    throw new CamlFlowValidationError(`${label} must be a non-empty string`);
+  }
+  if (value.includes("\0")) {
+    throw new CamlFlowValidationError(`${label} must not contain NUL bytes`);
+  }
+  return value;
+}
+
+function runShell(command: string, options: SandboxShellOptions): Promise<SandboxShellResult> {
+  return new Promise((resolveResult, reject) => {
+    const child = spawn(command, {
+      cwd: options.cwd,
+      env: { ...process.env, ...options.env },
+      shell: true,
+      signal: options.signal,
+    });
+    let stdout = "";
+    let stderr = "";
+    let timer: NodeJS.Timeout | undefined;
+    if (options.timeoutMs !== undefined) {
+      timer = setTimeout(() => child.kill(), options.timeoutMs);
+    }
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (error) => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      reject(error);
+    });
+    child.on("close", (code, signal) => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      resolveResult({ code, signal, stdout, stderr });
+    });
+    if (options.stdin !== undefined) {
+      child.stdin?.end(options.stdin);
+    }
+  });
 }

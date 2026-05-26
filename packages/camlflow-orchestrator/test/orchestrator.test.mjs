@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { mkdtemp, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
@@ -7,9 +11,13 @@ import {
   assertJsonValue,
   assertNonEmptyString,
   composeAbortSignals,
+  createEphemeralSandboxProvider,
+  createLocalSandboxProvider,
   createMemorySessionStore,
+  createReadOnlySandboxProvider,
   parseResult,
   relayOutputChunk,
+  resolveSandboxPath,
 } from "../dist/index.js";
 
 test("validates strict JSON values before host side parsing", () => {
@@ -74,4 +82,58 @@ test("rejects empty strings and NUL bytes at generic boundaries", () => {
   assert.equal(assertNonEmptyString("run-1", "run id"), "run-1");
   assert.throws(() => assertNonEmptyString(" ", "run id"), /non-empty/);
   assert.throws(() => assertNonEmptyString("bad\0id", "run id"), /NUL/);
+});
+
+test("local sandbox resolves paths and exposes bounded shell", async () => {
+  const provider = createLocalSandboxProvider();
+  const sandbox = await provider.create({ cwd: process.cwd() }, {});
+  assert.equal(sandbox.kind, "local");
+  assert.equal(resolveSandboxPath(sandbox.cwd, "."), sandbox.cwd);
+  assert.throws(() => sandbox.resolvePath(".."), /escapes sandbox root/);
+  const result = await sandbox.shell("node -e \"process.stdin.pipe(process.stdout)\"", {
+    stdin: "hello",
+  });
+  assert.equal(result.code, 0);
+  assert.equal(result.stdout, "hello");
+  assert.deepEqual(await sandbox.close(), { kind: "local", cwd: sandbox.cwd, cleaned: false });
+});
+
+test("read-only sandbox disables trusted shell", async () => {
+  const provider = createReadOnlySandboxProvider();
+  const sandbox = await provider.create({ cwd: process.cwd() }, {});
+  assert.equal(sandbox.kind, "read-only");
+  assert.equal(sandbox.shell, undefined);
+  await sandbox.close();
+});
+
+test("ephemeral sandbox cleans up on close", async () => {
+  const provider = createEphemeralSandboxProvider();
+  const sandbox = await provider.create({}, {});
+  const cwd = sandbox.cwd;
+  assert.equal(existsSync(cwd), true);
+  const closeResult = await sandbox.close();
+  assert.equal(closeResult.cleaned, true);
+  assert.equal(existsSync(cwd), false);
+});
+
+test("sandbox close preserves dirty worktrees when configured", async () => {
+  const provider = createEphemeralSandboxProvider();
+  const sandbox = await provider.create({ preserveOnDirtyWorktree: true, isDirty: () => true }, {});
+  const closeResult = await sandbox.close();
+  assert.equal(closeResult.cleaned, false);
+  assert.equal(closeResult.preservedPath, sandbox.cwd);
+  assert.equal(existsSync(sandbox.cwd), true);
+});
+
+test("sandbox path resolution blocks symlink escapes", async () => {
+  const provider = createLocalSandboxProvider();
+  const sandbox = await provider.create({ cwd: process.cwd() }, {});
+  const outside = await mkdtemp(join(tmpdir(), "camlflow-orchestrator-outside-"));
+  const linkPath = join(sandbox.cwd, "camlflow-orchestrator-outside-link");
+  try {
+    await symlink(outside, linkPath);
+    assert.throws(() => sandbox.resolvePath("camlflow-orchestrator-outside-link"), /escapes sandbox root/);
+  } finally {
+    await sandbox.close();
+  }
 });
