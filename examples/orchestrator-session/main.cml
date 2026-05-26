@@ -22,15 +22,10 @@ agent repo_researcher :
     ~name:"repo-researcher"
     ~system_prompt:"Inspect the sandboxed checkout and return concrete file-backed findings."
 
-skill triage :
-  issue_number:int -> research:research_report -> triage_plan =
+skill triage : issue_number:int -> research:research_report -> triage_plan =
   Skill.bind "triage"
 
 let main (request : review_request) : triage_plan =
-  let* research =
-    repo_researcher ~task:request.task ~goals:request.goals
-  in
-  let* plan =
-    triage ~issue_number:request.issue_number ~research:research
-  in
+  let* research = repo_researcher ~task:request.task ~goals:request.goals in
+  let* plan = triage ~issue_number:request.issue_number ~research:research in
   plan

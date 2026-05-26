@@ -246,9 +246,9 @@ And update:
   "method": "camlflow/run",
   "params": {
     "program": {
-      "path": "examples/problem-coach/main.cml",
+      "path": "examples/orchestrator-session/main.cml",
       "includePaths": [],
-      "skillsDir": "examples/problem-coach/skills"
+      "skillsDir": "examples/provider-hooks/skills"
     },
     "entry": "main",
     "input": { "...": "..." }
@@ -347,10 +347,10 @@ Runnable host examples that cover both:
 
 - `examples/json-rpc-host/README.md`
 - `examples/json-rpc-host/host.js`
-- `examples/json-rpc-problem-coach/README.md`
-- `examples/json-rpc-problem-coach/host.js`
+- `examples/json-rpc-host/README.md`
+- `examples/json-rpc-host/host.js`
 - `packages/camlflow-ts-json-rpc-sdk/examples/provider-hooks.ts`
-- `packages/camlflow-ts-json-rpc-sdk/examples/problem-coach.ts`
+- `packages/camlflow-ts-json-rpc-sdk/examples/orchestrator-session.ts`
 - `packages/camlflow-ts-json-rpc-sdk/examples/cancellation.ts`
 
 ## What the example should do
@@ -367,7 +367,7 @@ Runnable host examples that cover both:
 Use:
 
 - `examples/provider-hooks/workflow.cml` for the smallest end-to-end proof
-- then later `examples/problem-coach/main.cml` as the stronger structured-output demo
+- then later `examples/orchestrator-session/main.cml` as the stronger structured-output demo
 
 ## Acceptance criteria
 
@@ -613,10 +613,10 @@ Likely files:
 
 - `examples/json-rpc-host/host.js`
 - `examples/json-rpc-host/README.md`
-- `examples/json-rpc-problem-coach/host.js`
-- `examples/json-rpc-problem-coach/README.md`
+- `examples/json-rpc-host/host.js`
+- `examples/json-rpc-host/README.md`
 - `packages/camlflow-ts-json-rpc-sdk/examples/provider-hooks.ts`
-- `packages/camlflow-ts-json-rpc-sdk/examples/problem-coach.ts`
+- `packages/camlflow-ts-json-rpc-sdk/examples/orchestrator-session.ts`
 - `packages/camlflow-ts-json-rpc-sdk/examples/cancellation.ts`
 
 Outcome:

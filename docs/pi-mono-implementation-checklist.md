@@ -404,7 +404,7 @@ Keep it simple:
 
 ```text
 CamlFlow run complete
-workflow: examples/problem-coach/main.cml
+workflow: examples/orchestrator-session/main.cml
 steps: 4
 output:
 { ...typed JSON... }
@@ -447,7 +447,7 @@ Run at least these CamlFlow workflows through the `pi-mono` fork:
 
 - [ ] `examples/basic/main.cml`
 - [ ] `examples/provider-hooks/workflow.cml`
-- [ ] `examples/problem-coach/main.cml`
+- [ ] `examples/orchestrator-session/main.cml`
 
 For each run, capture:
 

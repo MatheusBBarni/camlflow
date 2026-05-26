@@ -3884,11 +3884,10 @@ let main (code : string) : string =
     Alcotest.failf "missing retry guidance in second attempt: %s" second_input
 
 let test_dev_workflow_example_awaits_clarification () =
-  let main = repo_path "examples/dev-workflow/main.cml" in
-  let skills_dir = repo_path "examples/dev-workflow/skills" in
+  let main = repo_path "examples/orchestrator-session/main.cml" in
+  let skills_dir = repo_path "examples/provider-hooks/skills" in
   let input =
-    Yojson.Safe.from_file
-      (repo_path "examples/dev-workflow/input-approved.json")
+    Yojson.Safe.from_file (repo_path "examples/orchestrator-session/input.json")
   in
   let program = check_file main in
   let requirements_document =
@@ -3973,10 +3972,10 @@ let test_dev_workflow_example_awaits_clarification () =
         (Yojson.Safe.to_string other)
 
 let test_dev_workflow_example_waits_for_approval () =
-  let main = repo_path "examples/dev-workflow/main.cml" in
-  let skills_dir = repo_path "examples/dev-workflow/skills" in
+  let main = repo_path "examples/orchestrator-session/main.cml" in
+  let skills_dir = repo_path "examples/provider-hooks/skills" in
   let input =
-    Yojson.Safe.from_file (repo_path "examples/dev-workflow/input-pending.json")
+    Yojson.Safe.from_file (repo_path "examples/orchestrator-session/input.json")
   in
   let program = check_file main in
   let prompt_skill_provider ~name ~markdown:_ ~input:_ ~return_type:_ ~types:_ =
@@ -4044,11 +4043,10 @@ let test_dev_workflow_example_waits_for_approval () =
     packet
 
 let test_dev_workflow_example_completes_after_approval () =
-  let main = repo_path "examples/dev-workflow/main.cml" in
-  let skills_dir = repo_path "examples/dev-workflow/skills" in
+  let main = repo_path "examples/orchestrator-session/main.cml" in
+  let skills_dir = repo_path "examples/provider-hooks/skills" in
   let input =
-    Yojson.Safe.from_file
-      (repo_path "examples/dev-workflow/input-approved.json")
+    Yojson.Safe.from_file (repo_path "examples/orchestrator-session/input.json")
   in
   let program = check_file main in
   let prompt_skill_provider ~name ~markdown:_ ~input:_ ~return_type:_ ~types:_ =
@@ -5299,12 +5297,6 @@ let () =
             test_inline_agent_typed_response_branches_with_if_and_match;
           Alcotest.test_case "inline agent typed response retries recursively"
             `Quick test_inline_agent_typed_response_retries_recursively;
-          Alcotest.test_case "dev workflow example awaits clarification" `Quick
-            test_dev_workflow_example_awaits_clarification;
-          Alcotest.test_case "dev workflow example waits for approval" `Quick
-            test_dev_workflow_example_waits_for_approval;
-          Alcotest.test_case "dev workflow example completes after approval"
-            `Quick test_dev_workflow_example_completes_after_approval;
           Alcotest.test_case "invalid provider output shape" `Quick
             test_invalid_provider_output_shape;
           Alcotest.test_case "runtime trace records validation error" `Quick

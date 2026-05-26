@@ -49,8 +49,8 @@ Use provider-backed CLI runs when you want quick end-to-end model execution from
 a terminal:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/codex/main.cml \
-  --skills examples/codex/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"Ada"' \
   --provider codex \
   --model gpt-5.4-mini \
@@ -143,8 +143,8 @@ Constructors with payloads use `value`:
 ```
 
 For a larger reference, compare
-[`examples/problem-coach/types.cml`](../examples/problem-coach/types.cml) with
-[`examples/problem-coach/input.json`](../examples/problem-coach/input.json).
+[`examples/orchestrator-session/main.cml`](../examples/orchestrator-session/main.cml) with
+[`examples/orchestrator-session/input.json`](../examples/orchestrator-session/input.json).
 For the full JSON encoding reference, including unit, tuples, multi-payload
 variants, options, and common decode failures, see
 [`json-encoding.md`](./json-encoding.md).
@@ -200,8 +200,8 @@ skills/
 Run with:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/local-skill/main.cml \
-  --skills examples/local-skill/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"hello"'
 ```
 
@@ -282,9 +282,9 @@ opam exec -- dune exec camlflow -- run /tmp/main.ir.json --input input.json
 Use `--input-json` for small values and `--input` for structured payloads:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/problem-coach/main.cml \
-  --skills examples/problem-coach/skills \
-  --input examples/problem-coach/input.json
+opam exec -- dune exec camlflow -- run examples/orchestrator-session/main.cml \
+  --skills examples/provider-hooks/skills \
+  --input examples/orchestrator-session/input.json
 ```
 
 Compiled IR and source runs use the same runtime and provider plumbing. The IR
@@ -310,8 +310,8 @@ effect fails and the enclosing workflow fails.
 Use `--trace-provider` while debugging:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/codex/main.cml \
-  --skills examples/codex/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"Ada"' \
   --provider codex \
   --model gpt-5.4-mini \
@@ -385,8 +385,8 @@ try {
   });
 
   const workflow = await agent.runWorkflow({
-    workflowPath: "examples/repo-triage/main.cml",
-    skillsDir: "examples/repo-triage/skills",
+    workflowPath: "examples/orchestrator-session/main.cml",
+    skillsDir: "examples/provider-hooks/skills",
     input: {
       task: "Triage the current repository.",
       suspected_area: "Pi harness integration",

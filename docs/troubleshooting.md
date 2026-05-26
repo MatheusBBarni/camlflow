@@ -81,9 +81,9 @@ Fix by running through the opam switch that has the repo dependencies:
 
 ```sh
 opam exec --switch 5.4.0 -- dune --version
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/repo-triage/main.cml \
-  --skills examples/repo-triage/skills \
-  --input examples/repo-triage/input.json
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/orchestrator-session/main.cml \
+  --skills examples/provider-hooks/skills \
+  --input examples/orchestrator-session/input.json
 ```
 
 Or activate the switch in your shell:
@@ -127,8 +127,8 @@ CamlFlow only resolves loaded `.cml` modules. It is not full OCaml.
 Useful checks:
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- check examples/qualified-imports/main.cml \
-  -I examples/qualified-imports
+opam exec --switch 5.4.0 -- dune exec camlflow -- check examples/orchestrator-session/main.cml \
+  -I examples/orchestrator-session
 ```
 
 ## JSON Input Does Not Decode
@@ -187,8 +187,8 @@ Likely causes:
 Start with:
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/codex/main.cml \
-  --skills examples/codex/skills \
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"Ada"' \
   --provider codex \
   --model gpt-5.4-mini \

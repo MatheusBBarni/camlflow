@@ -918,7 +918,7 @@ The body length must match the exact UTF-8 byte length of the JSON payload.
 
 - `docs/json-rpc.md`
 - `examples/json-rpc-host/host.js`
-- `examples/json-rpc-problem-coach/host.js`
+- `examples/json-rpc-host/host.js`
 - `lib/rpc_protocol.ml`
 - `lib/rpc_stdio.ml`
 - `lib/rpc_server.ml`

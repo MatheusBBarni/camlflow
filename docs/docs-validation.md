@@ -56,20 +56,20 @@ Remember:
 Run examples added or changed by the docs edit. For the first workflow example:
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- check examples/first-workflow/main.cml
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/first-workflow/main.cml \
-  --input examples/first-workflow/input.json
+opam exec --switch 5.4.0 -- dune exec camlflow -- check examples/basic/main.cml
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/basic/main.cml \
+  --input examples/basic/input.json
 
 CAMLFLOW_BIN="$(pwd)/_build/default/bin/main.exe"
-(cd examples/first-workflow && "$CAMLFLOW_BIN" check && "$CAMLFLOW_BIN" run --input input.json)
+(cd examples/basic && "$CAMLFLOW_BIN" check && "$CAMLFLOW_BIN" run --input input.json)
 ```
 
 For structured examples:
 
 ```sh
-opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/problem-coach/main.cml \
-  --skills examples/problem-coach/skills \
-  --input examples/problem-coach/input.json
+opam exec --switch 5.4.0 -- dune exec camlflow -- run examples/orchestrator-session/main.cml \
+  --skills examples/provider-hooks/skills \
+  --input examples/orchestrator-session/input.json
 ```
 
 ## Markdown Links

@@ -314,8 +314,8 @@ This keeps failure modes explicit and easier to debug when integrating a new hos
 Codex:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/codex/main.cml \
-  --skills examples/codex/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"Ada"' \
   --provider codex \
   --model gpt-5.4-mini
@@ -324,8 +324,8 @@ opam exec -- dune exec camlflow -- run examples/codex/main.cml \
 Opencode:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/codex/main.cml \
-  --skills examples/codex/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"Ada"' \
   --provider opencode \
   --model openai/gpt-5.4-mini
@@ -334,8 +334,8 @@ opam exec -- dune exec camlflow -- run examples/codex/main.cml \
 Claude Code:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/codex/main.cml \
-  --skills examples/codex/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"Ada"' \
   --provider claude-code \
   --model sonnet \
@@ -345,8 +345,8 @@ opam exec -- dune exec camlflow -- run examples/codex/main.cml \
 Claude CLI:
 
 ```sh
-ANTHROPIC_API_KEY=... opam exec -- dune exec camlflow -- run examples/codex/main.cml \
-  --skills examples/codex/skills \
+ANTHROPIC_API_KEY=... opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"Ada"' \
   --provider claude-cli \
   --model claude-sonnet-4-6 \

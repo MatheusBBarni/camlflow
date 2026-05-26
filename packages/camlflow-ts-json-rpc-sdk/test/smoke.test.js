@@ -138,16 +138,6 @@ test('json-rpc host example still runs end-to-end', { timeout: 30000 }, async ()
   assert.match(result.stdout, /"output":\s*"inline-review"/);
 });
 
-test('json-rpc problem-coach host example still runs end-to-end', { timeout: 30000 }, async () => {
-  const result = await runProcess('node', ['examples/json-rpc-problem-coach/host.js'], {
-    cwd: repoRoot,
-  });
-
-  assert.equal(result.code, 0, result.stderr);
-  assert.match(result.stdout, /"stepsRun":\s*4/);
-  assert.match(result.stdout, /"title":\s*"two sum solution pack"/);
-});
-
 test('sdk initialize can disable progress while keeping trace', { timeout: 30000 }, async () => {
   const traces = [];
   const progress = [];
@@ -261,6 +251,12 @@ test('sdk effect handlers can emit output chunks', { timeout: 30000 }, async () 
         });
         return effectOutput(`hello ${name}`);
       }
+      if (`${effect.kind}:${effect.name}` === 'local-prompt-skill:caveman') {
+        return effectOutput(String(effect.input?.prompt ?? '').replace(/^hello\s+/i, 'me '));
+      }
+      if (`${effect.kind}:${effect.name}` === 'inline-agent:reviewer') {
+        return effectOutput('inline-review');
+      }
       return effectOutput('');
     },
     onOutputChunk: async (chunk) => {
@@ -275,9 +271,9 @@ test('sdk effect handlers can emit output chunks', { timeout: 30000 }, async () 
 
     const runPromise = client.run({
       program: {
-        path: 'examples/basic/main.cml',
+        path: 'examples/provider-hooks/workflow.cml',
         includePaths: [],
-        skillsDir: null,
+        skillsDir: 'examples/provider-hooks/skills',
       },
       entry: 'main',
       input: 'Ada',
@@ -287,7 +283,7 @@ test('sdk effect handlers can emit output chunks', { timeout: 30000 }, async () 
     assert.ok(chunks.length >= 1);
 
     const result = await runPromise;
-    assert.equal(result.output, 'hello Ada!');
+    assert.equal(result.output, 'inline-review');
     assert.equal(chunks.length, 2);
     assert.deepEqual(chunks.map((chunk) => chunk.delta), ['hello ', 'hello Ada']);
     assert.deepEqual(chunks.map((chunk) => chunk.done), [false, true]);
@@ -321,6 +317,12 @@ test('sdk effect handlers can emit explicit advisory output chunks', { timeout: 
         });
         return effectOutput(`hello ${name}`);
       }
+      if (`${effect.kind}:${effect.name}` === 'local-prompt-skill:caveman') {
+        return effectOutput(String(effect.input?.prompt ?? '').replace(/^hello\s+/i, 'me '));
+      }
+      if (`${effect.kind}:${effect.name}` === 'inline-agent:reviewer') {
+        return effectOutput('inline-review');
+      }
       return effectOutput('');
     },
     onOutputChunk: async (chunk) => {
@@ -332,15 +334,15 @@ test('sdk effect handlers can emit explicit advisory output chunks', { timeout: 
     await client.initialize();
     const result = await client.run({
       program: {
-        path: 'examples/basic/main.cml',
+        path: 'examples/provider-hooks/workflow.cml',
         includePaths: [],
-        skillsDir: null,
+        skillsDir: 'examples/provider-hooks/skills',
       },
       entry: 'main',
       input: 'Ada',
     });
 
-    assert.equal(result.output, 'hello Ada!');
+    assert.equal(result.output, 'inline-review');
     assert.equal(chunks.length, 1);
     assert.equal(chunks[0].declaredReturnType, null);
     assert.equal(chunks[0].outputSchema, null);
@@ -373,6 +375,12 @@ test('sdk effect handlers can relay async text streams', { timeout: 30000 }, asy
         );
         return effectOutput(output);
       }
+      if (`${effect.kind}:${effect.name}` === 'local-prompt-skill:caveman') {
+        return effectOutput(String(effect.input?.prompt ?? '').replace(/^hello\s+/i, 'me '));
+      }
+      if (`${effect.kind}:${effect.name}` === 'inline-agent:reviewer') {
+        return effectOutput('inline-review');
+      }
       return effectOutput('');
     },
     onOutputChunk: async (chunk) => {
@@ -387,9 +395,9 @@ test('sdk effect handlers can relay async text streams', { timeout: 30000 }, asy
 
     const resultPromise = client.run({
       program: {
-        path: 'examples/basic/main.cml',
+        path: 'examples/provider-hooks/workflow.cml',
         includePaths: [],
-        skillsDir: null,
+        skillsDir: 'examples/provider-hooks/skills',
       },
       entry: 'main',
       input: 'Ada',
@@ -399,7 +407,7 @@ test('sdk effect handlers can relay async text streams', { timeout: 30000 }, asy
     assert.ok(chunks.length >= 1);
 
     const result = await resultPromise;
-    assert.equal(result.output, 'hello Ada!');
+    assert.equal(result.output, 'inline-review');
     assert.equal(chunks.length, 2);
     assert.deepEqual(chunks.map((chunk) => chunk.delta), ['hello ', 'hello Ada']);
     assert.deepEqual(chunks.map((chunk) => chunk.done), [false, true]);
@@ -447,9 +455,9 @@ test('sdk can cancel a run with AbortSignal', { timeout: 30000 }, async () => {
     const runPromise = client.run(
       {
         program: {
-          path: 'examples/basic/main.cml',
+          path: 'examples/provider-hooks/workflow.cml',
           includePaths: [],
-          skillsDir: null,
+          skillsDir: 'examples/provider-hooks/skills',
         },
         entry: 'main',
         input: 'Ada',

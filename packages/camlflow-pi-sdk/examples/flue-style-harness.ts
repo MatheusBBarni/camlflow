@@ -60,16 +60,12 @@ export async function runIssueTriageHarness(
       },
     });
     const workflow = await agent.runWorkflow({
-      workflowPath: "examples/repo-triage/main.cml",
+      workflowPath: "examples/orchestrator-session/main.cml",
       input: {
+        issue_number: payload.issueNumber,
         task: payload.task,
-        suspected_area: "repository",
-        file_hints: [],
         goals: ["produce a concrete triage report"],
-        constraints: ["ground conclusions in repository evidence"],
-        mode: { tag: "Quick" },
       },
-      skillsDir: "examples/repo-triage/skills",
     });
 
     return { triage, comment, shell, workflow };

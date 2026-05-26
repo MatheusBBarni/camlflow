@@ -57,9 +57,9 @@ async function main(): Promise<void> {
     const runPromise = client.run(
       {
         program: {
-          path: "examples/basic/main.cml",
+          path: "examples/provider-hooks/workflow.cml",
           includePaths: [],
-          skillsDir: null,
+          skillsDir: "examples/provider-hooks/skills",
         },
         entry: "main",
         input: "Ada",

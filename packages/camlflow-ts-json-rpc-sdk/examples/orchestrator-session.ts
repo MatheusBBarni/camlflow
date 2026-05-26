@@ -28,9 +28,9 @@ async function main(): Promise<void> {
 
     const result = await client.run({
       program: {
-        path: "examples/problem-coach/main.cml",
+        path: "examples/orchestrator-session/main.cml",
         includePaths: [],
-        skillsDir: "examples/problem-coach/skills",
+        skillsDir: null,
       },
       entry: "main",
       input: loadProblemCoachInput(),

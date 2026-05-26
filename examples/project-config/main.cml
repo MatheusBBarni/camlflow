@@ -1,5 +1,6 @@
-let greet (name : string) : string =
-  "Hello, " ^ name
+type request = {
+  name : string;
+}
 
-let main (name : string) : string =
-  greet name
+let main (request : request) : string =
+  "Hello " ^ request.name

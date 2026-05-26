@@ -80,19 +80,19 @@ This gives faster feedback than relying only on a full manual session.
 
 Use these workflows to exercise different parts of the integration:
 
-- `examples/recursion/main.cml`
+- `examples/basic/main.cml`
   - pure baseline
   - fastest end-to-end sanity check
 - `examples/basic/main.cml`
   - smallest effectful workflow
   - best for no-model UX validation
-- `examples/problem-coach/main.cml`
+- `examples/orchestrator-session/main.cml`
   - best current user-facing showcase
   - structured answer pack with local skill, bound skill, bound agent, and inline agent
-- `examples/interview-pipeline/main.cml`
+- `examples/orchestrator-session/main.cml`
   - larger multi-step stress test
   - good for status/progress and larger structured outputs
-- `examples/repo-triage/main.cml`
+- `examples/orchestrator-session/main.cml`
   - best current `pi-mono` power demo
   - designed to encourage tool-using worker sessions to inspect the repository and return an actionable engineering triage report
 
@@ -152,7 +152,7 @@ cd ~/projects/camlflow
 Inside `pi`, run:
 
 ```text
-/camlflow-run examples/recursion/main.cml --entry main --input-json 4
+/camlflow-run examples/basic/main.cml --entry main --input-json '"Ada"'
 ```
 
 Expected result:
@@ -160,7 +160,7 @@ Expected result:
 - the run completes successfully
 - the summary shows the workflow path and entry
 - `steps` is `0`
-- `output` is `10`
+- `output` is `Hello Ada`
 - notes should mention the CamlFlow engine, typically something like `dune:/.../camlflow`
 
 This is the simplest end-to-end proof that:
@@ -329,7 +329,7 @@ Default initial message:
 
 ### `scripts/run-pi-mono-recursion.sh`
 
-Convenience launcher for the pure recursion smoke test.
+Compatibility launcher for the pure basic smoke test.
 
 Usage:
 
@@ -341,7 +341,7 @@ cd ~/projects/camlflow
 Default initial message:
 
 ```text
-/camlflow-run examples/recursion/main.cml --entry main --input-json 4
+/camlflow-run examples/basic/main.cml --entry main --input-json '"Ada"'
 ```
 
 ### `scripts/run-pi-mono-problem-coach.sh`
@@ -358,7 +358,7 @@ cd ~/projects/camlflow
 Default initial message:
 
 ```text
-/camlflow-run examples/problem-coach/main.cml --entry main --input-json '{ ... }' --skills-dir examples/problem-coach/skills
+/camlflow-run examples/orchestrator-session/main.cml --entry main --input-json '{ ... }'
 ```
 
 ### `scripts/run-pi-mono-interview-pipeline.sh`
@@ -375,7 +375,7 @@ cd ~/projects/camlflow
 Default initial message:
 
 ```text
-/camlflow-run examples/interview-pipeline/main.cml --entry main --input-json '{ ... }' --skills-dir examples/interview-pipeline/skills
+/camlflow-run examples/orchestrator-session/main.cml --entry main --input-json '{ ... }'
 ```
 
 ### `scripts/run-pi-mono-repo-triage.sh`
@@ -392,7 +392,7 @@ cd ~/projects/camlflow
 Default initial message:
 
 ```text
-/camlflow-run examples/repo-triage/main.cml --entry main --input-json '{ ... }' --skills-dir examples/repo-triage/skills
+/camlflow-run examples/orchestrator-session/main.cml --entry main --input-json '{ ... }'
 ```
 
 Why this script matters:
@@ -412,10 +412,10 @@ The workflow launcher scripts all follow the same pattern:
 Common env overrides:
 
 ```sh
-CAMLFLOW_WORKFLOW=examples/recursion/main.cml \
+CAMLFLOW_WORKFLOW=examples/basic/main.cml \
 CAMLFLOW_ENTRY=main \
-CAMLFLOW_INPUT_JSON=4 \
-CAMLFLOW_SKILLS_DIR=examples/problem-coach/skills \
+CAMLFLOW_INPUT_JSON='"Grace"' \
+CAMLFLOW_SKILLS_DIR=examples/provider-hooks/skills \
 ./scripts/run-pi-mono-problem-coach.sh
 ```
 
@@ -435,9 +435,9 @@ When changing the integration, run at least this matrix:
 - focused regression test:
   - `cd ~/projects/pi-mono/packages/coding-agent && npx vitest --run test/camlflow-integration.test.ts`
 - pure smoke:
-  - `/camlflow-run examples/recursion/main.cml --input-json 4`
+  - `/camlflow-run examples/basic/main.cml --input-json '"Ada"'`
 - no-model effectful smoke:
-  - `/camlflow-run examples/basic/main.cml --input-json "Ada"`
+  - `/camlflow-run examples/provider-hooks/workflow.cml --input-json "Ada" --skills-dir examples/provider-hooks/skills`
 
 ### Before calling the integration healthy
 

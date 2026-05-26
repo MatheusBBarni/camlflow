@@ -179,7 +179,7 @@ This test validates the launcher only. It does not validate `/camlflow-run`.
 
 ---
 
-## Test 1: pure recursion smoke test
+## Test 1: pure basic smoke test
 
 Purpose:
 prove the command is registered, the sidecar starts, and a pure workflow returns
@@ -195,7 +195,7 @@ cd ~/projects/camlflow
 Then type:
 
 ```text
-/camlflow-run examples/recursion/main.cml --entry main --input-json 4
+/camlflow-run examples/basic/main.cml --entry main --input-json '"Ada"'
 ```
 
 Option B: use the convenience launcher
@@ -208,10 +208,10 @@ cd ~/projects/camlflow
 Expected result:
 
 - the run succeeds
-- the summary shows workflow path `examples/recursion/main.cml`
+- the summary shows workflow path `examples/basic/main.cml`
 - the summary shows entry `main`
 - `steps` is `0`
-- `output` is `10`
+- `output` is `Hello Ada`
 - notes should mention the CamlFlow engine path, usually something like
   `dune:/.../camlflow`
 
@@ -219,17 +219,17 @@ Good answer shape:
 
 ```text
 CamlFlow run complete
-workflow: examples/recursion/main.cml
+workflow: examples/basic/main.cml
 entry: main
 steps: 0
-output: 10
+output: Hello Ada
 ```
 
 Fail if:
 
 - the command is not recognized
 - the run requires a model even though the workflow is pure
-- the output is not `10`
+- the output is not `Hello Ada`
 
 ---
 
@@ -283,14 +283,14 @@ cd ~/projects/camlflow
 Do not select a model, then type:
 
 ```text
-/camlflow-run examples/basic/main.cml --entry main --input-json "Ada"
+/camlflow-run examples/provider-hooks/workflow.cml --entry main --input-json "Ada" --skills-dir examples/provider-hooks/skills
 ```
 
-Option B: use the convenience launcher
+Option B: use the orchestrator convenience launcher
 
 ```sh
 cd ~/projects/camlflow
-./scripts/run-pi-mono-basic.sh
+./scripts/run-pi-mono-problem-coach.sh
 ```
 
 Expected:
@@ -312,7 +312,7 @@ Fail if:
 
 - the workflow hangs
 - the failure looks like an internal stack trace with no user guidance
-- the pure recursion test from Test 1 also fails in the same state
+- the pure basic test from Test 1 also fails in the same state
 
 ---
 
@@ -335,7 +335,7 @@ Inside `pi`:
 3. run:
 
 ```text
-/camlflow-run examples/basic/main.cml --entry main --input-json "Ada"
+/camlflow-run examples/provider-hooks/workflow.cml --entry main --input-json "Ada" --skills-dir examples/provider-hooks/skills
 ```
 
 Expected:
@@ -344,24 +344,19 @@ Expected:
 - effect execution is delegated into a `pi` worker session
 - streamed worker text may appear while the effect runs
 - the final workflow result succeeds
-- the final output is a greeting string for `Ada` ending with `!`
-
-Why this output should look that way:
-
-- `examples/basic/main.cml` binds `agent greeter : name:string -> string`
-- `main` appends `!` to the returned greeting
+- the final output is valid JSON for the workflow return type
 
 Good answer shape:
 
 ```text
-output: "Hello, Ada!"
+steps: 3
+output: "inline-review"
 ```
 
-The exact greeting text may vary, but it should:
+The exact text may vary with the model, but it should:
 
-- mention `Ada`
 - be a string
-- end with `!`
+- decode as the workflow's final string output
 
 Fail if:
 
@@ -371,11 +366,10 @@ Fail if:
 
 ---
 
-## Test 5: problem-coach structured answer
+## Test 5: orchestrator-session structured triage plan
 
 Purpose:
-validate a realistic multi-effect workflow with skills and a user-facing output
-pack.
+validate a realistic multi-effect workflow with a structured user-facing output.
 
 Run:
 
@@ -387,45 +381,34 @@ cd ~/projects/camlflow
 The script should prefill something equivalent to:
 
 ```text
-/camlflow-run examples/problem-coach/main.cml --entry main --input-json '{"problem_name":"two sum","language":{"tag":"Python"},"audience":{"tag":"Interview"},"must_cover":["hash map approach","time complexity","duplicate values edge case"]}' --skills-dir examples/problem-coach/skills
+/camlflow-run examples/orchestrator-session/main.cml --entry main --input-json '{"issue_number":16,"task":"Triage the sandbox orchestrator workflow.","goals":["ground the plan in the .cml contract"]}'
 ```
 
 Expected:
 
 - the run succeeds with a structured final result
-- the result is shaped like `solution_pack`
+- the result is shaped like `triage_plan`
 - the answer is directly useful to a human, not just an internal debug dump
 
 The final JSON should contain these top-level keys:
 
-- `title`
-- `answer`
-- `code`
-- `complexity`
-- `edge_cases`
-- `pitfalls`
+- `summary`
 - `next_steps`
+- `validation`
 
 Expected content checks:
 
-- `title` references `two sum`
-- `answer` explains the hash-map approach
-- `code` is Python
-- `complexity` mentions linear-time behavior or a similar correct complexity
-- `edge_cases` includes duplicate values or equivalent wording
-- `pitfalls` and `next_steps` are non-empty lists
+- `summary` describes the requested planning task
+- `next_steps` is a non-empty list
+- `validation` is a non-empty list
 
 Good answer shape:
 
 ```json
 {
-  "title": "Two Sum in Python",
-  "answer": "Use a hash map from value to index while scanning once...",
-  "code": "def two_sum(nums, target): ...",
-  "complexity": "Time O(n), space O(n)",
-  "edge_cases": ["duplicate values", "no solution shape if contract changes"],
-  "pitfalls": ["overwriting an index too early"],
-  "next_steps": ["practice explaining why the map works"]
+  "summary": "Plan the work around the .cml contract and host sandbox policy.",
+  "next_steps": ["inspect the workflow", "choose sandbox policy"],
+  "validation": ["type-check the workflow", "run the host smoke test"]
 }
 ```
 
@@ -433,15 +416,15 @@ Fail if:
 
 - the final answer is mostly agent chatter instead of the packed result
 - required fields are missing
-- the result ignores the requested language or must-cover items
+- the result ignores the requested task or goals
 
 ---
 
-## Test 6: interview-pipeline stress test
+## Test 6: alternate orchestrator-session launcher
 
 Purpose:
-validate a larger nested structured result with request normalization, multiple
-effects, and reviewer output.
+validate that the alternate convenience launcher still targets the same
+orchestrator contract with a different preset input.
 
 Run:
 
@@ -453,71 +436,50 @@ cd ~/projects/camlflow
 The script should prefill something equivalent to:
 
 ```text
-/camlflow-run examples/interview-pipeline/main.cml --entry main --input-json '{"algorithm_name":"longest increasing subsequence","preferred_language":{"tag":"Python"},"target_difficulty":{"tag":"Hard"},"focus":[{"tag":"Pattern","value":"dynamic programming"},{"tag":"Constraint","value":"n up to 10^5"}]}' --skills-dir examples/interview-pipeline/skills
+/camlflow-run examples/orchestrator-session/main.cml --entry main --input-json '{"issue_number":16,"task":"Plan a sandboxed workflow review.","goals":["typed workflow design","JSON-RPC hosts","sandbox policy"]}'
 ```
 
 Expected:
 
 - the run succeeds
-- the final result is shaped like `report`
-- the result contains both solution details and review details
+- the final result is shaped like `triage_plan`
+- the result reflects the alternate task and goals
 
 The final JSON should contain these top-level keys:
 
-- `request`
-- `solution`
-- `edge_cases`
-- `review`
-- `hints`
+- `summary`
+- `next_steps`
+- `validation`
 
 Expected content checks:
 
-- `request.algorithm_name` stays `longest increasing subsequence`
-- `solution.code` is Python
-- `solution.time_complexity` discusses the chosen approach
-- `review.approved` is a boolean
-- `review.summary` is not empty
-- `hints` should be present for `Hard`, likely something about invariants,
-  pruning, or failure modes
+- `summary` is not empty
+- `next_steps` is a non-empty list
+- `validation` is a non-empty list
 
 Good answer shape:
 
 ```json
 {
-  "request": {
-    "algorithm_name": "longest increasing subsequence",
-    "difficulty_label": "hard"
-  },
-  "solution": {
-    "approach": "patience sorting / DP tradeoff discussion",
-    "code": "def lengthOfLIS(nums): ...",
-    "time_complexity": "O(n log n)",
-    "space_complexity": "O(n)"
-  },
-  "edge_cases": ["strictly decreasing array", "duplicates"],
-  "review": {
-    "approved": true,
-    "summary": "Approach and complexity claims are coherent",
-    "strengths": ["correct optimized approach"],
-    "blockers": []
-  },
-  "hints": "Call out invariants, pruning, and failure modes explicitly."
+  "summary": "Plan a sandboxed workflow review.",
+  "next_steps": ["inspect typed workflow design", "review JSON-RPC host flow"],
+  "validation": ["run orchestrator-session smoke", "run SDK tests"]
 }
 ```
 
 Fail if:
 
-- nested JSON is malformed
-- `review` disappears into plain prose
-- the answer ignores the `Hard` difficulty or the `n up to 10^5` constraint
+- JSON is malformed
+- `next_steps` disappears into plain prose
+- the answer ignores the requested sandbox-policy goals
 
 ---
 
-## Test 7: repo-triage power demo
+## Test 7: repo-triage orchestrator preset
 
 Purpose:
-validate the most important `pi-mono` showcase: worker sessions using repo tools
-to produce a grounded engineering artifact.
+validate the repo-triage convenience preset against the shared orchestrator
+contract.
 
 Run:
 
@@ -529,72 +491,42 @@ cd ~/projects/camlflow
 The script should prefill something equivalent to:
 
 ```text
-/camlflow-run examples/repo-triage/main.cml --entry main --input-json '{"task":"Triage how the pi-mono host integration is wired in this repo and identify the best files to inspect for improving no-model UX, effect streaming, and helper script ergonomics.","suspected_area":"pi-mono host integration docs, scripts, and TypeScript SDK wiring","file_hints":["docs/pi-mono-host-integration-plan.md","docs/pi-mono-implementation-checklist.md","docs/pi-mono-integration-testing.md","packages/camlflow-ts-json-rpc-sdk/src/client.ts","scripts"],"goals":["map the main integration path","identify the highest-value files for a follow-up patch","propose a small validation plan"],"constraints":["ground conclusions in repository evidence","prefer concrete file paths over generic advice","assume the caller wants to test through pi-mono"],"mode":{"tag":"DeepDive"}}' --skills-dir examples/repo-triage/skills
+/camlflow-run examples/orchestrator-session/main.cml --entry main --input-json '{"issue_number":16,"task":"Triage the current repository for integration risk.","goals":["map the main integration path","identify high-value files","propose validation"]}'
 ```
 
 Expected:
 
-- the run succeeds with a structured `triage_report`
-- the content is grounded in the current repository
-- relevant files include actual repo paths, not made-up ones
-- findings mention evidence, patch steps, and validation steps
+- the run succeeds with a structured `triage_plan`
+- the content is grounded in the current repository task
+- next steps name concrete follow-up work
+- validation mentions a concrete verification loop
 
 The final JSON should contain these top-level keys:
 
-- `title`
 - `summary`
-- `relevant_files`
-- `findings`
-- `root_causes`
-- `patch_plan`
-- `validation_steps`
-- `follow_up_questions`
+- `next_steps`
+- `validation`
 
 Expected content checks:
 
-- `relevant_files` should plausibly mention the `docs/pi-mono-*` files and
-  `scripts/run-pi-mono*.sh`
-- `findings` should sound like repo-grounded observations, not generic advice
-- `patch_plan` should name concrete next edits
-- `validation_steps` should mention a manual or script-based validation loop
+- `summary` should sound like repo-grounded planning, not generic advice
+- `next_steps` should name concrete next edits
+- `validation` should mention a manual or script-based validation loop
 
 Good answer shape:
 
 ```json
 {
-  "title": "pi-mono integration triage",
   "summary": "The integration path is documented clearly, but script ergonomics and no-model UX are the highest-value follow-up areas.",
-  "relevant_files": [
-    "docs/pi-mono-integration-testing.md",
-    "docs/pi-mono-implementation-checklist.md",
-    "scripts/run-pi-mono.sh"
-  ],
-  "findings": [
-    "run-pi-mono.sh performs strict preflight checks before launch",
-    "the convenience scripts only prefill /camlflow-run commands"
-  ],
-  "root_causes": [
-    "no-model UX relies on host-side effect preflight",
-    "script ergonomics are centralized in shell wrappers"
-  ],
-  "patch_plan": [
-    "tighten no-model messaging",
-    "add script-oriented manual tests"
-  ],
-  "validation_steps": [
-    "run recursion, basic no-model, and repo-triage smoke tests"
-  ],
-  "follow_up_questions": [
-    "Should convenience scripts validate JSON quoting more aggressively?"
-  ]
+  "next_steps": ["tighten no-model messaging", "add script-oriented manual tests"],
+  "validation": ["run basic, provider-hooks, and repo-triage smoke tests"]
 }
 ```
 
 Fail if:
 
-- the answer talks about files that do not exist
-- the report is generic and could have been written without reading the repo
-- the worker uses tools, but the final report does not preserve concrete paths
+- the plan is generic and could fit any repository
+- `next_steps` or `validation` are missing
 
 ---
 
@@ -624,7 +556,7 @@ Fail if:
 
 - script launch behavior differs from manual command behavior
 - the prefilled command is malformed
-- `--skills-dir` is dropped for workflows that need it
+- an explicit `CAMLFLOW_SKILLS_DIR` override is dropped from the printed command
 
 ---
 
@@ -638,16 +570,16 @@ Run:
 
 ```sh
 cd ~/projects/camlflow
-CAMLFLOW_WORKFLOW=examples/recursion/main.cml \
+CAMLFLOW_WORKFLOW=examples/basic/main.cml \
 CAMLFLOW_ENTRY=main \
-CAMLFLOW_INPUT_JSON=5 \
+CAMLFLOW_INPUT_JSON='"Grace"' \
 ./scripts/run-pi-mono-recursion.sh
 ```
 
 Expected:
 
-- the printed initial message should include `--input-json 5`
-- the workflow output should be `15`
+- the printed initial message should include `--input-json '"Grace"'`
+- the workflow output should be `Hello Grace`
 
 Also test a repo override if needed:
 

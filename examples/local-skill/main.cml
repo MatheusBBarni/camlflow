@@ -1,5 +1,0 @@
-skill caveman : prompt:string -> string = Skill.bind "caveman"
-
-let main (prompt : string) : string =
-  let* answer = caveman ~prompt:prompt in
-  answer

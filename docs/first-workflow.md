@@ -8,7 +8,7 @@ Use this when you want the shortest path from an empty file to a workflow you
 can run and host.
 
 The checked-in companion project is
-[`examples/first-workflow`](../examples/first-workflow).
+[`examples/basic`](../examples/basic).
 
 ## Prerequisites
 

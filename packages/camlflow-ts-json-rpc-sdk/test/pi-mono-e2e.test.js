@@ -31,7 +31,7 @@ test(
 );
 
 test(
-  "pure recursion workflow completes through pi --print",
+  "pure basic workflow completes through pi --print",
   { skip: e2eEnabled ? false : suiteSkipReason, timeout: 120000 },
   async () => {
     const result = await runRepoScript(
@@ -39,7 +39,7 @@ test(
       [
         "--no-session",
         "--print",
-        "/camlflow-run examples/recursion/main.cml --entry main --input-json 4",
+        "/camlflow-run examples/basic/main.cml --entry main --input-json '\"Ada\"'",
       ],
       { timeoutMs: 120000 },
     );
@@ -48,16 +48,16 @@ test(
     assert.equal(result.code, 0, output);
     assertContainsAll(output, [
       "CamlFlow run complete",
-      "workflow: examples/recursion/main.cml",
+      "workflow: examples/basic/main.cml",
       "entry: main",
       "steps: 0",
-      /output:\s+10/,
+      /output:\s+Hello Ada/,
     ]);
   },
 );
 
 test(
-  "effectful basic workflow gives actionable no-model guidance with --no-env",
+  "provider-hooks workflow gives actionable no-model guidance with --no-env",
   { skip: e2eEnabled ? false : suiteSkipReason, timeout: 120000 },
   async () => {
     const result = await runRepoScript(
@@ -66,7 +66,7 @@ test(
         "--no-env",
         "--no-session",
         "--print",
-        '/camlflow-run examples/basic/main.cml --entry main --input-json "Ada"',
+        '/camlflow-run examples/provider-hooks/workflow.cml --entry main --input-json "Ada" --skills-dir examples/provider-hooks/skills',
       ],
       { timeoutMs: 120000 },
     );
@@ -81,7 +81,7 @@ test(
 );
 
 test(
-  "effectful basic workflow succeeds with a configured model",
+  "provider-hooks workflow succeeds with a configured model",
   {
     skip: !e2eEnabled
       ? suiteSkipReason
@@ -100,7 +100,7 @@ test(
         "--no-session",
         ...modelArgs.args,
         "--print",
-        '/camlflow-run examples/basic/main.cml --entry main --input-json "Ada"',
+        '/camlflow-run examples/provider-hooks/workflow.cml --entry main --input-json "Ada" --skills-dir examples/provider-hooks/skills',
       ],
       { timeoutMs: 180000 },
     );
@@ -109,17 +109,15 @@ test(
     assert.equal(result.code, 0, output);
     assertContainsAll(output, [
       "CamlFlow run complete",
-      "workflow: examples/basic/main.cml",
-      "steps: 1",
+      "workflow: examples/provider-hooks/workflow.cml",
+      "steps: 3",
       "output:",
-      /Ada/,
-      /!/,
     ]);
   },
 );
 
 test(
-  "problem-coach workflow returns a structured answer pack through pi",
+  "orchestrator workflow returns a structured triage plan through pi",
   {
     skip: !e2eEnabled
       ? suiteSkipReason
@@ -142,20 +140,16 @@ test(
     assert.equal(result.code, 0, output);
     assertContainsAll(output, [
       "CamlFlow run complete",
-      "workflow: examples/problem-coach/main.cml",
-      '"title"',
-      '"answer"',
-      '"code"',
-      '"complexity"',
-      '"edge_cases"',
-      '"pitfalls"',
+      "workflow: examples/orchestrator-session/main.cml",
+      '"summary"',
       '"next_steps"',
+      '"validation"',
     ]);
   },
 );
 
 test(
-  "repo-triage workflow returns a grounded triage report through pi",
+  "repo-triage launcher returns a structured triage plan through pi",
   {
     skip: !e2eEnabled
       ? suiteSkipReason
@@ -180,13 +174,10 @@ test(
     assert.equal(result.code, 0, output);
     assertContainsAll(output, [
       "CamlFlow run complete",
-      "workflow: examples/repo-triage/main.cml",
-      '"relevant_files"',
-      '"findings"',
-      '"patch_plan"',
-      '"validation_steps"',
-      /docs\/pi-mono-/,
-      /scripts\/run-pi-mono/,
+      "workflow: examples/orchestrator-session/main.cml",
+      '"summary"',
+      '"next_steps"',
+      '"validation"',
     ]);
   },
 );

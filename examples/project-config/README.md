@@ -1,22 +1,9 @@
-# Project-config example
+# Project config example
 
-This example shows project-local `camlflow.json` defaults in the smallest
-possible setup. The config pins the program path and entrypoint, so `run`,
-`check`, and `compile` can all omit the file argument.
-
-For the full config field reference, see
-[`../../docs/project-config.md`](../../docs/project-config.md).
-
-From this directory:
+This shows the smallest project-local `camlflow.json` for a `.cml` orchestrator
+contract.
 
 ```sh
-opam exec -- dune exec camlflow -- check
-opam exec -- dune exec camlflow -- run --input input.json
-opam exec -- dune exec camlflow -- compile -o /tmp/project-config.ir.json
-```
-
-From the repo root:
-
-```sh
+(cd examples/project-config && opam exec -- dune exec camlflow -- check)
 (cd examples/project-config && opam exec -- dune exec camlflow -- run --input input.json)
 ```

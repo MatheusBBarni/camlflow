@@ -22,9 +22,9 @@ Use deterministic CLI runs first. They are fast, local, and do not require model
 credentials.
 
 ```sh
-opam exec -- dune exec camlflow -- check examples/first-workflow/main.cml
-opam exec -- dune exec camlflow -- run examples/first-workflow/main.cml \
-  --input examples/first-workflow/input.json
+opam exec -- dune exec camlflow -- check examples/basic/main.cml
+opam exec -- dune exec camlflow -- run examples/orchestrator-session/main.cml \
+  --input examples/orchestrator-session/input.json
 ```
 
 What this validates:
@@ -52,8 +52,8 @@ Use provider CLI runs when you want a terminal command to own real model
 execution.
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/codex/main.cml \
-  --skills examples/codex/skills \
+opam exec -- dune exec camlflow -- run examples/provider-hooks/workflow.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '"Ada"' \
   --provider codex \
   --model gpt-5.4-mini \
@@ -121,15 +121,12 @@ try {
   const session = await agent.session("triage");
   const answer = await session.prompt("Summarize the current repo.");
 
-  const result = await agent.runWorkflow("examples/repo-triage/main.cml", {
-    skillsDir: "examples/repo-triage/skills",
+  const result = await agent.runWorkflow({
+    workflowPath: "examples/orchestrator-session/main.cml",
     input: {
+      issue_number: 16,
       task: "Find integration risks.",
-      suspected_area: "Pi SDK harness",
-      file_hints: ["packages/camlflow-pi-sdk/src/index.ts"],
       goals: ["map the entrypoints"],
-      constraints: ["use concrete file paths"],
-      mode: { tag: "QuickScan" },
     },
   });
 

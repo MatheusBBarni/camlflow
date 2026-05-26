@@ -32,13 +32,11 @@ import { createPiCamlFlowHostSession } from "camlflow-pi-sdk";
 const host = createPiCamlFlowHostSession({ runtime });
 
 const result = await host.runWorkflow({
-  workflowPath: "examples/problem-coach/main.cml",
-  skillsDir: "examples/problem-coach/skills",
+  workflowPath: "examples/orchestrator-session/main.cml",
   input: {
-    problem_name: "two sum",
-    language: { tag: "Python" },
-    audience: { tag: "Interview" },
-    must_cover: ["hash map approach", "time complexity"],
+    issue_number: 16,
+    task: "Triage the sandbox orchestrator workflow.",
+    goals: ["ground the plan in the .cml contract"],
   },
 });
 
@@ -71,15 +69,11 @@ try {
   });
 
   const workflow = await agent.runWorkflow({
-    workflowPath: "examples/repo-triage/main.cml",
-    skillsDir: "examples/repo-triage/skills",
+    workflowPath: "examples/orchestrator-session/main.cml",
     input: {
+      issue_number: 42,
       task: "Triage the current repository.",
-      suspected_area: "Pi harness integration",
-      file_hints: [],
       goals: ["ground findings in repository evidence"],
-      constraints: ["keep output actionable"],
-      mode: { tag: "Quick" },
     },
   });
 

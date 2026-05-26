@@ -1,3 +1,0 @@
-let main (name : string) : string =
-  let payload : Helpers.payload = Helpers.make name in
-  payload.name

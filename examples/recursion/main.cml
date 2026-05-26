@@ -1,5 +1,0 @@
-let rec sum_to (n : int) : int =
-  if n = 0 then 0 else n + sum_to (n - 1)
-
-let main (n : int) : int =
-  sum_to n

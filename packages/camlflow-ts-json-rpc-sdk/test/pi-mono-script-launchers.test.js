@@ -241,17 +241,17 @@ test("run-pi-mono.sh falls back to an available 5.4.0 opam switch when the shell
   }
 });
 
-test("run-pi-mono-recursion.sh prints the default recursion command before launch", async () => {
+test("run-pi-mono-recursion.sh prints the default basic command before launch", async () => {
   const result = await expectLauncherMessage(
     "scripts/run-pi-mono-recursion.sh",
-    "/camlflow-run examples/recursion/main.cml --entry main --input-json 4",
+    "/camlflow-run examples/basic/main.cml --entry main --input-json",
   );
   expectCommandTokens(combinedOutput(result), [
-    "examples/recursion/main.cml",
+    "examples/basic/main.cml",
     "--entry",
     "main",
     "--input-json",
-    "4",
+    '"Ada"',
   ]);
 });
 
@@ -272,48 +272,42 @@ test("run-pi-mono-basic.sh prints the default basic command before launch", asyn
 test("run-pi-mono-problem-coach.sh prints the structured default command before launch", async () => {
   const result = await expectLauncherMessage(
     "scripts/run-pi-mono-problem-coach.sh",
-    "/camlflow-run examples/problem-coach/main.cml --entry main --input-json",
+    "/camlflow-run examples/orchestrator-session/main.cml --entry main --input-json",
   );
   expectCommandTokens(combinedOutput(result), [
-    "examples/problem-coach/main.cml",
+    "examples/orchestrator-session/main.cml",
     "--entry",
     "main",
     "--input-json",
-    '{"problem_name":"two sum","language":{"tag":"Python"},"audience":{"tag":"Interview"},"must_cover":["hash map approach","time complexity","duplicate values edge case"]}',
-    "--skills-dir",
-    "examples/problem-coach/skills",
+    '{"issue_number":16,"task":"Triage the sandbox orchestrator workflow.","goals":["ground the plan in the .cml contract"]}',
   ]);
 });
 
 test("run-pi-mono-interview-pipeline.sh prints a token-safe structured command before launch", async () => {
   const result = await expectLauncherMessage(
     "scripts/run-pi-mono-interview-pipeline.sh",
-    "/camlflow-run examples/interview-pipeline/main.cml --entry main --input-json",
+    "/camlflow-run examples/orchestrator-session/main.cml --entry main --input-json",
   );
   expectCommandTokens(combinedOutput(result), [
-    "examples/interview-pipeline/main.cml",
+    "examples/orchestrator-session/main.cml",
     "--entry",
     "main",
     "--input-json",
-    '{"algorithm_name":"longest increasing subsequence","preferred_language":{"tag":"Python"},"target_difficulty":{"tag":"Hard"},"focus":[{"tag":"Pattern","value":"dynamic programming"},{"tag":"Constraint","value":"n up to 10^5"}]}',
-    "--skills-dir",
-    "examples/interview-pipeline/skills",
+    '{"issue_number":16,"task":"Plan a sandboxed workflow review.","goals":["typed workflow design","JSON-RPC hosts","sandbox policy"]}',
   ]);
 });
 
 test("run-pi-mono-repo-triage.sh prints the repo-triage default command before launch", async () => {
   const result = await expectLauncherMessage(
     "scripts/run-pi-mono-repo-triage.sh",
-    "/camlflow-run examples/repo-triage/main.cml --entry main --input-json",
+    "/camlflow-run examples/orchestrator-session/main.cml --entry main --input-json",
   );
   expectCommandTokens(combinedOutput(result), [
-    "examples/repo-triage/main.cml",
+    "examples/orchestrator-session/main.cml",
     "--entry",
     "main",
     "--input-json",
-    '{"task":"Triage how the pi-mono host integration is wired in this repo and identify the best files to inspect for improving no-model UX, effect streaming, and helper script ergonomics.","suspected_area":"pi-mono host integration docs, scripts, and TypeScript SDK wiring","file_hints":["docs/pi-mono-host-integration-plan.md","docs/pi-mono-implementation-checklist.md","docs/pi-mono-integration-testing.md","packages/camlflow-ts-json-rpc-sdk/src/client.ts","scripts"],"goals":["map the main integration path","identify the highest-value files for a follow-up patch","propose a small validation plan"],"constraints":["ground conclusions in repository evidence","prefer concrete file paths over generic advice","assume the caller wants to test through pi-mono"],"mode":{"tag":"DeepDive"}}',
-    "--skills-dir",
-    "examples/repo-triage/skills",
+    '{"issue_number":16,"task":"Triage the current repository for integration risk.","goals":["map the main integration path","identify high-value files","propose validation"]}',
   ]);
 });
 
@@ -323,7 +317,7 @@ test("launcher scripts respect CAMLFLOW_* overrides when building the initial me
     const result = await runRepoScript("scripts/run-pi-mono-recursion.sh", ["--print"], {
       env: {
         PI_MONO_REPO: missingRepo.path,
-        CAMLFLOW_WORKFLOW: "examples/recursion/main.cml",
+        CAMLFLOW_WORKFLOW: "examples/basic/main.cml",
         CAMLFLOW_ENTRY: "main",
         CAMLFLOW_INPUT_JSON: "5",
       },
@@ -333,7 +327,7 @@ test("launcher scripts respect CAMLFLOW_* overrides when building the initial me
     const output = combinedOutput(result);
     assert.match(output, /Launching pi-mono with initial message:/);
     expectCommandTokens(output, [
-      "examples/recursion/main.cml",
+      "examples/basic/main.cml",
       "--entry",
       "main",
       "--input-json",
@@ -353,19 +347,19 @@ test("structured launcher overrides remain parseable when JSON values contain ap
       env: {
         PI_MONO_REPO: missingRepo.path,
         CAMLFLOW_INPUT_JSON: inputJson,
-        CAMLFLOW_SKILLS_DIR: "examples/problem-coach/custom skills",
+        CAMLFLOW_SKILLS_DIR: "examples/orchestrator-session/custom skills",
       },
       timeoutMs: 15000,
     });
 
     expectCommandTokens(combinedOutput(result), [
-      "examples/problem-coach/main.cml",
+      "examples/orchestrator-session/main.cml",
       "--entry",
       "main",
       "--input-json",
       inputJson,
       "--skills-dir",
-      "examples/problem-coach/custom skills",
+      "examples/orchestrator-session/custom skills",
     ]);
   } finally {
     missingRepo.cleanup();

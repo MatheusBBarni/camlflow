@@ -1,10 +1,14 @@
-skill caveman : prompt:string -> string = Skill.bind "caveman"
 agent greeter : name:string -> string = Agent.bind "greeter"
+
+skill caveman : prompt:string -> string = Skill.bind "caveman"
+
 agent reviewer : code:string -> string =
-  Agent.define ~model:"stub" ~system_prompt:"Review tersely"
+  Agent.define
+    ~name:"reviewer"
+    ~system_prompt:"Review the sandbox workflow output and return JSON only."
 
 let main (name : string) : string =
   let* greeting = greeter ~name:name in
-  let* short = caveman ~prompt:greeting in
-  let* review = reviewer ~code:short in
+  let* terse = caveman ~prompt:greeting in
+  let* review = reviewer ~code:terse in
   review

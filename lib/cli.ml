@@ -161,7 +161,7 @@ let usage_text =
       "Examples:";
       "  camlflow help run";
       "  camlflow parse examples/basic/main.cml";
-      "  camlflow check examples/qualified-imports/main.cml";
+      "  camlflow check examples/orchestrator-session/main.cml";
       "  cd examples/project-config && camlflow check";
       "  camlflow compile examples/basic/main.cml -o /tmp/basic.ir.json";
       "  cd examples/project-config && camlflow run --input input.json";
@@ -212,7 +212,7 @@ let check_help_text =
       "  -I <dir>";
       "";
       "Examples:";
-      "  camlflow check examples/qualified-imports/main.cml";
+      "  camlflow check examples/orchestrator-session/main.cml";
       "  cd examples/project-config && camlflow check";
     ]
 

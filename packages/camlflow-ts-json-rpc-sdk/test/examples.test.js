@@ -70,14 +70,14 @@ test('sdk attach-streams example runs end-to-end', { timeout: 30000 }, async () 
   assert.match(result.stdout, /"output":\s*"inline-review"/);
 });
 
-test('sdk problem-coach example runs end-to-end', { timeout: 30000 }, async () => {
-  const result = await runProcess('node', ['examples-dist/problem-coach.js'], {
+test('sdk orchestrator workflow example runs end-to-end', { timeout: 30000 }, async () => {
+  const result = await runProcess('node', ['examples-dist/orchestrator-session.js'], {
     cwd: packageRoot,
   });
 
   assert.equal(result.code, 0, result.stderr);
-  assert.match(result.stdout, /"stepsRun":\s*4/);
-  assert.match(result.stdout, /"title":\s*"two sum solution pack"/);
+  assert.match(result.stdout, /"stepsRun":\s*2/);
+  assert.match(result.stdout, /"summary":\s*"Plan the work around the \.cml contract and host sandbox policy\."/);
 });
 
 test('sdk cancellation example exits cleanly after aborting a run', { timeout: 30000 }, async () => {

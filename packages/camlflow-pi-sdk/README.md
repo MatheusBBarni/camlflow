@@ -92,13 +92,13 @@ const host = createPiCamlFlowHostSession({
 
 const controller = new AbortController();
 const result = await host.runWorkflow({
-  workflowPath: "examples/problem-coach/main.cml",
+  workflowPath: "examples/orchestrator-session/main.cml",
   entrypoint: "main",
   input: {
-    problem_name: "two sum",
-    language: { tag: "Python" },
+    issue_number: 16,
+    task: "Triage the sandbox orchestrator workflow.",
+    goals: ["ground the plan in the .cml contract"],
   },
-  skillsDir: "examples/problem-coach/skills",
   signal: controller.signal,
 });
 
@@ -194,7 +194,7 @@ try {
   });
 
   const workflow = await agent.runWorkflow({
-    workflowPath: "examples/repo-triage/main.cml",
+    workflowPath: "examples/orchestrator-session/main.cml",
     input: { task: "Summarize the current checkout." },
   });
 

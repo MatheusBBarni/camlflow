@@ -28,7 +28,7 @@ Examples:
 
 ```sh
 opam exec -- dune exec camlflow -- run examples/basic/main.cml --input-json '"Ada"'
-opam exec -- dune exec camlflow -- run examples/recursion/main.cml --input-json '4'
+opam exec -- dune exec camlflow -- run examples/basic/main.cml --input-json '4'
 ```
 
 ## Records
@@ -171,9 +171,9 @@ Use:
 Run the checked-in example:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/problem-coach/main.cml \
-  --skills examples/problem-coach/skills \
-  --input examples/problem-coach/input.json
+opam exec -- dune exec camlflow -- run examples/orchestrator-session/main.cml \
+  --skills examples/provider-hooks/skills \
+  --input examples/orchestrator-session/input.json
 ```
 
 ## Shell Quoting
@@ -183,15 +183,15 @@ for small values:
 
 ```sh
 opam exec -- dune exec camlflow -- run examples/basic/main.cml --input-json '"Ada"'
-opam exec -- dune exec camlflow -- run examples/recursion/main.cml --input-json '4'
+opam exec -- dune exec camlflow -- run examples/basic/main.cml --input-json '4'
 ```
 
 When passing JSON objects inline, wrap the whole JSON value in single quotes so
 the shell does not consume double quotes:
 
 ```sh
-opam exec -- dune exec camlflow -- run examples/problem-coach/main.cml \
-  --skills examples/problem-coach/skills \
+opam exec -- dune exec camlflow -- run examples/orchestrator-session/main.cml \
+  --skills examples/provider-hooks/skills \
   --input-json '{"problem_name":"two sum","language":{"tag":"Python"},"audience":{"tag":"Interview"},"must_cover":["hash map approach"]}'
 ```
 

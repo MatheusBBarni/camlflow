@@ -4,9 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/pi-mono-message-lib.sh"
 
-WORKFLOW="${CAMLFLOW_WORKFLOW:-examples/recursion/main.cml}"
+WORKFLOW="${CAMLFLOW_WORKFLOW:-examples/basic/main.cml}"
 ENTRY="${CAMLFLOW_ENTRY:-main}"
-INPUT_JSON="${CAMLFLOW_INPUT_JSON:-4}"
+INPUT_JSON="${CAMLFLOW_INPUT_JSON:-\"Ada\"}"
 
 INITIAL_MESSAGE="$(build_camlflow_run_message "$WORKFLOW" "$ENTRY" "$INPUT_JSON")"
 
