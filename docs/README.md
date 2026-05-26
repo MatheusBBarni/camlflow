@@ -56,6 +56,9 @@ implementation internals.
   Flue-style harness guide.
 - [`host-adapter-architecture.md`](./host-adapter-architecture.md): host adapter
   architecture notes.
+- [`adr/0002-camlflow-sandbox-orchestrator-boundaries.md`](./adr/0002-camlflow-sandbox-orchestrator-boundaries.md):
+  canonical terms and package boundaries for the `.cml` sandbox orchestrator
+  direction.
 - [`../packages/camlflow-ts-json-rpc-sdk/README.md`](../packages/camlflow-ts-json-rpc-sdk/README.md):
   TypeScript JSON-RPC SDK.
 - [`../packages/camlflow-pi-sdk/README.md`](../packages/camlflow-pi-sdk/README.md):
@@ -100,6 +103,7 @@ prototype, manual launchers, and fork-local implementation plan:
 - [`agent-context/api-conventions.md`](./agent-context/api-conventions.md)
 - [`agent-context/testing-guide.md`](./agent-context/testing-guide.md)
 - [`adr/0001-programmatic-camlflow-pi-sdk.md`](./adr/0001-programmatic-camlflow-pi-sdk.md)
+- [`adr/0002-camlflow-sandbox-orchestrator-boundaries.md`](./adr/0002-camlflow-sandbox-orchestrator-boundaries.md)
 - [`docs-validation.md`](./docs-validation.md)
 
 ## Documentation Maintenance
