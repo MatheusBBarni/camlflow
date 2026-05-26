@@ -26,6 +26,8 @@ implementation internals.
 - [`orchestrator-project-layout.md`](./orchestrator-project-layout.md): proposed
   `.camlflow/` workflow, role, skill, and connector scaffold for orchestrator
   host projects.
+- [`orchestrator-observability.md`](./orchestrator-observability.md): host-side
+  event, cancellation, resume, and structured failure metadata conventions.
 - [`glossary.md`](./glossary.md): shared vocabulary for workflows, effects,
   hosts, providers, JSON-RPC, Pi harness sessions, and sandboxes.
 - [`editor-support.md`](./editor-support.md): VS Code and Zed setup, LSP
@@ -46,6 +48,8 @@ implementation internals.
   order for workflows.
 - [`orchestrator-project-layout.md`](./orchestrator-project-layout.md): SDK
   scaffold conventions for `.cml`-first sandbox orchestrator projects.
+- [`orchestrator-observability.md`](./orchestrator-observability.md): event log,
+  cancellation, and resume primitives for orchestrator hosts.
 - [`glossary.md`](./glossary.md): terminology used across authoring, runtime,
   host, provider, and Pi harness docs.
 - [`provider-execution.md`](./provider-execution.md): direct CLI provider

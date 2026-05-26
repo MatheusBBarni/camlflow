@@ -63,6 +63,20 @@ camlflow.json
 By default it skips existing files. Pass `{ overwrite: true }` for host-owned
 regeneration flows.
 
+## Observability and resume
+
+Phase-5 primitives normalize lifecycle events across sandbox, workflow, session,
+prompt, shell, cancellation, and resume boundaries:
+
+- `eventSink` on `createOrchestratorHarness(...)`
+- `createMemoryRunLog()` for structured test/dev logs
+- `createCancellationScope()` for orchestrator-level cancellation fan-out
+- `createMemoryResumeStore()` for safe capture of step state and structured-output
+  failure metadata
+
+Resume snapshots are intentionally explicit: a provider should only resume from
+captured state when the underlying agent/session implementation can do so safely.
+
 The Pi compatibility package remains `camlflow-pi-sdk`. During migration, Pi
 worker creation, Pi model registry access, Pi auth checks, and Pi tool creation
 stay there while shared lifecycle code moves here.

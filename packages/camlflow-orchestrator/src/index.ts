@@ -198,6 +198,7 @@ export interface HarnessOptions<TSandboxConfig = unknown, TAgentSession = unknow
   workflowRunner?: WorkflowRunner;
   promptResolver?: PromptResolver;
   hooks?: LifecycleHooks;
+  eventSink?: OrchestratorEventSink;
   roles?: RoleOverlays;
   signal?: AbortSignal;
 }
@@ -258,6 +259,58 @@ export interface ScaffoldProjectResult {
   configPath: string;
   created: readonly string[];
   skipped: readonly string[];
+}
+
+export type OrchestratorEventKind =
+  | "sandbox:create"
+  | "sandbox:ready"
+  | "sandbox:close"
+  | "workflow:start"
+  | "workflow:finish"
+  | "workflow:error"
+  | "session:create"
+  | "session:close"
+  | "prompt:start"
+  | "prompt:chunk"
+  | "prompt:finish"
+  | "prompt:error"
+  | "shell:start"
+  | "shell:finish"
+  | "cancel"
+  | "resume:capture";
+
+export interface OrchestratorEvent {
+  kind: OrchestratorEventKind;
+  runId?: string;
+  sessionId?: string;
+  timestamp: string;
+  message?: string;
+  data?: JsonObject;
+}
+
+export type OrchestratorEventSink = (event: OrchestratorEvent) => MaybePromise<void>;
+
+export interface RunLog {
+  emit(event: Omit<OrchestratorEvent, "timestamp"> & { timestamp?: string }): Promise<OrchestratorEvent>;
+  entries(): readonly OrchestratorEvent[];
+}
+
+export interface ResumeSnapshot<TState extends JsonObject = JsonObject> {
+  runId: string;
+  step: number;
+  state: TState;
+  failedOutput?: JsonValue;
+  failureMetadata?: JsonObject;
+}
+
+export interface ResumeStore<TState extends JsonObject = JsonObject> {
+  load(runId: string): MaybePromise<ResumeSnapshot<TState> | undefined>;
+  save(snapshot: ResumeSnapshot<TState>): MaybePromise<void>;
+}
+
+export interface CancellationScope {
+  readonly signal: AbortSignal;
+  cancel(reason?: string): Promise<void>;
 }
 
 export interface OutputChunk {
@@ -440,8 +493,10 @@ export function createOrchestratorHarness<TSandboxConfig, TAgentSession, TMessag
         runId,
         signal,
       };
+      await emitOrchestratorEvent(options.eventSink, { kind: "sandbox:create", runId });
       await options.hooks?.beforeSandboxCreate?.(createContext);
       const sandbox = await options.sandboxProvider.create(options.sandbox, createContext);
+      await emitOrchestratorEvent(options.eventSink, { kind: "sandbox:ready", runId, data: { cwd: sandbox.cwd } });
       await options.hooks?.afterSandboxReady?.(sandbox);
       const openSessions = new Set<Promise<void> | OrchestratorSession>();
       let closed = false;
@@ -459,11 +514,13 @@ export function createOrchestratorHarness<TSandboxConfig, TAgentSession, TMessag
             role: resolveRoleOverlay(options.roles, sessionOptions.role),
             signal: sessionSignal,
           });
+          await emitOrchestratorEvent(options.eventSink, { kind: "session:create", runId, sessionId: id });
           let sessionClosed = false;
           const closeSession = async () => {
             if (!sessionClosed) {
               sessionClosed = true;
               await options.agentProvider.closeSession(providerSession);
+              await emitOrchestratorEvent(options.eventSink, { kind: "session:close", runId, sessionId: id });
             }
           };
           const orchestratorSession: OrchestratorSession = {
@@ -473,9 +530,11 @@ export function createOrchestratorHarness<TSandboxConfig, TAgentSession, TMessag
                 throw new CamlFlowOrchestratorError("orchestrator session is closed");
               }
               const text = assertNonEmptyString(prompt, "prompt");
+              await emitOrchestratorEvent(options.eventSink, { kind: "prompt:start", runId, sessionId: id });
               const message = await options.agentProvider.prompt(providerSession, text, {
                 signal: composeAbortSignals([sessionSignal, promptOptions.signal]),
               });
+              await emitOrchestratorEvent(options.eventSink, { kind: "prompt:finish", runId, sessionId: id });
               return parseResult(message, promptOptions.result);
             },
             async skill(name, skillOptions = {}) {
@@ -519,8 +578,10 @@ export function createOrchestratorHarness<TSandboxConfig, TAgentSession, TMessag
             signal: composeAbortSignals([signal, runOptions.signal]),
           };
           await options.hooks?.beforeRun?.(run);
+          await emitOrchestratorEvent(options.eventSink, { kind: "workflow:start", runId, data: { workflowPath } });
           const result = await options.workflowRunner(run);
           await options.hooks?.afterRun?.(run, result);
+          await emitOrchestratorEvent(options.eventSink, { kind: "workflow:finish", runId });
           return result as WorkflowRunResult<TOutput>;
         },
         async close() {
@@ -531,10 +592,77 @@ export function createOrchestratorHarness<TSandboxConfig, TAgentSession, TMessag
             }
           }
           await options.hooks?.beforeClose?.(sandbox);
-          return sandbox.close();
+          const closeResult = await sandbox.close();
+          await emitOrchestratorEvent(options.eventSink, { kind: "sandbox:close", runId, data: { cleaned: closeResult.cleaned } });
+          return closeResult;
         },
       };
       return agent;
+    },
+  };
+}
+
+export async function emitOrchestratorEvent(
+  sink: OrchestratorEventSink | undefined,
+  event: Omit<OrchestratorEvent, "timestamp"> & { timestamp?: string },
+): Promise<OrchestratorEvent> {
+  const fullEvent: OrchestratorEvent = {
+    ...event,
+    timestamp: event.timestamp ?? new Date().toISOString(),
+  };
+  if (sink) {
+    await sink(fullEvent);
+  }
+  return fullEvent;
+}
+
+export function createMemoryRunLog(): RunLog {
+  const events: OrchestratorEvent[] = [];
+  return {
+    async emit(event) {
+      const recorded = await emitOrchestratorEvent(undefined, event);
+      events.push(recorded);
+      return recorded;
+    },
+    entries() {
+      return [...events];
+    },
+  };
+}
+
+export function createCancellationScope(options: { onCancel?: (reason?: string) => MaybePromise<void> } = {}): CancellationScope {
+  const controller = new AbortController();
+  return {
+    signal: controller.signal,
+    async cancel(reason) {
+      if (!controller.signal.aborted) {
+        controller.abort(reason);
+        await options.onCancel?.(reason);
+      }
+    },
+  };
+}
+
+export function createMemoryResumeStore<TState extends JsonObject = JsonObject>(): ResumeStore<TState> {
+  const snapshots = new Map<string, ResumeSnapshot<TState>>();
+  return {
+    async load(runId) {
+      assertNonEmptyString(runId, "run id");
+      return snapshots.get(runId);
+    },
+    async save(snapshot) {
+      assertNonEmptyString(snapshot.runId, "run id");
+      if (!Number.isInteger(snapshot.step) || snapshot.step < 0) {
+        throw new CamlFlowValidationError("resume step must be a non-negative integer");
+      }
+      assertJsonValue(snapshot.state, "resume state");
+      if (snapshot.failedOutput !== undefined) {
+        assertJsonValue(snapshot.failedOutput, "resume failed output");
+      }
+      if (snapshot.failureMetadata !== undefined) {
+        assertJsonValue(snapshot.failureMetadata, "resume failure metadata");
+      }
+      snapshots.set(snapshot.runId, { ...snapshot });
     },
   };
 }

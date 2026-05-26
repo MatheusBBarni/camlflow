@@ -14,9 +14,12 @@ import {
   composeAbortSignals,
   createEphemeralSandboxProvider,
   createLocalSandboxProvider,
+  createMemoryResumeStore,
+  createMemoryRunLog,
   createMemorySessionStore,
   createOrchestratorHarness,
   createReadOnlySandboxProvider,
+  createCancellationScope,
   parseResult,
   relayOutputChunk,
   resolveRoleOverlay,
@@ -223,4 +226,68 @@ test("scaffolds .camlflow project layout without overwriting by default", async 
   const second = await scaffoldCamlFlowProject(root, { workflowName: "triage" });
   assert.ok(second.skipped.includes("camlflow.json"));
   assert.ok(second.skipped.includes(".camlflow/workflows/triage.cml"));
+});
+
+test("records normalized orchestrator events and harness lifecycle logs", async () => {
+  const events = [];
+  const harness = createOrchestratorHarness({
+    sandboxProvider: createEphemeralSandboxProvider(),
+    sandbox: {},
+    eventSink: (event) => events.push(event),
+    agentProvider: {
+      name: "fake",
+      createSession: async () => ({}),
+      prompt: async () => ({ ok: true }),
+      closeSession: async () => {},
+    },
+    workflowRunner: (run) => ({ runId: run.runId, output: { ok: true }, diagnostics: [], metadata: {} }),
+  });
+  const agent = await harness.init({ runId: "run-log" });
+  const session = await agent.session("session-log");
+  await session.prompt("hello");
+  await agent.runWorkflow({ workflowPath: "flows/main.cml" });
+  await agent.close();
+  assert.deepEqual(events.map((event) => event.kind), [
+    "sandbox:create",
+    "sandbox:ready",
+    "session:create",
+    "prompt:start",
+    "prompt:finish",
+    "workflow:start",
+    "workflow:finish",
+    "session:close",
+    "sandbox:close",
+  ]);
+  assert.ok(events.every((event) => typeof event.timestamp === "string"));
+});
+
+test("memory run log and resume store keep recovery metadata", async () => {
+  const log = createMemoryRunLog();
+  await log.emit({ kind: "workflow:error", runId: "run-1", data: { message: "bad output" } });
+  assert.equal(log.entries()[0].kind, "workflow:error");
+  const store = createMemoryResumeStore();
+  await store.save({
+    runId: "run-1",
+    step: 2,
+    state: { completed: ["research"] },
+    failedOutput: { raw: "not-json" },
+    failureMetadata: { parser: "json" },
+  });
+  assert.deepEqual(await store.load("run-1"), {
+    runId: "run-1",
+    step: 2,
+    state: { completed: ["research"] },
+    failedOutput: { raw: "not-json" },
+    failureMetadata: { parser: "json" },
+  });
+});
+
+test("cancellation scope aborts once and calls cleanup", async () => {
+  const reasons = [];
+  const scope = createCancellationScope({ onCancel: (reason) => reasons.push(reason) });
+  assert.equal(scope.signal.aborted, false);
+  await scope.cancel("stop");
+  await scope.cancel("again");
+  assert.equal(scope.signal.aborted, true);
+  assert.deepEqual(reasons, ["stop"]);
 });
