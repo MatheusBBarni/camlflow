@@ -23,6 +23,9 @@ implementation internals.
   `.cml` workflow shapes.
 - [`run-modes.md`](./run-modes.md): choose between deterministic CLI, provider
   CLI, JSON-RPC host, and Pi SDK harness execution.
+- [`orchestrator-project-layout.md`](./orchestrator-project-layout.md): proposed
+  `.camlflow/` workflow, role, skill, and connector scaffold for orchestrator
+  host projects.
 - [`glossary.md`](./glossary.md): shared vocabulary for workflows, effects,
   hosts, providers, JSON-RPC, Pi harness sessions, and sandboxes.
 - [`editor-support.md`](./editor-support.md): VS Code and Zed setup, LSP
@@ -41,6 +44,8 @@ implementation internals.
   inputs and provider/host/Pi outputs.
 - [`run-modes.md`](./run-modes.md): execution-mode comparison and bring-up
   order for workflows.
+- [`orchestrator-project-layout.md`](./orchestrator-project-layout.md): SDK
+  scaffold conventions for `.cml`-first sandbox orchestrator projects.
 - [`glossary.md`](./glossary.md): terminology used across authoring, runtime,
   host, provider, and Pi harness docs.
 - [`provider-execution.md`](./provider-execution.md): direct CLI provider

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, relative, resolve } from "node:path";
 
@@ -244,6 +244,20 @@ export interface OrchestratorSession {
   skill<TOutput = JsonValue>(name: string, options?: OrchestratorSkillOptions<TOutput>): Promise<TOutput>;
   task<TOutput = JsonValue>(prompt: string, options?: OrchestratorPromptOptions<TOutput>): Promise<TOutput>;
   close(): Promise<void>;
+}
+
+export interface ScaffoldProjectOptions {
+  workflowName?: string;
+  entrypoint?: string;
+  overwrite?: boolean;
+}
+
+export interface ScaffoldProjectResult {
+  root: string;
+  workflowPath: string;
+  configPath: string;
+  created: readonly string[];
+  skipped: readonly string[];
 }
 
 export interface OutputChunk {
@@ -523,6 +537,72 @@ export function createOrchestratorHarness<TSandboxConfig, TAgentSession, TMessag
       return agent;
     },
   };
+}
+
+export async function scaffoldCamlFlowProject(
+  root: string,
+  options: ScaffoldProjectOptions = {},
+): Promise<ScaffoldProjectResult> {
+  const projectRoot = resolve(assertNonEmptyString(root, "project root"));
+  const workflowName = options.workflowName ?? "main";
+  assertNonEmptyString(workflowName, "workflow name");
+  const entrypoint = options.entrypoint ?? "main";
+  assertNonEmptyString(entrypoint, "entrypoint");
+  const workflowRelativePath = `.camlflow/workflows/${workflowName}.cml`;
+  const files = new Map<string, string>([
+    [
+      workflowRelativePath,
+      [
+        "type request = {",
+        "  name : string;",
+        "}",
+        "",
+        `let ${entrypoint} (request : request) : string =`,
+        '  "Hello " ^ request.name',
+        "",
+      ].join("\n"),
+    ],
+    [".camlflow/roles/default.md", "You are helping run typed CamlFlow workflows inside a sandbox.\n"],
+    [".camlflow/skills/README.md", "Place host-resolved skill prompts here.\n"],
+    [".camlflow/connectors/README.md", "Place host connector configuration notes here.\n"],
+    [
+      "camlflow.json",
+      `${JSON.stringify({ program: workflowRelativePath, entry: entrypoint, skillsDir: ".camlflow/skills" }, null, 2)}\n`,
+    ],
+  ]);
+  const created: string[] = [];
+  const skipped: string[] = [];
+  for (const relativePath of files.keys()) {
+    await mkdir(resolve(projectRoot, relativePath, ".."), { recursive: true });
+  }
+  for (const [relativePath, contents] of files) {
+    const target = resolve(projectRoot, relativePath);
+    if (!options.overwrite && (await pathExists(target))) {
+      skipped.push(relativePath);
+      continue;
+    }
+    await writeFile(target, contents, "utf8");
+    created.push(relativePath);
+  }
+  return {
+    root: projectRoot,
+    workflowPath: workflowRelativePath,
+    configPath: "camlflow.json",
+    created,
+    skipped,
+  };
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
 }
 
 export function createMemorySessionStore<TData extends JsonObject = JsonObject>(): SessionStore<TData> {

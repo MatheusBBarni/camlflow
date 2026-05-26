@@ -47,6 +47,22 @@ runner into one host-owned lifecycle:
 Role overlays resolve from workflow -> agent -> skill -> host call, with explicit
 call roles taking precedence.
 
+## Project scaffold
+
+`scaffoldCamlFlowProject(root)` creates a `.cml`-first project layout without
+changing the existing OCaml CLI command surface:
+
+```text
+.camlflow/workflows/main.cml
+.camlflow/roles/default.md
+.camlflow/skills/README.md
+.camlflow/connectors/README.md
+camlflow.json
+```
+
+By default it skips existing files. Pass `{ overwrite: true }` for host-owned
+regeneration flows.
+
 The Pi compatibility package remains `camlflow-pi-sdk`. During migration, Pi
 worker creation, Pi model registry access, Pi auth checks, and Pi tool creation
 stay there while shared lifecycle code moves here.

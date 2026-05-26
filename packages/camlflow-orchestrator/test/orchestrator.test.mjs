@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { mkdtemp, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,6 +21,7 @@ import {
   relayOutputChunk,
   resolveRoleOverlay,
   resolveSandboxPath,
+  scaffoldCamlFlowProject,
 } from "../dist/index.js";
 
 test("validates strict JSON values before host side parsing", () => {
@@ -204,4 +206,21 @@ test("role overlays use host call, skill, agent, then workflow precedence", () =
   assert.equal(resolveRoleOverlay({ workflow: "workflow", skill: "skill" }), "skill");
   assert.equal(resolveRoleOverlay({ workflow: "workflow", hostCall: "host" }), "host");
   assert.equal(resolveRoleOverlay({ workflow: "workflow" }, "call"), "call");
+});
+
+test("scaffolds .camlflow project layout without overwriting by default", async () => {
+  const root = await mkdtemp(join(tmpdir(), "camlflow-scaffold-"));
+  const first = await scaffoldCamlFlowProject(root, { workflowName: "triage" });
+  assert.deepEqual(first.skipped, []);
+  assert.ok(first.created.includes(".camlflow/workflows/triage.cml"));
+  assert.equal(first.workflowPath, ".camlflow/workflows/triage.cml");
+  const config = JSON.parse(await readFile(join(root, "camlflow.json"), "utf8"));
+  assert.deepEqual(config, {
+    program: ".camlflow/workflows/triage.cml",
+    entry: "main",
+    skillsDir: ".camlflow/skills",
+  });
+  const second = await scaffoldCamlFlowProject(root, { workflowName: "triage" });
+  assert.ok(second.skipped.includes("camlflow.json"));
+  assert.ok(second.skipped.includes(".camlflow/workflows/triage.cml"));
 });
